@@ -1,0 +1,119 @@
+{
+  "name": "rest-api",
+  "displayName": "REST API Plugin",
+  "version": "2.3.0",
+  "description": "Comprehensive REST API for external system integration. Enables clients to trigger calls, manage campaigns, and receive events via webhooks programmatically.",
+  "author": "AgentLabs",
+  "license": "Commercial",
+  "homepage": "https://agentlabs.io/plugins/rest-api",
+  "compatibility": {
+    "agentlabs": ">=1.0.0",
+    "node": ">=18.0.0"
+  },
+  "entryPoint": "index.ts",
+  "registerFunction": "registerRestApiRoutes",
+  "database": {
+    "migrations": [
+      "migrations/001_api_tables.sql"
+    ],
+    "tables": [
+      "api_keys",
+      "api_audit_logs",
+      "api_rate_limits"
+    ]
+  },
+  "routes": {
+    "api": [
+      {
+        "path": "/api/v1",
+        "description": "Main REST API endpoints"
+      },
+      {
+        "path": "/api/user/api-keys",
+        "description": "User API key management"
+      },
+      {
+        "path": "/api/admin/api-keys",
+        "description": "Admin API key management"
+      },
+      {
+        "path": "/api/docs",
+        "description": "Redoc API documentation"
+      },
+      {
+        "path": "/api/docs/playground",
+        "description": "Swagger UI playground"
+      }
+    ]
+  },
+  "ui": {
+    "adminSettings": {
+      "tab": "api-keys",
+      "label": "API Keys",
+      "component": "AdminApiKeysTab"
+    },
+    "userSettings": {
+      "tab": "developer",
+      "label": "Developer",
+      "component": "UserApiKeysTab"
+    }
+  },
+  "permissions": {
+    "required": [
+      "session-auth-middleware",
+      "admin-auth-middleware"
+    ]
+  },
+  "features": [
+    "API Key Authentication",
+    "Rate Limiting",
+    "Request Audit Logging",
+    "IP Whitelisting",
+    "Scoped Permissions",
+    "Calls API",
+    "Campaigns API",
+    "Agents API",
+    "Contacts API",
+    "Credits API",
+    "Analytics API",
+    "Webhooks API",
+    "Redoc Documentation",
+    "Swagger UI Playground",
+    "Flow Export/Import"
+  ],
+  "scopes": {
+    "calls:read": "View call history and details",
+    "calls:write": "Trigger and manage calls",
+    "campaigns:read": "View campaigns",
+    "campaigns:write": "Create and manage campaigns",
+    "agents:read": "View agents",
+    "agents:write": "Create and manage agents",
+    "contacts:read": "View contacts",
+    "contacts:write": "Create and manage contacts",
+    "credits:read": "View credit balance and usage",
+    "webhooks:read": "View webhook subscriptions",
+    "webhooks:write": "Manage webhook subscriptions",
+    "analytics:read": "View analytics data",
+    "admin": "Full administrative access"
+  },
+  "settings": {
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "label": "Enable REST API Plugin",
+      "description": "Enable or disable the REST API plugin"
+    },
+    "defaultRateLimit": {
+      "type": "number",
+      "default": 100,
+      "label": "Default Rate Limit",
+      "description": "Default requests per minute for new API keys"
+    },
+    "auditLogRetentionDays": {
+      "type": "number",
+      "default": 90,
+      "label": "Audit Log Retention",
+      "description": "Days to retain API audit logs"
+    }
+  }
+}

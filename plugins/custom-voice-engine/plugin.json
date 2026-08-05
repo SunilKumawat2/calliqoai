@@ -1,0 +1,168 @@
+{
+  "name": "custom-voice-engine",
+  "displayName": "Custom Voice Engine",
+  "version": "1.0.0",
+  "description": "Self-hosted Custom Voice Engine powered by FreeSWITCH. Provides real-time voice streaming with pluggable STT (Deepgram, Sarvam), LLM (OpenRouter), and TTS (Deepgram, Sarvam) providers. Includes customer memory, conversation engine, semantic caching, and call recording.",
+  "author": "AgentLabs",
+  "license": "Commercial",
+  "homepage": "https://agentlabs.io/plugins/custom-voice-engine",
+
+  "compatibility": {
+    "agentlabs": ">=1.0.0",
+    "node": ">=22.0.0"
+  },
+
+  "entryPoint": "index.ts",
+  "registerFunction": "registerAiVoiceEngineRoutes",
+
+  "database": {
+    "migrations": [
+      "migrations/001_voice_engine_tables.sql",
+      "migrations/002_add_detect_language.sql",
+      "migrations/003_add_system_tools.sql"
+    ],
+    "tables": [
+      "ve_provider_configs",
+      "ve_sessions",
+      "ve_call_recordings",
+      "ve_customer_memory",
+      "ve_conversation_memory",
+      "ve_llm_cache",
+      "ve_usage_tracking",
+      "ve_freeswitch_nodes",
+      "ve_voice_agents"
+    ]
+  },
+
+  "routes": {
+    "api": [
+      { "path": "/api/voice-engine/admin/settings", "description": "Admin voice engine settings" },
+      { "path": "/api/voice-engine/admin/freeswitch", "description": "FreeSWITCH node management" },
+      { "path": "/api/voice-engine/config", "description": "Tenant provider configuration" },
+      { "path": "/api/voice-engine/calls", "description": "Call management" },
+      { "path": "/api/voice-engine/recordings", "description": "Call recordings" },
+      { "path": "/api/voice-engine/memory", "description": "Customer memory" },
+      { "path": "/api/voice-engine/analytics", "description": "Voice engine analytics" },
+      { "path": "/api/voice-engine/agents", "description": "Voice agent configuration" },
+      { "path": "/api/voice-engine/ws/audio", "description": "WebSocket audio stream" }
+    ]
+  },
+
+  "ui": {
+    "adminSettings": {
+      "tab": "voice-engine-settings",
+      "label": "Voice Engine",
+      "component": "AdminVoiceEngineTab",
+      "icon": "Mic"
+    },
+    "userSettings": {
+      "tab": "voice-engine",
+      "label": "Voice Engine",
+      "component": "UserVoiceEngineTab"
+    }
+  },
+
+  "permissions": {
+    "required": [
+      "session-auth-middleware",
+      "admin-auth-middleware"
+    ]
+  },
+
+  "features": [
+    "FreeSWITCH Integration (mod_audio_fork)",
+    "Pluggable STT Providers (Deepgram, Sarvam)",
+    "Pluggable LLM Providers (OpenRouter / GPT-4o-mini / Gemini Flash)",
+    "Pluggable TTS Providers (Deepgram Nova-2, Sarvam)",
+    "Real-time WebSocket Audio Pipeline",
+    "Voice Activity Detection (VAD)",
+    "Barge-in / Interruption Support",
+    "Customer Memory System (Short-term + Long-term)",
+    "Conversation Engine with Context Compression",
+    "Semantic LLM Response Cache (Redis)",
+    "Call Recording (S3 / Cloudflare R2)",
+    "Per-Tenant Provider Configuration",
+    "Tool Calling Framework (CRM, Booking, Email, SMS)",
+    "Post-Call Summary Generation",
+    "Prometheus Metrics",
+    "Docker + Kubernetes Ready"
+  ],
+
+  "engines": {
+    "freeswitch": {
+      "name": "FreeSWITCH Voice Engine",
+      "description": "Self-hosted voice processing via FreeSWITCH with mod_audio_fork",
+      "inbound": true,
+      "outbound": true,
+      "requiresBridge": true
+    }
+  },
+
+  "providers": {
+    "stt": ["deepgram", "sarvam"],
+    "llm": ["openrouter"],
+    "tts": ["deepgram", "sarvam"]
+  },
+
+  "settings": {
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "label": "Enable Custom Voice Engine",
+      "description": "Enable or disable the Custom Voice Engine plugin"
+    },
+    "defaultMaxConcurrentCalls": {
+      "type": "number",
+      "default": 50,
+      "label": "Default Max Concurrent Calls",
+      "description": "Default concurrent call limit per tenant"
+    },
+    "freeswitchEslHost": {
+      "type": "string",
+      "default": "127.0.0.1",
+      "label": "FreeSWITCH ESL Host",
+      "description": "FreeSWITCH Event Socket Library hostname"
+    },
+    "freeswitchEslPort": {
+      "type": "number",
+      "default": 8021,
+      "label": "FreeSWITCH ESL Port",
+      "description": "FreeSWITCH Event Socket Library port"
+    },
+    "freeswitchEslPassword": {
+      "type": "string",
+      "default": "ClueCon",
+      "label": "FreeSWITCH ESL Password",
+      "description": "FreeSWITCH Event Socket Library password"
+    },
+    "audioWebSocketPort": {
+      "type": "number",
+      "default": 8089,
+      "label": "Audio WebSocket Port",
+      "description": "Port for mod_audio_fork WebSocket audio streams"
+    },
+    "recordingStorageBackend": {
+      "type": "string",
+      "default": "local",
+      "label": "Recording Storage",
+      "description": "Storage backend for call recordings: 'local', 's3', or 'r2'"
+    }
+  },
+
+  "environmentVariables": {
+    "required": [],
+    "optional": [
+      "FREESWITCH_ESL_HOST",
+      "FREESWITCH_ESL_PORT",
+      "FREESWITCH_ESL_PASSWORD",
+      "DEEPGRAM_API_KEY",
+      "SARVAM_API_KEY",
+      "OPENROUTER_API_KEY",
+      "VE_RECORDING_S3_BUCKET",
+      "VE_RECORDING_S3_REGION",
+      "VE_RECORDING_R2_ACCOUNT_ID",
+      "VE_RECORDING_R2_BUCKET",
+      "VE_REDIS_URL"
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@agentlabs/custom-voice-engine",
+  "version": "1.0.0",
+  "description": "Custom Voice Engine plugin for AgentLabs - FreeSWITCH powered voice pipeline with pluggable STT/LLM/TTS providers",
+  "author": "AgentLabs",
+  "license": "Commercial",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "build": "tsc --outDir dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@deepgram/sdk": "^3.9.0",
+    "ws": "^8.20.1",
+    "ioredis": "^5.9.2",
+    "axios": "^1.15.1",
+    "uuid": "^11.1.0"
+  },
+  "peerDependencies": {
+    "express": "^4.22.0",
+    "drizzle-orm": "^0.45.0",
+    "pg": "^8.16.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "name": "@agentlabs/messaging-plugin",
+  "version": "1.0.3",
+  "description": "Multi-channel messaging plugin supporting Meta WhatsApp Business API, WhatsWay WhatsApp gateway, and SMTP email. Features conversation inbox, email templates, embedded signup, and AI webhook tools.",
+  "main": "index.js",
+  "type": "module",
+  "types": "index.ts",
+  "author": "AgentLabs",
+  "license": "Commercial",
+  "homepage": "https://agentlabs.io/plugins/messaging",
+  "keywords": [
+    "messaging",
+    "whatsapp",
+    "email",
+    "smtp",
+    "meta",
+    "whatsapp-business-api",
+    "whatsway",
+    "nodemailer",
+    "email-templates",
+    "conversational-ai",
+    "webhook",
+    "elevenlabs"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "peerDependencies": {
+    "express": "^4.18.0",
+    "drizzle-orm": "^0.29.0",
+    "nodemailer": "^6.9.0",
+    "multer": "^2.1.0"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": false
+    },
+    "drizzle-orm": {
+      "optional": false
+    },
+    "nodemailer": {
+      "optional": false
+    },
+    "multer": {
+      "optional": false
+    }
+  },
+  "scripts": {
+    "build": "esbuild frontend/index.tsx --bundle --outfile=dist/bundle.js --format=iife --global-name=__plugin_messaging__ --alias:react=./shims/react-shim.js --alias:react-dom=./shims/react-dom-shim.js --alias:react/jsx-runtime=./shims/react-jsx-runtime-shim.js --alias:react-i18next=./shims/react-i18next-shim.js --alias:@tanstack/react-query=./shims/tanstack-shim.js --banner:js=\"/* Plugin: messaging v1.0.3 */\" --minify"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agentlabs/messaging-plugin"
+  },
+  "bugs": {
+    "url": "https://github.com/agentlabs/messaging-plugin/issues"
+  }
+}

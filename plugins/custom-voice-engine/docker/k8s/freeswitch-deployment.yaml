@@ -1,0 +1,120 @@
+# ============================================================
+# Kubernetes Deployment — AI Voice Engine (FreeSWITCH)
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freeswitch
+  labels:
+    app: ai-voice-engine
+    component: freeswitch
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-voice-engine
+      component: freeswitch
+  template:
+    metadata:
+      labels:
+        app: ai-voice-engine
+        component: freeswitch
+    spec:
+      containers:
+        - name: freeswitch
+          image: agentlabs/freeswitch-audio-fork:latest
+          ports:
+            - containerPort: 5060
+              protocol: UDP
+            - containerPort: 5060
+              protocol: TCP
+            - containerPort: 5061
+              protocol: TCP
+            - containerPort: 8021
+              protocol: TCP
+            - containerPort: 8089
+              protocol: TCP
+          env:
+            - name: ESL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: voice-engine-secrets
+                  key: esl-password
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          livenessProbe:
+            exec:
+              command: ["fs_cli", "-x", "status"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command: ["fs_cli", "-x", "status"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: freeswitch-svc
+spec:
+  selector:
+    app: ai-voice-engine
+    component: freeswitch
+  type: LoadBalancer
+  ports:
+    - name: sip-udp
+      port: 5060
+      targetPort: 5060
+      protocol: UDP
+    - name: sip-tcp
+      port: 5060
+      targetPort: 5060
+      protocol: TCP
+    - name: sip-tls
+      port: 5061
+      targetPort: 5061
+      protocol: TCP
+    - name: esl
+      port: 8021
+      targetPort: 8021
+      protocol: TCP
+    - name: audio-ws
+      port: 8089
+      targetPort: 8089
+      protocol: TCP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: freeswitch-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: freeswitch
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: voice-engine-secrets
+type: Opaque
+stringData:
+  esl-password: "ClueCon"
+  deepgram-api-key: ""
+  sarvam-api-key: ""
+  openrouter-api-key: ""

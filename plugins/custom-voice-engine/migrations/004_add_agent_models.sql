@@ -1,0 +1,3 @@
+ALTER TABLE ve_voice_agents
+ADD COLUMN IF NOT EXISTS stt_model TEXT,
+ADD COLUMN IF NOT EXISTS tts_model TEXT;

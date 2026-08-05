@@ -1,0 +1,9 @@
+<include>
+  <X-PRE-PROCESS cmd="set" data="domain=$${local_ip_v4}"/>
+  <X-PRE-PROCESS cmd="set" data="hold_music=local_stream://default"/>
+  <X-PRE-PROCESS cmd="set" data="use_profile=internal"/>
+  <X-PRE-PROCESS cmd="set" data="external_rtp_ip=stun:stun.l.google.com:19302"/>
+  <X-PRE-PROCESS cmd="set" data="external_sip_ip=stun:stun.l.google.com:19302"/>
+  <X-PRE-PROCESS cmd="set" data="console_loglevel=info"/>
+  <X-PRE-PROCESS cmd="set" data="default_password=ClueCon"/>
+</include>

@@ -1,0 +1,1547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messaging Plugin - Documentation | {{app_name}}</title>
+    <style>
+        :root {
+            --primary: #059669;
+            --primary-light: #10b981;
+            --primary-dark: #047857;
+            --secondary: #0ea5e9;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1e293b;
+            --gray: #64748b;
+            --light: #f1f5f9;
+            --white: #ffffff;
+            --border: #e2e8f0;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background: var(--white);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: var(--white);
+            padding: 60px 0;
+        }
+        
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+        }
+        
+        header p {
+            font-size: 1.2rem;
+            color: #ffffff;
+            max-width: 700px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin-right: 8px;
+            margin-top: 16px;
+        }
+        
+        .badge-whatsapp {
+            background: rgba(37, 211, 102, 0.3);
+        }
+        
+        .badge-email {
+            background: rgba(14, 165, 233, 0.3);
+        }
+        
+        .badge-meta {
+            background: rgba(24, 119, 242, 0.3);
+        }
+        
+        nav {
+            background: var(--white);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 32px;
+            padding: 16px 0;
+            overflow-x: auto;
+        }
+        
+        nav a {
+            color: var(--gray);
+            text-decoration: none;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: color 0.2s;
+        }
+        
+        nav a:hover {
+            color: var(--primary);
+        }
+        
+        main {
+            padding: 48px 0;
+        }
+        
+        section {
+            margin-bottom: 64px;
+        }
+        
+        h2 {
+            font-size: 1.75rem;
+            color: var(--dark);
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--primary);
+        }
+        
+        h3 {
+            font-size: 1.25rem;
+            color: var(--dark);
+            margin: 32px 0 16px;
+        }
+        
+        h4 {
+            font-size: 1rem;
+            color: var(--gray);
+            margin: 24px 0 12px;
+        }
+        
+        p {
+            margin-bottom: 16px;
+            color: var(--gray);
+        }
+        
+        ul, ol {
+            margin-left: 24px;
+            margin-bottom: 16px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+            color: var(--gray);
+        }
+        
+        .quick-start {
+            background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+            border: 2px solid var(--primary-light);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 32px 0;
+        }
+        
+        .quick-start h3 {
+            color: var(--primary);
+            margin-top: 0;
+            font-size: 1.5rem;
+        }
+        
+        .quick-start ol {
+            margin-left: 24px;
+        }
+        
+        .quick-start li {
+            margin-bottom: 12px;
+            color: var(--dark);
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin: 24px 0;
+        }
+        
+        .card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            transition: box-shadow 0.2s, transform 0.2s;
+        }
+        
+        .card:hover {
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--light);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+        
+        .card h4 {
+            color: var(--dark);
+            margin: 0 0 8px;
+        }
+        
+        .card p {
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        
+        pre {
+            background: var(--dark);
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 16px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: var(--light);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        pre code {
+            background: none;
+            padding: 0;
+        }
+        
+        .code-comment {
+            color: #6b7280;
+        }
+        
+        .code-string {
+            color: #a5d6ff;
+        }
+        
+        .code-keyword {
+            color: #ff7b72;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        th {
+            background: var(--light);
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        tr:hover td {
+            background: #f8fafc;
+        }
+        
+        .alert {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 24px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .alert-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        
+        .alert-info {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .alert-warning {
+            background: #fffbeb;
+            border-left: 4px solid var(--warning);
+        }
+        
+        .alert-success {
+            background: #f0fdf4;
+            border-left: 4px solid var(--primary-light);
+        }
+        
+        .alert-danger {
+            background: #fef2f2;
+            border-left: 4px solid var(--danger);
+        }
+        
+        .steps {
+            counter-reset: step;
+            margin: 24px 0;
+        }
+        
+        .step {
+            position: relative;
+            padding-left: 60px;
+            padding-bottom: 32px;
+            border-left: 2px solid var(--border);
+            margin-left: 20px;
+        }
+        
+        .step:last-child {
+            border-left: none;
+            padding-bottom: 0;
+        }
+        
+        .step::before {
+            counter-increment: step;
+            content: counter(step);
+            position: absolute;
+            left: -21px;
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            color: var(--white);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .step h4 {
+            margin-top: 0;
+            color: var(--dark);
+        }
+        
+        .endpoint {
+            background: var(--light);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 24px 0;
+        }
+        
+        .endpoint-method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.75rem;
+            margin-right: 12px;
+        }
+        
+        .method-get { background: #dbeafe; color: #1d4ed8; }
+        .method-post { background: #dcfce7; color: #16a34a; }
+        .method-put { background: #fef3c7; color: #d97706; }
+        .method-patch { background: #fef3c7; color: #d97706; }
+        .method-delete { background: #fee2e2; color: #dc2626; }
+        
+        .endpoint-path {
+            font-family: monospace;
+            font-size: 1rem;
+            color: var(--dark);
+        }
+        
+        .comparison-table {
+            margin: 32px 0;
+        }
+        
+        .comparison-table th:first-child {
+            width: 40%;
+        }
+        
+        .comparison-table .yes {
+            color: var(--primary);
+            font-weight: 600;
+        }
+        
+        .comparison-table .no {
+            color: var(--danger);
+            font-weight: 600;
+        }
+        
+        .channel-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .channel-whatsapp {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        
+        .channel-email {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+        
+        .channel-meta {
+            background: #ede9fe;
+            color: #7c3aed;
+        }
+        
+        .provider-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 12px;
+            margin: 20px 0;
+        }
+        
+        .provider-item {
+            background: var(--light);
+            padding: 12px 16px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            color: var(--dark);
+        }
+        
+        footer {
+            background: var(--dark);
+            color: var(--white);
+            padding: 48px 0;
+            text-align: center;
+        }
+        
+        footer p {
+            color: rgba(255,255,255,0.7);
+        }
+        
+        @media print {
+            header { padding: 30px 0; }
+            nav { display: none; }
+            .card:hover { transform: none; box-shadow: none; }
+            pre { white-space: pre-wrap; }
+        }
+        
+        @media (max-width: 768px) {
+            header h1 { font-size: 1.75rem; }
+            nav ul { gap: 16px; }
+            .step { padding-left: 48px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Messaging Plugin</h1>
+            <p>Multi-channel messaging for {{app_name}}. Send emails via SMTP and WhatsApp messages via Meta Business API or WhatsWay &mdash; directly from your AI agents.</p>
+            <span class="badge">Version 1.0.3</span>
+            <span class="badge badge-whatsapp">WhatsApp</span>
+            <span class="badge badge-email">SMTP Email</span>
+            <span class="badge badge-meta">Meta Cloud API</span>
+            <p style="margin-top: 12px; font-size: 0.85rem; opacity: 0.8;">Documentation updated March 2026 - v1.0.3 release</p>
+        </div>
+    </header>
+    
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#quick-start">Quick Start</a></li>
+                <li><a href="#installation">Installation</a></li>
+                <li><a href="#email-setup">Email Setup</a></li>
+                <li><a href="#whatsway-setup">WhatsWay Setup</a></li>
+                <li><a href="#meta-whatsapp">Meta WhatsApp</a></li>
+                <li><a href="#conversations">Conversations</a></li>
+                <li><a href="#admin-settings">Admin Settings</a></li>
+                <li><a href="#api-reference">API Reference</a></li>
+                <li><a href="#webhooks">Webhooks</a></li>
+                <li><a href="#security">Security</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+                <li><a href="#changelog">Changelog</a></li>
+            </ul>
+        </div>
+    </nav>
+    
+    <main>
+        <div class="container">
+
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The Messaging Plugin adds email and WhatsApp messaging capabilities to your {{app_name}} AI agents. During or after voice calls, agents can send emails via SMTP and WhatsApp messages through your choice of provider &mdash; giving your customers a seamless multi-channel experience.</p>
+                
+                <h3>Channel Comparison</h3>
+                
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th><span class="channel-badge channel-email">SMTP Email</span></th>
+                            <th><span class="channel-badge channel-whatsapp">WhatsWay</span></th>
+                            <th><span class="channel-badge channel-meta">Meta WhatsApp</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Send Messages</td>
+                            <td class="yes">&#10004; Yes</td>
+                            <td class="yes">&#10004; Yes</td>
+                            <td class="yes">&#10004; Yes</td>
+                        </tr>
+                        <tr>
+                            <td>Receive Messages</td>
+                            <td class="no">&#10008; No</td>
+                            <td class="no">&#10008; No</td>
+                            <td class="yes">&#10004; Yes</td>
+                        </tr>
+                        <tr>
+                            <td>Conversations Inbox</td>
+                            <td class="no">&#10008; No</td>
+                            <td class="no">&#10008; No</td>
+                            <td class="yes">&#10004; Yes</td>
+                        </tr>
+                        <tr>
+                            <td>Template Messages</td>
+                            <td class="yes">&#10004; Yes</td>
+                            <td class="yes">&#10004; Yes</td>
+                            <td class="yes">&#10004; Yes</td>
+                        </tr>
+                        <tr>
+                            <td>Rich HTML Content</td>
+                            <td class="yes">&#10004; Yes</td>
+                            <td class="no">&#10008; No</td>
+                            <td class="no">&#10008; No</td>
+                        </tr>
+                        <tr>
+                            <td>Drag-and-Drop Editor</td>
+                            <td class="yes">&#10004; Unlayer</td>
+                            <td class="no">&#10008; No</td>
+                            <td class="no">&#10008; No</td>
+                        </tr>
+                        <tr>
+                            <td>Media Attachments</td>
+                            <td class="no">&#10008; No</td>
+                            <td class="no">&#10008; No</td>
+                            <td class="yes">&#10004; Yes</td>
+                        </tr>
+                        <tr>
+                            <td>Embedded Signup</td>
+                            <td class="no">&#10008; N/A</td>
+                            <td class="no">&#10008; No</td>
+                            <td class="yes">&#10004; Yes</td>
+                        </tr>
+                        <tr>
+                            <td>AI Agent Tool</td>
+                            <td class="yes">&#10004; send_email</td>
+                            <td class="yes">&#10004; send_whatsapp</td>
+                            <td class="yes">&#10004; send_whatsapp</td>
+                        </tr>
+                        <tr>
+                            <td>Flow Builder Node</td>
+                            <td class="yes">&#10004; Yes</td>
+                            <td class="yes">&#10004; Yes</td>
+                            <td class="yes">&#10004; Yes</td>
+                        </tr>
+                        <tr>
+                            <td>Setup Complexity</td>
+                            <td>Low</td>
+                            <td>Low</td>
+                            <td>Medium</td>
+                        </tr>
+                        <tr>
+                            <td>Cost</td>
+                            <td>SMTP provider fees</td>
+                            <td>WhatsWay subscription</td>
+                            <td>Meta conversation fees</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#8505;</span>
+                    <div><strong>Coexistence Support:</strong> WhatsWay and Meta WhatsApp can run simultaneously. The admin selects the active provider mode (WhatsWay, Meta, or both) from the Admin Settings panel.</div>
+                </div>
+            </section>
+
+
+            <section id="features">
+                <h2>Features</h2>
+                
+                <div class="card-grid">
+                    <div class="card">
+                        <div class="card-icon">&#9993;</div>
+                        <h4>Email Template Management</h4>
+                        <p>Create, edit, and manage reusable email templates with subject lines, HTML body content, and variable placeholders.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#9881;</div>
+                        <h4>SMTP Email Sending</h4>
+                        <p>Send emails through any SMTP provider (Gmail, SendGrid, Mailgun, Amazon SES, etc.) with full TLS support.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128172;</div>
+                        <h4>WhatsWay Integration</h4>
+                        <p>Connect to WhatsWay API for quick WhatsApp messaging setup without Meta Business verification.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#127760;</div>
+                        <h4>Meta WhatsApp Business API</h4>
+                        <p>Official Meta Cloud API integration with full WABA support, template messages, and webhook-based inbound messaging.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128196;</div>
+                        <h4>WhatsApp Template Messages</h4>
+                        <p>Fetch and send pre-approved WhatsApp templates from both WhatsWay and Meta Business Manager.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128229;</div>
+                        <h4>Conversations Inbox</h4>
+                        <p>Full-featured WhatsApp inbox with real-time messaging, media support, read receipts, and conversation management.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128273;</div>
+                        <h4>Meta Embedded Signup</h4>
+                        <p>One-click WhatsApp Business account connection through Meta's Embedded Signup flow &mdash; no manual credential entry needed.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128260;</div>
+                        <h4>Coexistence Support</h4>
+                        <p>Run WhatsWay and Meta WhatsApp side by side. Admin controls which provider is active for each user.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128268;</div>
+                        <h4>Inbound Message Webhooks</h4>
+                        <p>Receive incoming WhatsApp messages via Meta Cloud API webhooks with automatic verification and signature validation.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128202;</div>
+                        <h4>Messaging Logs &amp; Analytics</h4>
+                        <p>Track all sent messages with delivery status, timestamps, and channel information. Admin dashboard with aggregate stats.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#129302;</div>
+                        <h4>ElevenLabs Webhook Tools</h4>
+                        <p>Automatic webhook tool generation for incoming agents &mdash; AI can send emails and WhatsApp messages during live calls.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128736;</div>
+                        <h4>Flow Builder Nodes</h4>
+                        <p>Dedicated email and WhatsApp nodes for flow agents, enabling visual workflow-based messaging automation.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#9998;</div>
+                        <h4>Unlayer Drag-and-Drop Editor</h4>
+                        <p>Professional email template builder with drag-and-drop components, responsive design, and HTML export.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128274;</div>
+                        <h4>Per-Agent Messaging Toggles</h4>
+                        <p>Enable or disable email and WhatsApp sending on a per-agent basis with template selection.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128187;</div>
+                        <h4>Admin Messaging Dashboard</h4>
+                        <p>Centralized admin panel for provider configuration, user oversight, connection testing, and messaging statistics.</p>
+                    </div>
+                </div>
+            </section>
+
+
+            <section id="quick-start">
+                <h2>Quick Start Guide</h2>
+                
+                <div class="quick-start">
+                    <h3>Email &mdash; 5-Minute Setup</h3>
+                    <ol>
+                        <li>Go to <strong>Settings &rarr; Messaging</strong> in your user dashboard</li>
+                        <li>Click the <strong>Email Templates</strong> tab</li>
+                        <li>Create a new template with your SMTP server details (host, port, username, password)</li>
+                        <li>Write your email subject and body (supports HTML and the Unlayer drag-and-drop editor)</li>
+                        <li>Click <strong>Send Test Email</strong> to verify your SMTP connection</li>
+                        <li>Go to your agent settings, enable <strong>Email Sending</strong> under System Tools, and select your template</li>
+                    </ol>
+                </div>
+                
+                <div class="quick-start">
+                    <h3>WhatsWay WhatsApp &mdash; 5-Minute Setup</h3>
+                    <ol>
+                        <li>Sign up at <a href="https://whatsway.com" target="_blank">whatsway.com</a> and get your API Key and API Secret</li>
+                        <li>Go to <strong>Settings &rarr; Messaging &rarr; WhatsApp</strong> tab</li>
+                        <li>Enter your WhatsWay <strong>API Key</strong> and <strong>API Secret</strong></li>
+                        <li>Click <strong>Test Connection</strong> to verify</li>
+                        <li>Go to your agent settings, enable <strong>WhatsApp Sending</strong> under System Tools</li>
+                    </ol>
+                </div>
+                
+                <div class="quick-start">
+                    <h3>Meta WhatsApp Business API &mdash; Setup</h3>
+                    <ol>
+                        <li>Ask your admin to configure Meta App credentials in <strong>Admin Panel &rarr; Settings &rarr; Messaging</strong></li>
+                        <li>Go to <strong>Settings &rarr; Messaging &rarr; WhatsApp</strong> tab</li>
+                        <li>Click <strong>Connect with Facebook</strong> to start the Embedded Signup flow</li>
+                        <li>Follow the Meta prompts to connect your WhatsApp Business Account</li>
+                        <li>Your WABA ID, Phone Number ID, and Access Token are saved automatically</li>
+                        <li>Go to your agent settings, enable <strong>WhatsApp Sending</strong> under System Tools</li>
+                    </ol>
+                </div>
+            </section>
+
+
+            <section id="installation">
+                <h2>Installation</h2>
+                <p>The Messaging Plugin integrates with the {{app_name}} plugin system. Choose one of the methods below.</p>
+                
+                <h3>Method 1: Admin UI Installer (Recommended)</h3>
+                
+                <div class="steps">
+                    <div class="step">
+                        <h4>Upload Plugin ZIP</h4>
+                        <p>Navigate to <strong>Admin Panel &rarr; Settings &rarr; Plugins</strong>. Click <strong>Upload Plugin</strong> and select the <code>messaging-plugin.zip</code> file.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Automatic Setup</h4>
+                        <p>The installer will validate the plugin manifest, extract files to <code>plugins/messaging/</code>, and run database migrations automatically.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Restart Server</h4>
+                        <p>Restart the {{app_name}} server to load the plugin. The Messaging tab will appear in both Admin Settings and User Settings.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Configure Provider</h4>
+                        <p>Go to <strong>Admin Panel &rarr; Settings &rarr; Messaging</strong> to set the WhatsApp provider mode and Meta App credentials.</p>
+                    </div>
+                </div>
+                
+                <h3>Method 2: Manual Installation (SSH)</h3>
+                
+                <div class="steps">
+                    <div class="step">
+                        <h4>Extract Plugin Files</h4>
+                        <pre><code><span class="code-comment"># Extract to the plugins directory</span>
+cd /path/to/app
+unzip messaging-plugin.zip -d plugins/messaging/</code></pre>
+                    </div>
+                    <div class="step">
+                        <h4>Install Dependencies</h4>
+                        <pre><code><span class="code-comment"># Install peer dependencies (if not already present)</span>
+npm install nodemailer multer
+npm install --save-dev @types/nodemailer @types/multer</code></pre>
+                    </div>
+                    <div class="step">
+                        <h4>Run Database Migrations</h4>
+                        <pre><code><span class="code-comment"># Run migrations in order</span>
+psql -d platform_db -f plugins/messaging/migrations/001_messaging_tables.sql
+psql -d platform_db -f plugins/messaging/migrations/002_meta_whatsapp.sql
+psql -d platform_db -f plugins/messaging/migrations/003_whatsapp_conversations.sql
+psql -d platform_db -f plugins/messaging/migrations/004_logs_content.sql</code></pre>
+                    </div>
+                    <div class="step">
+                        <h4>Register Plugin</h4>
+                        <p>The plugin is automatically discovered via its <code>plugin.json</code> manifest. Restart the server:</p>
+                        <pre><code>pm2 restart app
+<span class="code-comment"># or</span>
+systemctl restart app</code></pre>
+                    </div>
+                </div>
+                
+                <h3>Requirements</h3>
+                <ul>
+                    <li>{{app_name}} v1.0.0 or later</li>
+                    <li>Node.js 18+</li>
+                    <li>PostgreSQL database</li>
+                    <li>npm packages: <code>express</code>, <code>drizzle-orm</code>, <code>nodemailer</code>, <code>multer</code></li>
+                </ul>
+                
+                <h3>Plugin Structure</h3>
+                <pre><code>plugins/messaging/
+&#9500;&#9472;&#9472; index.ts              <span class="code-comment"># Plugin entry point &amp; route registration</span>
+&#9500;&#9472;&#9472; plugin.json           <span class="code-comment"># Plugin manifest</span>
+&#9500;&#9472;&#9472; package.json          <span class="code-comment"># NPM package definition</span>
+&#9500;&#9472;&#9472; types.ts              <span class="code-comment"># TypeScript type definitions</span>
+&#9500;&#9472;&#9472; routes/
+&#9474;   &#9500;&#9472;&#9472; admin-messaging.routes.ts    <span class="code-comment"># Admin API endpoints</span>
+&#9474;   &#9500;&#9472;&#9472; user-messaging.routes.ts     <span class="code-comment"># User API endpoints</span>
+&#9474;   &#9500;&#9472;&#9472; webhook-messaging.routes.ts  <span class="code-comment"># ElevenLabs webhook handlers</span>
+&#9474;   &#9492;&#9472;&#9472; meta-webhook.routes.ts       <span class="code-comment"># Meta Cloud API webhook</span>
+&#9500;&#9472;&#9472; services/
+&#9474;   &#9500;&#9472;&#9472; email-sender.service.ts          <span class="code-comment"># SMTP email delivery</span>
+&#9474;   &#9500;&#9472;&#9472; email-template.service.ts        <span class="code-comment"># Email template CRUD</span>
+&#9474;   &#9500;&#9472;&#9472; messaging-log.service.ts         <span class="code-comment"># Logging &amp; analytics</span>
+&#9474;   &#9500;&#9472;&#9472; meta-whatsapp.service.ts         <span class="code-comment"># Meta Cloud API client</span>
+&#9474;   &#9500;&#9472;&#9472; meta-whatsapp-admin.service.ts   <span class="code-comment"># Admin Meta config</span>
+&#9474;   &#9500;&#9472;&#9472; webhook-auth.service.ts          <span class="code-comment"># Webhook token validation</span>
+&#9474;   &#9500;&#9472;&#9472; whatsapp-conversation.service.ts <span class="code-comment"># Conversation management</span>
+&#9474;   &#9492;&#9472;&#9472; whatsway.service.ts              <span class="code-comment"># WhatsWay API client</span>
+&#9500;&#9472;&#9472; ui/
+&#9474;   &#9500;&#9472;&#9472; AdminMessagingPage.tsx            <span class="code-comment"># Admin settings UI</span>
+&#9474;   &#9500;&#9472;&#9472; UserMessagingPage.tsx             <span class="code-comment"># User settings UI</span>
+&#9474;   &#9500;&#9472;&#9472; EmailTemplateEditor.tsx           <span class="code-comment"># Template editor component</span>
+&#9474;   &#9500;&#9472;&#9472; UnlayerEmailEditor.tsx            <span class="code-comment"># Drag-and-drop email builder</span>
+&#9474;   &#9492;&#9472;&#9472; WhatsAppConversationsPage.tsx     <span class="code-comment"># Conversations inbox UI</span>
+&#9500;&#9472;&#9472; frontend/
+&#9474;   &#9492;&#9472;&#9472; index.tsx             <span class="code-comment"># UI bundle entry point</span>
+&#9500;&#9472;&#9472; migrations/
+&#9474;   &#9500;&#9472;&#9472; 001_messaging_tables.sql
+&#9474;   &#9500;&#9472;&#9472; 002_meta_whatsapp.sql
+&#9474;   &#9500;&#9472;&#9472; 003_whatsapp_conversations.sql
+&#9474;   &#9492;&#9472;&#9472; 004_logs_content.sql
+&#9500;&#9472;&#9472; dist/
+&#9474;   &#9492;&#9472;&#9472; bundle.js             <span class="code-comment"># Pre-built UI bundle</span>
+&#9492;&#9472;&#9472; docs/
+    &#9492;&#9472;&#9472; documentation.html    <span class="code-comment"># This documentation</span></code></pre>
+            </section>
+
+
+            <section id="email-setup">
+                <h2>Email Setup</h2>
+                <p>The email channel uses SMTP to deliver messages. Each user creates their own email templates with embedded SMTP credentials.</p>
+                
+                <h3>SMTP Configuration</h3>
+                <p>When creating an email template, you provide the SMTP server details:</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Description</th>
+                            <th>Example</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>smtpHost</code></td>
+                            <td>SMTP server hostname</td>
+                            <td><code>smtp.gmail.com</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>smtpPort</code></td>
+                            <td>SMTP server port</td>
+                            <td><code>587</code> (TLS) or <code>465</code> (SSL)</td>
+                        </tr>
+                        <tr>
+                            <td><code>smtpUser</code></td>
+                            <td>SMTP username / email</td>
+                            <td><code>you@gmail.com</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>smtpPass</code></td>
+                            <td>SMTP password or app password</td>
+                            <td><code>xxxx-xxxx-xxxx-xxxx</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>fromName</code></td>
+                            <td>Sender display name</td>
+                            <td><code>My Company</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>fromEmail</code></td>
+                            <td>Sender email address</td>
+                            <td><code>noreply@mycompany.com</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#8505;</span>
+                    <div><strong>Gmail Users:</strong> You must use an <a href="https://support.google.com/accounts/answer/185833" target="_blank">App Password</a> instead of your regular Gmail password. Enable 2-Step Verification first, then generate an App Password.</div>
+                </div>
+                
+                <h3>Email Templates</h3>
+                <p>Each email template includes:</p>
+                <ul>
+                    <li><strong>Template Name</strong> &mdash; A descriptive name for identification</li>
+                    <li><strong>Subject Line</strong> &mdash; The email subject (supports <code>{{variable}}</code> placeholders)</li>
+                    <li><strong>HTML Body</strong> &mdash; The email content in HTML format</li>
+                    <li><strong>SMTP Credentials</strong> &mdash; Server connection details (stored encrypted)</li>
+                </ul>
+                
+                <h3>Unlayer Drag-and-Drop Editor</h3>
+                <p>For rich email designs, click the <strong>Unlayer Editor</strong> button when editing a template. The Unlayer editor provides:</p>
+                <ul>
+                    <li>Drag-and-drop content blocks (text, images, buttons, dividers)</li>
+                    <li>Responsive design that works on all devices</li>
+                    <li>Pre-built layouts and templates</li>
+                    <li>HTML export that saves directly to your template</li>
+                </ul>
+                
+                <h3>Test Email</h3>
+                <p>After creating a template, use the <strong>Send Test Email</strong> button to verify your SMTP settings. Enter a recipient address and a test email will be sent using the template's configuration.</p>
+                
+                <h3>Per-Agent Email Toggles</h3>
+                <p>To enable email sending for an incoming agent:</p>
+                <ol>
+                    <li>Edit the agent and scroll to <strong>System Tools</strong></li>
+                    <li>Check <strong>Email Sending</strong></li>
+                    <li>Select the email template to use</li>
+                    <li>Save the agent &mdash; the system automatically creates a <code>send_email</code> webhook tool in ElevenLabs</li>
+                </ol>
+            </section>
+
+
+            <section id="whatsway-setup">
+                <h2>WhatsWay Setup</h2>
+                <p>WhatsWay provides a simple API gateway for sending WhatsApp messages without requiring Meta Business verification.</p>
+                
+                <h3>Prerequisites</h3>
+                <ul>
+                    <li>A WhatsWay account at <a href="https://whatsway.com" target="_blank">whatsway.com</a></li>
+                    <li>An active WhatsWay instance with a connected phone number</li>
+                    <li>Your API Key and API Secret from the WhatsWay dashboard</li>
+                </ul>
+                
+                <h3>Configuration</h3>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Enter Credentials</h4>
+                        <p>Go to <strong>Settings &rarr; Messaging &rarr; WhatsApp</strong>. Enter your WhatsWay <strong>API Key</strong> and <strong>API Secret</strong>. Optionally configure <strong>Base URL</strong> and <strong>Channel ID</strong>.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Test Connection</h4>
+                        <p>Click <strong>Test Connection</strong> to verify your credentials are valid and the instance is active.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Save Settings</h4>
+                        <p>Click <strong>Save</strong>. The button will show &ldquo;Saved!&rdquo; with a checkmark on success.</p>
+                    </div>
+                </div>
+                
+                <h3>Template Messages</h3>
+                <p>WhatsWay templates are fetched from your WhatsWay account. To use template messages:</p>
+                <ol>
+                    <li>Create templates in the WhatsWay dashboard</li>
+                    <li>Templates appear automatically in the <strong>Templates</strong> section of your messaging settings</li>
+                    <li>Select a template when configuring your agent's WhatsApp tool</li>
+                </ol>
+                
+                <div class="alert alert-warning">
+                    <span class="alert-icon">&#9888;</span>
+                    <div><strong>Note:</strong> WhatsWay supports outbound messaging only. For inbound message handling and a conversations inbox, use the Meta WhatsApp Business API integration.</div>
+                </div>
+            </section>
+
+
+            <section id="meta-whatsapp">
+                <h2>Meta WhatsApp Business API Setup</h2>
+                <p>The Meta integration uses the official WhatsApp Cloud API, providing full-featured messaging with inbound webhooks, template messages, media support, and the conversations inbox.</p>
+                
+                <h3>Prerequisites</h3>
+                <ul>
+                    <li>A Meta Developer account at <a href="https://developers.facebook.com" target="_blank">developers.facebook.com</a></li>
+                    <li>A Meta App with WhatsApp product enabled</li>
+                    <li>Your Meta App ID and App Secret</li>
+                </ul>
+                
+                <h3>Admin Configuration</h3>
+                <p>The admin must configure the Meta App credentials before users can connect their WhatsApp Business accounts.</p>
+                
+                <div class="steps">
+                    <div class="step">
+                        <h4>Set Provider Mode</h4>
+                        <p>Go to <strong>Admin Panel &rarr; Settings &rarr; Messaging</strong>. Set the WhatsApp provider mode to <strong>Meta</strong> or <strong>Both</strong> (WhatsWay + Meta).</p>
+                    </div>
+                    <div class="step">
+                        <h4>Enter Meta App Credentials</h4>
+                        <p>Enter your <strong>Meta App ID</strong> and <strong>Meta App Secret</strong> from the Meta Developer dashboard.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Generate Verify Token</h4>
+                        <p>Click <strong>Generate Verify Token</strong> to create a random token used for Meta webhook verification.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Test Connection</h4>
+                        <p>Click <strong>Test Meta App Connection</strong> to validate your App ID and App Secret against the Meta Graph API.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Configure Meta Webhook</h4>
+                        <p>Copy the <strong>Webhook URL</strong> shown in the admin panel and paste it into your Meta App's WhatsApp webhook configuration at <a href="https://developers.facebook.com" target="_blank">developers.facebook.com</a>. Use the generated Verify Token as the verification token.</p>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#8505;</span>
+                    <div><strong>Webhook URL Format:</strong> <code>https://yourdomain.com/api/webhooks/messaging/meta/webhook</code></div>
+                </div>
+                
+                <h3>User Setup &mdash; Embedded Signup</h3>
+                <p>Once the admin has configured Meta credentials, users can connect their WhatsApp Business accounts through Meta's Embedded Signup flow:</p>
+                <ol>
+                    <li>Go to <strong>Settings &rarr; Messaging &rarr; WhatsApp</strong></li>
+                    <li>Click <strong>Connect with Facebook</strong></li>
+                    <li>Log in with your Facebook account and follow the prompts</li>
+                    <li>Select or create a WhatsApp Business Account</li>
+                    <li>Your WABA ID, Phone Number ID, and Access Token are saved automatically</li>
+                </ol>
+                
+                <h3>User Setup &mdash; Manual Entry</h3>
+                <p>Users can also manually enter their WABA credentials:</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>Description</th>
+                            <th>Where to Find</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>WABA ID</code></td>
+                            <td>WhatsApp Business Account ID</td>
+                            <td>Meta Business Manager &rarr; WhatsApp Accounts</td>
+                        </tr>
+                        <tr>
+                            <td><code>Phone Number ID</code></td>
+                            <td>The phone number resource ID</td>
+                            <td>Meta Developer Dashboard &rarr; WhatsApp &rarr; API Setup</td>
+                        </tr>
+                        <tr>
+                            <td><code>Access Token</code></td>
+                            <td>Permanent or System User access token</td>
+                            <td>Meta Business Manager &rarr; System Users</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Template Messages</h3>
+                <p>Meta WhatsApp templates are managed in <a href="https://business.facebook.com" target="_blank">Meta Business Manager</a>. Once approved by Meta, they appear automatically in your template list. Templates are required for initiating conversations outside the 24-hour messaging window.</p>
+                
+                <h3>Inbound Messages</h3>
+                <p>When a customer sends a message to your WhatsApp number, the Meta webhook delivers it to {{app_name}}. Messages appear in the <strong>Conversations Inbox</strong> in real time.</p>
+            </section>
+
+
+            <section id="conversations">
+                <h2>Conversations Inbox</h2>
+                <p>The Conversations Inbox provides a full-featured WhatsApp messaging interface for managing customer conversations.</p>
+                
+                <h3>Accessing the Inbox</h3>
+                <p>Navigate to <strong>Settings &rarr; Messaging &rarr; Conversations</strong> tab. The inbox shows all WhatsApp conversations associated with your connected number.</p>
+                
+                <h3>Inbox Features</h3>
+                <ul>
+                    <li><strong>Conversation List</strong> &mdash; All conversations sorted by most recent message, with unread count badges</li>
+                    <li><strong>Real-Time Updates</strong> &mdash; New messages appear automatically via polling</li>
+                    <li><strong>Send Messages</strong> &mdash; Reply to customers with text messages</li>
+                    <li><strong>Media Support</strong> &mdash; Send and receive images, documents, and other media files</li>
+                    <li><strong>Read Receipts</strong> &mdash; Mark conversations as read</li>
+                    <li><strong>Conversation Status</strong> &mdash; Update conversation status (open, resolved, etc.)</li>
+                    <li><strong>Contact Information</strong> &mdash; View customer name and phone number</li>
+                </ul>
+                
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#8505;</span>
+                    <div><strong>Note:</strong> The Conversations Inbox is only available with the Meta WhatsApp Business API integration. WhatsWay does not support inbound message handling.</div>
+                </div>
+                
+                <h3>24-Hour Messaging Window</h3>
+                <p>Meta's policy allows free-form messaging only within 24 hours of the customer's last message. After 24 hours, you must use an approved <strong>template message</strong> to re-initiate the conversation.</p>
+            </section>
+
+
+            <section id="admin-settings">
+                <h2>Admin Settings</h2>
+                <p>The admin messaging panel provides centralized configuration and oversight for the entire messaging system.</p>
+                
+                <h3>Accessing Admin Settings</h3>
+                <p>Navigate to <strong>Admin Panel &rarr; Settings &rarr; Messaging</strong>.</p>
+                
+                <h3>Provider Mode</h3>
+                <p>Control which WhatsApp provider is available to users:</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mode</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>WhatsWay Only</strong></td>
+                            <td>Users can only configure WhatsWay for WhatsApp messaging</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Meta Only</strong></td>
+                            <td>Users can only use Meta WhatsApp Business API (requires admin Meta config)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Both</strong></td>
+                            <td>Users can choose either WhatsWay or Meta WhatsApp</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Meta Configuration</h3>
+                <p>When Meta is enabled, the admin panel shows:</p>
+                <ul>
+                    <li><strong>Meta App ID</strong> &mdash; Your Meta Developer App ID</li>
+                    <li><strong>Meta App Secret</strong> &mdash; Your Meta Developer App Secret (masked for security)</li>
+                    <li><strong>Verify Token</strong> &mdash; Auto-generated token for Meta webhook verification</li>
+                    <li><strong>Webhook URL</strong> &mdash; The URL to configure in Meta Developer Dashboard</li>
+                    <li><strong>Test Meta App Connection</strong> &mdash; Validates your App credentials against the Meta Graph API</li>
+                </ul>
+                
+                <h3>Statistics Dashboard</h3>
+                <p>The admin dashboard shows aggregate messaging statistics:</p>
+                <ul>
+                    <li>Total messages sent (email + WhatsApp)</li>
+                    <li>Total email templates across all users</li>
+                    <li>Total WhatsApp configurations</li>
+                    <li>Active conversations count</li>
+                </ul>
+                
+                <h3>Messaging Logs</h3>
+                <p>Admin can view all messaging logs across all users, including:</p>
+                <ul>
+                    <li>Sender and recipient details</li>
+                    <li>Channel type (email / WhatsApp)</li>
+                    <li>Delivery status (success / failed)</li>
+                    <li>Timestamps and error messages</li>
+                </ul>
+            </section>
+
+
+            <section id="api-reference">
+                <h2>API Reference</h2>
+                <p>All endpoints require session-based authentication unless noted otherwise. Admin endpoints require admin privileges.</p>
+                
+                <h3>Email Templates</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/email-templates</span>
+                    <p style="margin-top: 8px;">List all email templates for the authenticated user.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/messaging/email-templates</span>
+                    <p style="margin-top: 8px;">Create a new email template. Body: <code>{ name, subject, htmlBody, variables? }</code></p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-put">PUT</span>
+                    <span class="endpoint-path">/api/messaging/email-templates/:id</span>
+                    <p style="margin-top: 8px;">Update an existing email template.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-delete">DELETE</span>
+                    <span class="endpoint-path">/api/messaging/email-templates/:id</span>
+                    <p style="margin-top: 8px;">Delete an email template. Shows confirmation dialog in the UI.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/messaging/email-templates/:id/test</span>
+                    <p style="margin-top: 8px;">Send a test email using the specified template. Body: <code>{ recipientEmail, variables? }</code></p>
+                </div>
+                
+                <h3>WhatsWay Settings</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/whatsway/settings</span>
+                    <p style="margin-top: 8px;">Get WhatsWay configuration for the authenticated user.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/messaging/whatsway/settings</span>
+                    <p style="margin-top: 8px;">Save WhatsWay credentials. Body: <code>{ apiKey, apiSecret, baseUrl?, channelId? }</code></p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-delete">DELETE</span>
+                    <span class="endpoint-path">/api/messaging/whatsway/settings</span>
+                    <p style="margin-top: 8px;">Remove WhatsWay configuration (disconnect).</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/messaging/whatsway/test-connection</span>
+                    <p style="margin-top: 8px;">Test WhatsWay API connection using saved credentials.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/whatsway/templates</span>
+                    <p style="margin-top: 8px;">Fetch available WhatsWay message templates.</p>
+                </div>
+                
+                <h3>Meta WhatsApp Settings</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/meta-whatsapp/settings</span>
+                    <p style="margin-top: 8px;">Get Meta WhatsApp configuration for the authenticated user.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/messaging/meta-whatsapp/settings</span>
+                    <p style="margin-top: 8px;">Save Meta WABA credentials. Body: <code>{ wabaId, phoneNumberId, accessToken }</code></p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-delete">DELETE</span>
+                    <span class="endpoint-path">/api/messaging/meta-whatsapp/settings</span>
+                    <p style="margin-top: 8px;">Remove Meta WhatsApp configuration (disconnect).</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/messaging/meta-whatsapp/test-connection</span>
+                    <p style="margin-top: 8px;">Test Meta WhatsApp connection using saved credentials.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/meta-whatsapp/channel-health</span>
+                    <p style="margin-top: 8px;">Check the health status of the Meta WhatsApp channel.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/meta-whatsapp/templates</span>
+                    <p style="margin-top: 8px;">Fetch approved Meta WhatsApp message templates.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/messaging/meta-whatsapp/embedded-signup/callback</span>
+                    <p style="margin-top: 8px;">Handle the Meta Embedded Signup callback with WABA credentials.</p>
+                </div>
+                
+                <h3>Conversations</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/conversations</span>
+                    <p style="margin-top: 8px;">List all WhatsApp conversations for the authenticated user.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/conversations/updates</span>
+                    <p style="margin-top: 8px;">Poll for new conversation updates (real-time sync).</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/conversations/:id</span>
+                    <p style="margin-top: 8px;">Get a single conversation with details.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/conversations/:id/messages</span>
+                    <p style="margin-top: 8px;">Get all messages in a conversation. Supports pagination with <code>?limit=</code> and <code>?before=</code> query parameters.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/messaging/conversations/:id/messages</span>
+                    <p style="margin-top: 8px;">Send a message in a conversation. Body: <code>{ body, type }</code></p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/messaging/conversations/:id/upload</span>
+                    <p style="margin-top: 8px;">Upload and send a media file in a conversation. Multipart form data with <code>file</code> field.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/media/:mediaId</span>
+                    <p style="margin-top: 8px;">Proxy and serve a WhatsApp media file by its Meta media ID.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/messaging/conversations/:id/read</span>
+                    <p style="margin-top: 8px;">Mark a conversation as read.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-patch">PATCH</span>
+                    <span class="endpoint-path">/api/messaging/conversations/:id</span>
+                    <p style="margin-top: 8px;">Update conversation metadata (status, assignee, etc.).</p>
+                </div>
+                
+                <h3>Messaging Logs</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/logs</span>
+                    <p style="margin-top: 8px;">Get messaging logs for the authenticated user. Supports <code>?limit=</code> and <code>?offset=</code>.</p>
+                </div>
+                
+                <h3>Provider Config</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/messaging/whatsapp-provider-config</span>
+                    <p style="margin-top: 8px;">Get the active WhatsApp provider mode and Meta App ID (for Embedded Signup).</p>
+                </div>
+                
+                <h3>Admin Endpoints</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/admin/messaging/stats</span>
+                    <p style="margin-top: 8px;">Get aggregate messaging statistics (total messages, templates, configs, conversations).</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/admin/messaging/logs</span>
+                    <p style="margin-top: 8px;">Get messaging logs across all users (admin view).</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/admin/messaging/whatsapp-config</span>
+                    <p style="margin-top: 8px;">Get the current WhatsApp admin configuration.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-patch">PATCH</span>
+                    <span class="endpoint-path">/api/admin/messaging/whatsapp-config</span>
+                    <p style="margin-top: 8px;">Update WhatsApp admin config. Body: <code>{ provider_mode, meta_app_id, meta_app_secret, meta_config_id?, embedded_signup_enabled?, coexistence_enabled? }</code></p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/admin/messaging/whatsapp-config/generate-verify-token</span>
+                    <p style="margin-top: 8px;">Generate a new random verify token for Meta webhook verification.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/admin/messaging/whatsapp-config/test-connection</span>
+                    <p style="margin-top: 8px;">Test Meta App credentials by querying the Meta Graph API. Returns the app name on success.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/admin/messaging/whatsapp-config/webhook-url</span>
+                    <p style="margin-top: 8px;">Get the webhook URL that should be configured in the Meta Developer Dashboard.</p>
+                </div>
+            </section>
+
+
+            <section id="webhooks">
+                <h2>Webhook Reference</h2>
+                <p>The messaging plugin uses webhooks for two purposes: receiving AI agent tool calls from ElevenLabs, and receiving inbound WhatsApp messages from Meta.</p>
+                
+                <h3>ElevenLabs Agent Webhook Tools</h3>
+                <p>When an incoming agent has email or WhatsApp enabled, the system automatically creates webhook tools that ElevenLabs calls during live conversations:</p>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/webhooks/messaging/send-email/:token/:agentId</span>
+                    <p style="margin-top: 8px;">Called by ElevenLabs when the AI agent decides to send an email. The <code>:token</code> is a per-user webhook authentication token. Body includes recipient email and variable values extracted from the conversation.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/webhooks/messaging/send-whatsapp/:token/:agentId</span>
+                    <p style="margin-top: 8px;">Called by ElevenLabs when the AI agent decides to send a WhatsApp message. Uses the user's configured WhatsApp provider (WhatsWay or Meta) to deliver the message.</p>
+                </div>
+                
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#8505;</span>
+                    <div><strong>Webhook Token:</strong> Each user has a unique webhook token that authenticates ElevenLabs webhook calls. This token is generated automatically and prevents unauthorized access to the messaging endpoints.</div>
+                </div>
+                
+                <h3>Meta WhatsApp Inbound Webhook</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/webhooks/messaging/meta/webhook</span>
+                    <p style="margin-top: 8px;"><strong>Webhook Verification.</strong> Meta sends a GET request with <code>hub.mode</code>, <code>hub.verify_token</code>, and <code>hub.challenge</code> query parameters. The endpoint validates the verify token and echoes back the challenge.</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/webhooks/messaging/meta/webhook</span>
+                    <p style="margin-top: 8px;"><strong>Inbound Messages.</strong> Meta sends incoming WhatsApp messages, delivery status updates, and other events to this endpoint. The plugin validates the <code>X-Hub-Signature-256</code> header using the Meta App Secret, then processes the payload.</p>
+                </div>
+                
+                <h3>Webhook Security</h3>
+                <p>All webhook endpoints are secured:</p>
+                <ul>
+                    <li><strong>ElevenLabs webhooks</strong> &mdash; Authenticated via the <code>:token</code> URL parameter (unique per user)</li>
+                    <li><strong>Meta webhooks</strong> &mdash; Verified via <code>X-Hub-Signature-256</code> HMAC signature using the Meta App Secret</li>
+                    <li><strong>Meta verification</strong> &mdash; Uses the admin-configured <code>verifyToken</code> to validate webhook subscription</li>
+                </ul>
+            </section>
+
+
+            <section id="security">
+                <h2>Security Best Practices</h2>
+                
+                <h3>Credential Storage</h3>
+                <ul>
+                    <li>SMTP passwords are stored in the database alongside templates &mdash; ensure your database is encrypted at rest</li>
+                    <li>WhatsWay API keys and Meta access tokens are stored per-user in the database</li>
+                    <li>Meta App Secret is stored in the admin configuration table</li>
+                    <li>All sensitive fields are masked in API responses (only last 4 characters shown)</li>
+                </ul>
+                
+                <h3>Webhook Token Validation</h3>
+                <p>Each user has a unique webhook token generated from their user ID and a server-side secret. The token is validated on every webhook call using HMAC-SHA256, ensuring only legitimate ElevenLabs requests can trigger message sending.</p>
+                
+                <h3>Meta Webhook Signature Verification</h3>
+                <p>Inbound Meta webhooks include an <code>X-Hub-Signature-256</code> header containing a HMAC-SHA256 hash of the request body. The plugin verifies this signature against the stored Meta App Secret before processing any inbound message.</p>
+                
+                <h3>API Authentication</h3>
+                <ul>
+                    <li>All user-facing endpoints require session-based authentication</li>
+                    <li>Admin endpoints require admin-level session authentication</li>
+                    <li>Webhook endpoints use token-based authentication (no session required)</li>
+                </ul>
+                
+                <h3>Transport Security</h3>
+                <ul>
+                    <li>Always deploy {{app_name}} behind HTTPS &mdash; Meta requires HTTPS for webhook URLs</li>
+                    <li>SMTP connections use TLS/STARTTLS when the port supports it (587 for STARTTLS, 465 for implicit TLS)</li>
+                    <li>Meta Graph API calls use the <code>Authorization: Bearer</code> header (credentials are never placed in URL query strings)</li>
+                </ul>
+                
+                <div class="alert alert-danger">
+                    <span class="alert-icon">&#9888;</span>
+                    <div><strong>Important:</strong> Never share your Meta App Secret, SMTP passwords, or webhook tokens. If you suspect any credentials have been compromised, rotate them immediately from the respective provider dashboards.</div>
+                </div>
+            </section>
+
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+                
+                <h3>SMTP Connection Failed</h3>
+                <ul>
+                    <li>Verify your SMTP host and port are correct (common: port 587 for TLS, 465 for SSL)</li>
+                    <li>For Gmail, use an <a href="https://support.google.com/accounts/answer/185833" target="_blank">App Password</a> instead of your regular password</li>
+                    <li>Check if your SMTP provider requires enabling "Less Secure Apps" or similar settings</li>
+                    <li>Ensure your server can reach the SMTP host (firewall rules, DNS resolution)</li>
+                </ul>
+                
+                <h3>WhatsWay Connection Failed</h3>
+                <ul>
+                    <li>Verify your API Key and API Secret are correct</li>
+                    <li>Check that your WhatsWay instance is active and the phone number is connected</li>
+                    <li>Ensure your WhatsWay subscription is active</li>
+                </ul>
+                
+                <h3>Meta Webhook Verification Failed</h3>
+                <ul>
+                    <li>Ensure the Verify Token in the admin panel matches exactly what you entered in the Meta Developer Dashboard</li>
+                    <li>Verify the webhook URL is publicly accessible over HTTPS</li>
+                    <li>Check that the webhook URL path is correct: <code>/api/webhooks/messaging/meta/webhook</code></li>
+                </ul>
+                
+                <h3>Meta Test Connection Failed</h3>
+                <ul>
+                    <li>Double-check your Meta App ID and App Secret from the <a href="https://developers.facebook.com" target="_blank">Meta Developer Dashboard</a></li>
+                    <li>Ensure the WhatsApp product is added to your Meta App</li>
+                    <li>Verify the app is not in "development" mode if you need production access</li>
+                </ul>
+                
+                <h3>Embedded Signup Not Working</h3>
+                <ul>
+                    <li>Ensure the admin has configured Meta App ID in the admin panel</li>
+                    <li>The Meta App must have the WhatsApp Embedded Signup product enabled</li>
+                    <li>Check browser console for any JavaScript errors from the Facebook SDK</li>
+                    <li>Ensure your domain is added to the Meta App's allowed domains</li>
+                </ul>
+                
+                <h3>Messages Not Sending from Agent</h3>
+                <ul>
+                    <li>Verify the agent has email/WhatsApp enabled under System Tools</li>
+                    <li>Check that a template is selected for the agent</li>
+                    <li>Review the messaging logs for error details</li>
+                    <li>Ensure the user's WhatsApp/SMTP credentials are valid</li>
+                </ul>
+                
+                <h3>Conversations Not Appearing</h3>
+                <ul>
+                    <li>Conversations only work with Meta WhatsApp (not WhatsWay)</li>
+                    <li>Verify your Meta webhook is correctly configured and receiving events</li>
+                    <li>Check the server logs for webhook processing errors</li>
+                </ul>
+                
+                <h3>Plugin Not Loading</h3>
+                <ul>
+                    <li>Verify the plugin files are in <code>plugins/messaging/</code></li>
+                    <li>Check that <code>plugin.json</code> exists and is valid JSON</li>
+                    <li>Ensure all database migrations have been run</li>
+                    <li>Restart the {{app_name}} server after installation</li>
+                    <li>Check server logs for plugin loading errors</li>
+                </ul>
+                
+                <h3>Need More Help?</h3>
+                <p>Contact {{app_name}} support at <a href="mailto:support@your-platform.com">support@your-platform.com</a> or visit the <a href="https://your-platform.com/docs" target="_blank">documentation portal</a>.</p>
+            </section>
+
+
+            <section id="changelog">
+                <h2>Changelog</h2>
+                
+                <h3>v1.0.0 - March 2026</h3>
+                <h4>Initial Release</h4>
+                <ul>
+                    <li><strong>Email Templates</strong> &mdash; Full CRUD for email templates with SMTP configuration, HTML editor, and Unlayer drag-and-drop builder</li>
+                    <li><strong>SMTP Email Sending</strong> &mdash; Send emails via any SMTP provider with TLS support</li>
+                    <li><strong>WhatsWay Integration</strong> &mdash; WhatsApp messaging via WhatsWay API with template support</li>
+                    <li><strong>Meta WhatsApp Business API</strong> &mdash; Official Cloud API integration with WABA management</li>
+                    <li><strong>Meta Embedded Signup</strong> &mdash; One-click WhatsApp Business account connection</li>
+                    <li><strong>Conversations Inbox</strong> &mdash; Real-time WhatsApp messaging UI with media support</li>
+                    <li><strong>Inbound Webhooks</strong> &mdash; Meta Cloud API webhook for receiving WhatsApp messages</li>
+                    <li><strong>ElevenLabs Webhook Tools</strong> &mdash; Automatic <code>send_email</code> and <code>send_whatsapp</code> tool generation for incoming agents</li>
+                    <li><strong>Flow Builder Nodes</strong> &mdash; Email and WhatsApp nodes for flow agent workflows</li>
+                    <li><strong>Admin Dashboard</strong> &mdash; Provider mode configuration, Meta credentials, statistics, and messaging logs</li>
+                    <li><strong>Per-Agent Toggles</strong> &mdash; Enable/disable email and WhatsApp per agent with template selection</li>
+                    <li><strong>Coexistence Support</strong> &mdash; Run WhatsWay and Meta WhatsApp simultaneously</li>
+                    <li><strong>Webhook Security</strong> &mdash; HMAC token validation for ElevenLabs webhooks, SHA-256 signature verification for Meta webhooks</li>
+                    <li><strong>Test Connections</strong> &mdash; Test SMTP, WhatsWay, and Meta App credentials from the UI</li>
+                </ul>
+            </section>
+
+        </div>
+    </main>
+    
+    <footer>
+        <div class="container">
+            <p><strong>Messaging Plugin v1.0.3</strong></p>
+            <p>Part of the {{app_name}} Plugin Ecosystem</p>
+            <p style="margin-top: 24px;">&copy; 2026 {{app_name}}. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

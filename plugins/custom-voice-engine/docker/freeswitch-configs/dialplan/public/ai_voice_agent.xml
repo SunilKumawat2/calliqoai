@@ -1,0 +1,13 @@
+<include>
+  <extension name="ai_voice_agent">
+    <condition field="destination_number" expression="^(\+?\d+)$">
+      <action application="answer"/>
+      <action application="playback" data="silence_stream://500"/>
+      <action application="set" data="tts_engine=flite"/>
+      <action application="set" data="tts_voice=slt"/>
+      <!-- Stream audio to voice-engine plugin WebSocket server -->
+      <action application="set" data="dummy_fork=${uuid_audio_fork(${uuid} start ${ve_audio_ws_url}/${uuid} mono 8k)}"/>
+      <action application="park"/>
+    </condition>
+  </extension>
+</include>

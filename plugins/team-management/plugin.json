@@ -1,0 +1,381 @@
+{
+  "name": "team-management",
+  "displayName": "Team Management Plugin",
+  "version": "2.3.0",
+  "description": "Complete team management with role-based access control. Enables users and admins to create team members with separate logins, assign roles, and configure section-wise CRUD permissions.",
+  "author": "AgentLabs",
+  "license": "Commercial",
+  "homepage": "https://agentlabs.io/plugins/team-management",
+  "compatibility": {
+    "agentlabs": ">=1.0.0",
+    "node": ">=18.0.0"
+  },
+  "entryPoint": "index.ts",
+  "registerFunction": "registerTeamManagementRoutes",
+  "database": {
+    "migrations": [
+      "migrations/001_team_tables.sql"
+    ],
+    "tables": [
+      "teams",
+      "team_roles",
+      "team_members",
+      "team_permissions",
+      "team_member_sessions",
+      "team_activity_logs",
+      "admin_teams",
+      "admin_team_roles",
+      "admin_team_members",
+      "admin_team_permissions",
+      "admin_team_sessions",
+      "admin_team_activity_logs"
+    ]
+  },
+  "routes": {
+    "api": [
+      {
+        "path": "/api/team",
+        "description": "User team management"
+      },
+      {
+        "path": "/api/team/members",
+        "description": "Team member CRUD"
+      },
+      {
+        "path": "/api/team/roles",
+        "description": "Team role management"
+      },
+      {
+        "path": "/api/team/permissions",
+        "description": "Permission configuration"
+      },
+      {
+        "path": "/api/team/auth",
+        "description": "Team member authentication"
+      },
+      {
+        "path": "/api/admin/teams",
+        "description": "Admin team oversight"
+      }
+    ]
+  },
+  "ui": {
+    "adminSettings": {
+      "menu": "team-management",
+      "label": "Team Management",
+      "component": "AdminTeamManagementPage",
+      "icon": "Users"
+    },
+    "userSettings": {
+      "tab": "team",
+      "label": "Team",
+      "component": "UserTeamSettingsTab"
+    },
+    "frontendBundle": "dist/bundle.js"
+  },
+  "permissions": {
+    "required": [
+      "session-auth-middleware",
+      "admin-auth-middleware"
+    ]
+  },
+  "features": [
+    "Separate Team Member Logins",
+    "Email + Password Authentication",
+    "Role-Based Access Control",
+    "Hierarchical Permission System",
+    "Section-wise CRUD Permissions",
+    "Custom Role Creation",
+    "Default Role Templates",
+    "Team Member Invitation",
+    "Password Reset",
+    "Activity Audit Logs",
+    "Admin Team Oversight",
+    "User Team Management UI"
+  ],
+  "defaultRoles": [
+    {
+      "name": "owner",
+      "displayName": "Owner",
+      "description": "Full access to all features",
+      "isSystem": true
+    },
+    {
+      "name": "admin",
+      "displayName": "Admin",
+      "description": "Manage team and most features",
+      "isSystem": true
+    },
+    {
+      "name": "manager",
+      "displayName": "Manager",
+      "description": "Manage campaigns and agents",
+      "isSystem": true
+    },
+    {
+      "name": "viewer",
+      "displayName": "Viewer",
+      "description": "View-only access",
+      "isSystem": true
+    }
+  ],
+  "permissionSections": {
+    "campaigns": {
+      "label": "Campaigns",
+      "icon": "Megaphone",
+      "subsections": [
+        {
+          "id": "view_campaigns",
+          "label": "View Campaigns"
+        },
+        {
+          "id": "create_campaigns",
+          "label": "Create Campaigns"
+        },
+        {
+          "id": "edit_campaigns",
+          "label": "Edit Campaigns"
+        },
+        {
+          "id": "delete_campaigns",
+          "label": "Delete Campaigns"
+        },
+        {
+          "id": "manage_contacts",
+          "label": "Manage Contacts"
+        },
+        {
+          "id": "execute_campaigns",
+          "label": "Execute Campaigns"
+        }
+      ]
+    },
+    "agents": {
+      "label": "Agents",
+      "icon": "Bot",
+      "subsections": [
+        {
+          "id": "view_agents",
+          "label": "View Agents"
+        },
+        {
+          "id": "create_agents",
+          "label": "Create Agents"
+        },
+        {
+          "id": "edit_agents",
+          "label": "Edit Agents"
+        },
+        {
+          "id": "delete_agents",
+          "label": "Delete Agents"
+        },
+        {
+          "id": "flow_builder",
+          "label": "Flow Builder"
+        }
+      ]
+    },
+    "crm": {
+      "label": "CRM",
+      "icon": "Users",
+      "subsections": [
+        {
+          "id": "view_leads",
+          "label": "View Leads"
+        },
+        {
+          "id": "edit_leads",
+          "label": "Edit Leads"
+        },
+        {
+          "id": "delete_leads",
+          "label": "Delete Leads"
+        },
+        {
+          "id": "manage_pipelines",
+          "label": "Manage Pipelines"
+        }
+      ]
+    },
+    "calls": {
+      "label": "Calls & Conversations",
+      "icon": "Phone",
+      "subsections": [
+        {
+          "id": "view_calls",
+          "label": "View Calls"
+        },
+        {
+          "id": "view_recordings",
+          "label": "View Recordings"
+        },
+        {
+          "id": "view_transcripts",
+          "label": "View Transcripts"
+        }
+      ]
+    },
+    "messaging": {
+      "label": "Messaging & Conversations",
+      "icon": "MessageSquare",
+      "subsections": [
+        {
+          "id": "view_conversations",
+          "label": "View Conversations"
+        },
+        {
+          "id": "send_messages",
+          "label": "Send Messages"
+        },
+        {
+          "id": "manage_conversations",
+          "label": "Manage Conversations"
+        }
+      ]
+    },
+    "knowledge_base": {
+      "label": "Knowledge Base",
+      "icon": "BookOpen",
+      "subsections": [
+        {
+          "id": "view_knowledge",
+          "label": "View Knowledge Base"
+        },
+        {
+          "id": "create_knowledge",
+          "label": "Add Documents"
+        },
+        {
+          "id": "edit_knowledge",
+          "label": "Edit Documents"
+        },
+        {
+          "id": "delete_knowledge",
+          "label": "Delete Documents"
+        }
+      ]
+    },
+    "phone_numbers": {
+      "label": "Phone Numbers",
+      "icon": "PhoneCall",
+      "subsections": [
+        {
+          "id": "view_numbers",
+          "label": "View Numbers"
+        },
+        {
+          "id": "purchase_numbers",
+          "label": "Purchase Numbers"
+        },
+        {
+          "id": "manage_numbers",
+          "label": "Manage Numbers"
+        }
+      ]
+    },
+    "billing": {
+      "label": "Billing & Credits",
+      "icon": "CreditCard",
+      "subsections": [
+        {
+          "id": "view_billing",
+          "label": "View Billing"
+        },
+        {
+          "id": "manage_billing",
+          "label": "Manage Billing"
+        },
+        {
+          "id": "purchase_credits",
+          "label": "Purchase Credits"
+        }
+      ]
+    },
+    "analytics": {
+      "label": "Analytics",
+      "icon": "BarChart3",
+      "subsections": [
+        {
+          "id": "view_analytics",
+          "label": "View Analytics"
+        },
+        {
+          "id": "export_analytics",
+          "label": "Export Reports"
+        }
+      ]
+    },
+    "settings": {
+      "label": "Settings",
+      "icon": "Settings",
+      "subsections": [
+        {
+          "id": "view_settings",
+          "label": "View Settings"
+        },
+        {
+          "id": "edit_settings",
+          "label": "Edit Settings"
+        },
+        {
+          "id": "manage_integrations",
+          "label": "Manage Integrations"
+        },
+        {
+          "id": "manage_api_keys",
+          "label": "Manage API Keys"
+        }
+      ]
+    },
+    "team": {
+      "label": "Team Management",
+      "icon": "UserCog",
+      "subsections": [
+        {
+          "id": "view_team",
+          "label": "View Team"
+        },
+        {
+          "id": "invite_members",
+          "label": "Invite Members"
+        },
+        {
+          "id": "manage_members",
+          "label": "Manage Members"
+        },
+        {
+          "id": "manage_roles",
+          "label": "Manage Roles"
+        }
+      ]
+    }
+  },
+  "settings": {
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "label": "Enable Team Management Plugin",
+      "description": "Enable or disable the team management plugin"
+    },
+    "maxTeamMembers": {
+      "type": "number",
+      "default": 10,
+      "label": "Default Max Team Members",
+      "description": "Default maximum team members per account (can be overridden per plan)"
+    },
+    "allowCustomRoles": {
+      "type": "boolean",
+      "default": true,
+      "label": "Allow Custom Roles",
+      "description": "Allow users to create custom roles beyond default templates"
+    }
+  },
+  "environmentVariables": {
+    "required": [],
+    "optional": [
+      "TEAM_SESSION_SECRET",
+      "TEAM_SESSION_EXPIRY"
+    ]
+  }
+}

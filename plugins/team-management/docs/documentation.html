@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Management Plugin - Documentation | AgentLabs</title>
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            --primary-light: #a78bfa;
+            --primary-dark: #7c3aed;
+            --secondary: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1e293b;
+            --gray: #64748b;
+            --light: #f1f5f9;
+            --white: #ffffff;
+            --border: #e2e8f0;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background: var(--white);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        
+        /* Header */
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: var(--white);
+            padding: 60px 0;
+        }
+        
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+        }
+        
+        header p {
+            font-size: 1.2rem;
+            color: #ffffff;
+            max-width: 700px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin-right: 8px;
+            margin-top: 16px;
+        }
+        
+        /* Navigation */
+        nav {
+            background: var(--white);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 32px;
+            padding: 16px 0;
+            overflow-x: auto;
+        }
+        
+        nav a {
+            color: var(--gray);
+            text-decoration: none;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: color 0.2s;
+        }
+        
+        nav a:hover {
+            color: var(--primary);
+        }
+        
+        /* Main Content */
+        main {
+            padding: 48px 0;
+        }
+        
+        section {
+            margin-bottom: 64px;
+        }
+        
+        h2 {
+            font-size: 1.75rem;
+            color: var(--dark);
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--primary);
+        }
+        
+        h3 {
+            font-size: 1.25rem;
+            color: var(--dark);
+            margin: 32px 0 16px;
+        }
+        
+        h4 {
+            font-size: 1rem;
+            color: var(--gray);
+            margin: 24px 0 12px;
+        }
+        
+        p {
+            margin-bottom: 16px;
+            color: var(--gray);
+        }
+        
+        ul, ol {
+            margin-left: 24px;
+            margin-bottom: 16px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+            color: var(--gray);
+        }
+        
+        /* Quick Start Box */
+        .quick-start {
+            background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+            border: 2px solid var(--secondary);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 32px 0;
+        }
+        
+        .quick-start h3 {
+            color: var(--secondary);
+            margin-top: 0;
+            font-size: 1.5rem;
+        }
+        
+        .quick-start ol {
+            margin-left: 24px;
+        }
+        
+        .quick-start li {
+            margin-bottom: 12px;
+            color: var(--dark);
+        }
+        
+        /* Cards */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin: 24px 0;
+        }
+        
+        .card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            transition: box-shadow 0.2s, transform 0.2s;
+        }
+        
+        .card:hover {
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--light);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+        
+        .card h4 {
+            color: var(--dark);
+            margin: 0 0 8px;
+        }
+        
+        .card p {
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        
+        /* Code Blocks */
+        pre {
+            background: var(--dark);
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 16px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: var(--light);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        pre code {
+            background: none;
+            padding: 0;
+        }
+        
+        .code-comment {
+            color: #6b7280;
+        }
+        
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        th {
+            background: var(--light);
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        tr:hover td {
+            background: #f8fafc;
+        }
+        
+        /* Alert Boxes */
+        .alert {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 24px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .alert-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        
+        .alert-info {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .alert-warning {
+            background: #fffbeb;
+            border-left: 4px solid var(--warning);
+        }
+        
+        .alert-success {
+            background: #f0fdf4;
+            border-left: 4px solid var(--secondary);
+        }
+        
+        .alert-danger {
+            background: #fef2f2;
+            border-left: 4px solid var(--danger);
+        }
+        
+        /* Steps */
+        .steps {
+            counter-reset: step;
+            margin: 24px 0;
+        }
+        
+        .step {
+            position: relative;
+            padding-left: 60px;
+            padding-bottom: 32px;
+            border-left: 2px solid var(--border);
+            margin-left: 20px;
+        }
+        
+        .step:last-child {
+            border-left: none;
+            padding-bottom: 0;
+        }
+        
+        .step::before {
+            counter-increment: step;
+            content: counter(step);
+            position: absolute;
+            left: -21px;
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            color: var(--white);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .step h4 {
+            margin-top: 0;
+            color: var(--dark);
+        }
+        
+        /* Role Badge */
+        .role-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .role-owner { background: #fef3c7; color: #d97706; }
+        .role-admin { background: #dbeafe; color: #2563eb; }
+        .role-manager { background: #dcfce7; color: #16a34a; }
+        .role-viewer { background: #f1f5f9; color: #64748b; }
+        
+        /* Permission Matrix */
+        .permission-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin: 24px 0;
+        }
+        
+        .permission-section {
+            background: var(--light);
+            border-radius: 8px;
+            padding: 16px;
+        }
+        
+        .permission-section h5 {
+            font-size: 0.9rem;
+            color: var(--dark);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .permission-section ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .permission-section li {
+            font-size: 0.85rem;
+            padding: 4px 0;
+            color: var(--gray);
+        }
+        
+        /* Screenshot Placeholder */
+        .screenshot {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            color: var(--gray);
+            margin: 24px 0;
+        }
+        
+        .screenshot-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        
+        /* Footer */
+        footer {
+            background: var(--dark);
+            color: var(--white);
+            padding: 48px 0;
+            text-align: center;
+        }
+        
+        footer p {
+            color: rgba(255,255,255,0.7);
+        }
+        
+        /* Print Styles */
+        @media print {
+            header { padding: 30px 0; }
+            nav { display: none; }
+            .card:hover { transform: none; box-shadow: none; }
+            pre { white-space: pre-wrap; }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            header h1 { font-size: 1.75rem; }
+            nav ul { gap: 16px; }
+            .step { padding-left: 48px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Team Management Plugin</h1>
+            <p>Add team collaboration to your AgentLabs account. Create team members with separate logins, assign roles, and control what each person can access.</p>
+            <span class="badge">Version 2.0.0</span>
+            <span class="badge">AgentLabs Compatible</span>
+        </div>
+    </header>
+    
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="#quick-start">Quick Start</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#installation">Installation</a></li>
+                <li><a href="#usage">How to Use</a></li>
+                <li><a href="#roles">Roles & Permissions</a></li>
+                <li><a href="#team-login">Team Login</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+                <li><a href="#changelog">Changelog</a></li>
+            </ul>
+        </div>
+    </nav>
+    
+    <main>
+        <div class="container">
+            <!-- Quick Start -->
+            <section id="quick-start">
+                <h2>Quick Start Guide</h2>
+                <p>Get your team set up and collaborating in just 5 minutes. Follow these simple steps:</p>
+                
+                <div class="quick-start">
+                    <h3>5-Minute Setup</h3>
+                    <ol>
+                        <li><strong>Copy the plugin folder</strong> to your AgentLabs <code>plugins/</code> directory</li>
+                        <li><strong>Run the database migration:</strong> <code>npm run db:push</code></li>
+                        <li><strong>Restart your AgentLabs application:</strong> <code>pm2 restart agentlabs</code></li>
+                        <li><strong>Go to Settings &rarr; Team</strong> to access the team management page</li>
+                        <li><strong>Invite your first team member</strong> by clicking "Add Member"</li>
+                    </ol>
+                </div>
+                
+                <h3>Inviting Your First Team Member</h3>
+                <p>Once installed, adding team members is simple:</p>
+                
+                <div class="steps">
+                    <div class="step">
+                        <h4>Go to Team Settings</h4>
+                        <p>Log in to your AgentLabs account and navigate to <strong>Settings</strong> &rarr; <strong>Team</strong> tab.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Click "Add Member"</h4>
+                        <p>Enter their email address, first name, and last name.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Assign a Role</h4>
+                        <p>Choose from Owner, Admin, Manager, Viewer, or any custom role you've created.</p>
+                    </div>
+                    <div class="step">
+                        <h4>They Receive Login Credentials</h4>
+                        <p>The new team member will receive an email with their login credentials and can access the account at <code>/team/login</code>.</p>
+                    </div>
+                </div>
+                
+                <div class="alert alert-success">
+                    <span class="alert-icon">&#10004;</span>
+                    <div>
+                        <strong>That's it!</strong> Your team member can now log in and access the features you've allowed based on their role.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Features -->
+            <section id="features">
+                <h2>Features</h2>
+                <p>The Team Management Plugin gives you complete control over who can access your AgentLabs account and what they can do.</p>
+                
+                <div class="card-grid">
+                    <div class="card">
+                        <div class="card-icon">&#128101;</div>
+                        <h4>Separate Logins</h4>
+                        <p>Each team member gets their own email and password. No more sharing credentials!</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128274;</div>
+                        <h4>Role-Based Access</h4>
+                        <p>Control what each person can see and do with pre-built roles or custom ones you create.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128221;</div>
+                        <h4>Granular Permissions</h4>
+                        <p>Decide exactly which features each role can access: view, create, edit, or delete.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128100;</div>
+                        <h4>Custom Roles</h4>
+                        <p>Create custom roles tailored to your organization's needs beyond the defaults.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128202;</div>
+                        <h4>Activity Logs</h4>
+                        <p>See who did what and when with complete audit trails of team actions.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128272;</div>
+                        <h4>Secure Sessions</h4>
+                        <p>Cryptographically secure session tokens with automatic expiration.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128231;</div>
+                        <h4>Email Invitations</h4>
+                        <p>Invite team members via email with automatic credential delivery.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128736;</div>
+                        <h4>Admin Oversight</h4>
+                        <p>Platform admins can view and manage teams across all accounts.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Installation -->
+            <section id="installation">
+                <h2>Installation</h2>
+                <p>Choose your preferred installation method. The Admin UI installer is recommended for most users.</p>
+                
+                <h3>Requirements</h3>
+                <ul>
+                    <li>AgentLabs v4.0.0 or higher</li>
+                    <li>Node.js 18 or higher</li>
+                    <li>PostgreSQL 14 or higher</li>
+                    <li>Admin access to your AgentLabs installation</li>
+                </ul>
+                
+                <h3>Method 1: Admin UI Installer (Recommended)</h3>
+                <div class="alert alert-success">
+                    <span class="alert-icon">&#9989;</span>
+                    <div>
+                        <strong>Easiest Method</strong> - Upload the plugin ZIP file directly from your browser. Database migrations run automatically.
+                    </div>
+                </div>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Open Plugin Installer</h4>
+                        <p>Log in as an administrator and go to <strong>Admin Panel</strong> &rarr; <strong>Settings</strong> &rarr; <strong>Plugins</strong> tab.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Upload Plugin ZIP</h4>
+                        <p>Click <strong>"Upload Plugin"</strong> and select the <code>AgentLabs-TeamManagement-Plugin-v2.0.0.zip</code> file. The installer validates the manifest, extracts files, and runs database migrations automatically.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Restart Application</h4>
+                        <p>Restart your AgentLabs server to load the plugin:</p>
+<pre>
+pm2 restart agentlabs
+</pre>
+                    </div>
+                    <div class="step">
+                        <h4>Verify Installation</h4>
+                        <p>Check installation:</p>
+                        <ul>
+                            <li>Visit <code>/api/plugins/health</code> to check plugin status - all tables should show "ok"</li>
+                            <li>Log in to your AgentLabs account</li>
+                            <li>Go to <strong>Settings</strong> &rarr; <strong>Team</strong></li>
+                            <li>You should see the team management interface</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <h3>Method 2: Manual Installation (SSH)</h3>
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#128161;</span>
+                    <div>
+                        <strong>For advanced users</strong> who prefer command-line installation or need to customize the process.
+                    </div>
+                </div>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Extract Plugin Files</h4>
+                        <p>Upload and extract the plugin ZIP on your server:</p>
+<pre>
+cd /path/to/agentlabs
+unzip AgentLabs-TeamManagement-Plugin-v2.0.0.zip -d plugins/
+</pre>
+                    </div>
+                    <div class="step">
+                        <h4>Run Database Migration</h4>
+                        <p>Execute the SQL migration to create the required tables:</p>
+<pre>
+psql $DATABASE_URL -f plugins/team-management/migrations/001_team_tables.sql
+</pre>
+                        <p>This creates the following tables:</p>
+                        <ul>
+                            <li><code>teams</code>, <code>team_roles</code>, <code>team_members</code>, <code>team_permissions</code></li>
+                            <li><code>team_member_sessions</code>, <code>team_activity_logs</code></li>
+                            <li><code>admin_teams</code>, <code>admin_team_roles</code>, <code>admin_team_members</code></li>
+                            <li><code>admin_team_permissions</code>, <code>admin_team_sessions</code>, <code>admin_team_activity_logs</code></li>
+                        </ul>
+                    </div>
+                    <div class="step">
+                        <h4>Restart Application</h4>
+                        <p>Restart your AgentLabs server to load the plugin:</p>
+<pre>
+<span class="code-comment"># Production</span>
+pm2 restart agentlabs
+
+<span class="code-comment"># Development</span>
+npm run dev
+</pre>
+                    </div>
+                    <div class="step">
+                        <h4>Verify Installation</h4>
+                        <p>Check that the plugin is working:</p>
+                        <ul>
+                            <li>Visit <code>/api/plugins/health</code> to confirm all tables are "ok"</li>
+                            <li>Log in to your AgentLabs account</li>
+                            <li>Go to <strong>Settings</strong> &rarr; <strong>Team</strong></li>
+                            <li>You should see the team management interface</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <h3>Upgrading from Previous Versions</h3>
+                <div class="alert alert-warning">
+                    <span class="alert-icon">&#9888;</span>
+                    <div>
+                        <strong>Upgrading?</strong> If you already have the Team Management plugin installed, simply upload the new ZIP via Admin UI or replace the files manually. Existing database tables, teams, roles, and permissions will be preserved.
+                    </div>
+                </div>
+                
+                <h3>Optional Configuration</h3>
+                <p>You can customize the plugin behavior with environment variables:</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Variable</th>
+                            <th>Description</th>
+                            <th>Default</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>TEAM_SESSION_SECRET</code></td>
+                            <td>Secret key for session encryption</td>
+                            <td>Auto-generated</td>
+                        </tr>
+                        <tr>
+                            <td><code>TEAM_SESSION_EXPIRY</code></td>
+                            <td>Session expiry in hours</td>
+                            <td>24</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+            
+            <!-- How to Use -->
+            <section id="usage">
+                <h2>How to Use</h2>
+                <p>Here's how to manage your team effectively using the plugin.</p>
+                
+                <h3>Managing Team Members</h3>
+                
+                <h4>Adding a Team Member</h4>
+                <ol>
+                    <li>Go to <strong>Settings</strong> &rarr; <strong>Team</strong></li>
+                    <li>Click the <strong>"Add Member"</strong> button</li>
+                    <li>Fill in their details:
+                        <ul>
+                            <li><strong>Email:</strong> Their login email address</li>
+                            <li><strong>First Name:</strong> Their first name</li>
+                            <li><strong>Last Name:</strong> Their last name</li>
+                            <li><strong>Role:</strong> Select the role they should have</li>
+                        </ul>
+                    </li>
+                    <li>Click <strong>"Create Member"</strong></li>
+                    <li>The system will generate a temporary password and send them an email</li>
+                </ol>
+                
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#128712;</span>
+                    <div>
+                        <strong>Tip:</strong> Team members should change their password after first login for security.
+                    </div>
+                </div>
+                
+                <h4>Editing a Team Member</h4>
+                <ol>
+                    <li>Find the team member in your team list</li>
+                    <li>Click the <strong>Edit</strong> button (pencil icon)</li>
+                    <li>Update their name, email, or role</li>
+                    <li>Click <strong>"Save Changes"</strong></li>
+                </ol>
+                
+                <h4>Removing a Team Member</h4>
+                <ol>
+                    <li>Find the team member in your team list</li>
+                    <li>Click the <strong>Delete</strong> button (trash icon)</li>
+                    <li>Confirm the deletion</li>
+                </ol>
+                
+                <div class="alert alert-warning">
+                    <span class="alert-icon">&#9888;</span>
+                    <div>
+                        <strong>Note:</strong> Removing a team member immediately revokes their access. They will not be able to log in.
+                    </div>
+                </div>
+                
+                <h3>Managing Roles</h3>
+                
+                <h4>Creating a Custom Role</h4>
+                <ol>
+                    <li>Go to <strong>Settings</strong> &rarr; <strong>Team</strong> &rarr; <strong>Roles</strong></li>
+                    <li>Click <strong>"Create Role"</strong></li>
+                    <li>Enter a name and description for the role</li>
+                    <li>Optionally, copy permissions from an existing role</li>
+                    <li>Customize the permissions (see next section)</li>
+                    <li>Click <strong>"Save Role"</strong></li>
+                </ol>
+                
+                <h4>Editing Role Permissions</h4>
+                <ol>
+                    <li>Find the role in your roles list</li>
+                    <li>Click <strong>Edit Permissions</strong></li>
+                    <li>Check or uncheck the permissions you want to grant</li>
+                    <li>Click <strong>"Save"</strong></li>
+                </ol>
+            </section>
+            
+            <!-- Roles & Permissions -->
+            <section id="roles">
+                <h2>Roles & Permissions</h2>
+                <p>Roles control what each team member can see and do in your AgentLabs account.</p>
+                
+                <h3>Default Roles</h3>
+                <p>The plugin comes with four pre-configured roles:</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Role</th>
+                            <th>Description</th>
+                            <th>Best For</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="role-badge role-owner">Owner</span></td>
+                            <td>Full access to everything including team management and billing</td>
+                            <td>Business owners, account administrators</td>
+                        </tr>
+                        <tr>
+                            <td><span class="role-badge role-admin">Admin</span></td>
+                            <td>Full access except some billing functions</td>
+                            <td>Senior managers, department heads</td>
+                        </tr>
+                        <tr>
+                            <td><span class="role-badge role-manager">Manager</span></td>
+                            <td>Can manage campaigns, agents, and contacts</td>
+                            <td>Campaign managers, team leads</td>
+                        </tr>
+                        <tr>
+                            <td><span class="role-badge role-viewer">Viewer</span></td>
+                            <td>Read-only access to view data</td>
+                            <td>Stakeholders, analysts, auditors</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <h3>Permission Categories</h3>
+                <p>Permissions are organized into categories. Each category has specific actions that can be allowed or denied:</p>
+                
+                <div class="permission-grid">
+                    <div class="permission-section">
+                        <h5>&#128227; Campaigns</h5>
+                        <ul>
+                            <li>View Campaigns</li>
+                            <li>Create Campaigns</li>
+                            <li>Edit Campaigns</li>
+                            <li>Delete Campaigns</li>
+                            <li>Execute Campaigns</li>
+                        </ul>
+                    </div>
+                    <div class="permission-section">
+                        <h5>&#129302; Agents</h5>
+                        <ul>
+                            <li>View Agents</li>
+                            <li>Create Agents</li>
+                            <li>Edit Agents</li>
+                            <li>Delete Agents</li>
+                            <li>Flow Builder Access</li>
+                        </ul>
+                    </div>
+                    <div class="permission-section">
+                        <h5>&#128101; CRM / Leads</h5>
+                        <ul>
+                            <li>View Leads</li>
+                            <li>Edit Leads</li>
+                            <li>Delete Leads</li>
+                            <li>Manage Pipelines</li>
+                        </ul>
+                    </div>
+                    <div class="permission-section">
+                        <h5>&#128222; Calls</h5>
+                        <ul>
+                            <li>View Calls</li>
+                            <li>View Recordings</li>
+                            <li>View Transcripts</li>
+                        </ul>
+                    </div>
+                    <div class="permission-section">
+                        <h5>&#128218; Knowledge Base</h5>
+                        <ul>
+                            <li>View Documents</li>
+                            <li>Add Documents</li>
+                            <li>Edit Documents</li>
+                            <li>Delete Documents</li>
+                        </ul>
+                    </div>
+                    <div class="permission-section">
+                        <h5>&#128222; Phone Numbers</h5>
+                        <ul>
+                            <li>View Numbers</li>
+                            <li>Purchase Numbers</li>
+                            <li>Manage Numbers</li>
+                        </ul>
+                    </div>
+                    <div class="permission-section">
+                        <h5>&#128179; Billing & Credits</h5>
+                        <ul>
+                            <li>View Billing</li>
+                            <li>Manage Billing</li>
+                            <li>Purchase Credits</li>
+                        </ul>
+                    </div>
+                    <div class="permission-section">
+                        <h5>&#128202; Analytics</h5>
+                        <ul>
+                            <li>View Analytics</li>
+                            <li>Export Reports</li>
+                        </ul>
+                    </div>
+                    <div class="permission-section">
+                        <h5>&#9881; Settings</h5>
+                        <ul>
+                            <li>View Settings</li>
+                            <li>Edit Settings</li>
+                            <li>Manage Integrations</li>
+                        </ul>
+                    </div>
+                    <div class="permission-section">
+                        <h5>&#128101; Team</h5>
+                        <ul>
+                            <li>View Team</li>
+                            <li>Invite Members</li>
+                            <li>Manage Members</li>
+                            <li>Manage Roles</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <h3>Permission Examples</h3>
+                
+                <h4>Example: Campaign Manager Role</h4>
+                <p>A "Campaign Manager" might have these permissions:</p>
+                <ul>
+                    <li>&#10003; Campaigns: View, Create, Edit, Execute</li>
+                    <li>&#10003; Agents: View only</li>
+                    <li>&#10003; CRM: View, Edit leads</li>
+                    <li>&#10003; Calls: View calls and transcripts</li>
+                    <li>&#10003; Analytics: View</li>
+                    <li>&#10007; Billing: No access</li>
+                    <li>&#10007; Settings: No access</li>
+                    <li>&#10007; Team: No access</li>
+                </ul>
+                
+                <h4>Example: Support Staff Role</h4>
+                <p>A "Support Staff" role might have:</p>
+                <ul>
+                    <li>&#10003; CRM: View, Edit leads</li>
+                    <li>&#10003; Calls: View calls, recordings, transcripts</li>
+                    <li>&#10003; Campaigns: View only</li>
+                    <li>&#10007; Agents: No access</li>
+                    <li>&#10007; Billing: No access</li>
+                    <li>&#10007; Settings: No access</li>
+                </ul>
+            </section>
+            
+            <!-- Team Login -->
+            <section id="team-login">
+                <h2>Team Member Login</h2>
+                <p>Team members log in through a separate login page from the main account login.</p>
+                
+                <h3>Login URL</h3>
+                <p>Team members should use this URL to log in:</p>
+<pre>
+https://your-domain.com/team/login
+</pre>
+                
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#128712;</span>
+                    <div>
+                        <strong>Important:</strong> This is different from the main login page. Make sure to share the correct URL with your team members.
+                    </div>
+                </div>
+                
+                <h3>Login Process</h3>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Enter Credentials</h4>
+                        <p>Team member enters their email and password on the team login page.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Session Created</h4>
+                        <p>Upon successful login, a secure session is created. The session lasts 24 hours by default.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Access Granted</h4>
+                        <p>The team member can now access features allowed by their role's permissions.</p>
+                    </div>
+                </div>
+                
+                <h3>Password Reset</h3>
+                <p>If a team member forgets their password:</p>
+                <ol>
+                    <li>Click "Forgot Password" on the team login page</li>
+                    <li>Enter their email address</li>
+                    <li>They'll receive a password reset link via email</li>
+                    <li>Click the link and set a new password</li>
+                </ol>
+                
+                <h3>Admin Team Login (Platform Administrators)</h3>
+                <p>If you're setting up sub-admins for platform administration, they use a different URL:</p>
+<pre>
+https://your-domain.com/admin-team/login
+</pre>
+                <p>This is for platform-level administrators who help manage the entire AgentLabs installation, not individual user accounts.</p>
+            </section>
+            
+            <!-- Troubleshooting -->
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+                <p>Common issues and their solutions:</p>
+                
+                <h3>Team Tab Not Showing</h3>
+                <div class="alert alert-danger">
+                    <span class="alert-icon">&#10060;</span>
+                    <div>
+                        <strong>Problem:</strong> The "Team" tab doesn't appear in Settings
+                    </div>
+                </div>
+                <p><strong>Solutions:</strong></p>
+                <ul>
+                    <li>Verify the plugin folder is in the correct location: <code>plugins/team-management/</code></li>
+                    <li>Check that <code>plugin.json</code> exists in the plugin folder</li>
+                    <li>Restart the application: <code>pm2 restart agentlabs</code></li>
+                    <li>Check server logs for error messages</li>
+                </ul>
+                
+                <h3>Team Member Can't Log In</h3>
+                <div class="alert alert-danger">
+                    <span class="alert-icon">&#10060;</span>
+                    <div>
+                        <strong>Problem:</strong> Team member receives "Invalid credentials" error
+                    </div>
+                </div>
+                <p><strong>Solutions:</strong></p>
+                <ul>
+                    <li>Verify they're using the team login page: <code>/team/login</code></li>
+                    <li>Check the email address is correct (no typos)</li>
+                    <li>Reset their password from the team management page</li>
+                    <li>Ensure the team member's account is active (not deactivated)</li>
+                </ul>
+                
+                <h3>Permission Denied Errors</h3>
+                <div class="alert alert-warning">
+                    <span class="alert-icon">&#9888;</span>
+                    <div>
+                        <strong>Problem:</strong> Team member can't access a feature they should have access to
+                    </div>
+                </div>
+                <p><strong>Solutions:</strong></p>
+                <ul>
+                    <li>Check their role's permissions in <strong>Settings &rarr; Team &rarr; Roles</strong></li>
+                    <li>Ensure the specific permission is checked for their role</li>
+                    <li>Have them log out and log back in to refresh their session</li>
+                    <li>Verify you're editing the correct role (the one assigned to them)</li>
+                </ul>
+                
+                <h3>Database Migration Failed</h3>
+                <p>If the database migration fails:</p>
+                <ol>
+                    <li>Check your database connection: <code>echo $DATABASE_URL</code></li>
+                    <li>Verify PostgreSQL is running and accessible</li>
+                    <li>Try running the SQL directly:
+<pre>
+psql $DATABASE_URL -f plugins/team-management/migrations/001_team_tables.sql
+</pre>
+                    </li>
+                    <li>Check for existing tables that might conflict</li>
+                </ol>
+                
+                <h3>Session Expires Too Quickly</h3>
+                <p>If team member sessions expire faster than expected:</p>
+                <ul>
+                    <li>Check the <code>TEAM_SESSION_EXPIRY</code> environment variable</li>
+                    <li>Default is 24 hours; increase if needed</li>
+                    <li>Restart the application after changing environment variables</li>
+                </ul>
+                
+                <h3>Need More Help?</h3>
+                <p>If you're still having issues:</p>
+                <ul>
+                    <li>Review the server logs for detailed error messages</li>
+                    <li>Check the activity logs in the Team Management page</li>
+                    <li>Contact AgentLabs support with your error details</li>
+                </ul>
+            </section>
+            
+            <section id="changelog">
+                <h2>Changelog</h2>
+                
+                <h3>v2.0.0 - February 2026</h3>
+                <h4>Added</h4>
+                <ul>
+                    <li><strong>Admin UI Plugin Installer</strong> - Upload plugin ZIP files directly from Admin Panel &rarr; Settings &rarr; Plugins. Automatic manifest validation, file extraction, and database migration execution.</li>
+                    <li><strong>Admin Team Authentication</strong> - Sub-admins can log in using 64-character hex session tokens stored in <code>admin_team_sessions</code>.</li>
+                    <li><strong>Permission middleware</strong> - <code>requireAdminPermission(section, subsection, action)</code> enforces role-based access based on <code>admin_team_permissions</code> table.</li>
+                    <li><strong>Toast notification support</strong> - Plugin now uses shared toast system via <code>window.__AGENTLABS_TOAST__</code>.</li>
+                </ul>
+                <h4>Changed</h4>
+                <ul>
+                    <li><strong>Build system modernized</strong> - Per-file ESM compilation with esbuild. UI bundle compiled as IIFE format.</li>
+                    <li><strong>i18n isolation fixed</strong> - Plugin shares the host app's i18n instance via <code>window.__AGENTLABS_REACT_I18NEXT__</code> instead of creating disconnected copies.</li>
+                    <li><strong>Dual auth middleware</strong> - <code>checkAdminOrTeamMember</code> accepts both platform admin JWTs and admin team session tokens.</li>
+                </ul>
+                <h4>Security</h4>
+                <ul>
+                    <li>Plugin installer includes ZIP path traversal protection and manifest validation.</li>
+                    <li>Session tokens are 64-character hex strings for secure admin team authentication.</li>
+                </ul>
+                
+                <h3>v1.1.0 - December 2024</h3>
+                <h4>Added</h4>
+                <ul>
+                    <li>Dynamic loading with adapter pattern</li>
+                    <li>Module resolution for both development (.ts) and production (.js)</li>
+                    <li>Dedicated build script for independent builds</li>
+                </ul>
+                
+                <h3>v1.0.0 - November 2024</h3>
+                <h4>Initial Release</h4>
+                <ul>
+                    <li>Team member management with separate login credentials</li>
+                    <li>Role system: Viewer, Operator, Manager, Admin</li>
+                    <li>Section-wise CRUD permissions with inheritance</li>
+                    <li>Hierarchical access control</li>
+                    <li>Team management dashboard and UI components</li>
+                    <li>Activity log and audit trail</li>
+                </ul>
+            </section>
+        </div>
+    </main>
+    
+    <footer>
+        <div class="container">
+            <p><strong>Team Management Plugin for AgentLabs</strong></p>
+            <p>Version 2.0.0 | &copy; 2026 AgentLabs. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

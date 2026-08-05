@@ -1,0 +1,5 @@
+class BaseTtsProvider {
+}
+export {
+  BaseTtsProvider
+};

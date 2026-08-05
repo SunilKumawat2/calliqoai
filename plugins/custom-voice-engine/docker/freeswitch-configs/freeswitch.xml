@@ -1,0 +1,32 @@
+<configuration name="freeswitch.xml" description="FreeSWITCH Configuration">
+  <section name="configuration" description="Various Configuration">
+    <X-PRE-PROCESS cmd="include" data="autoload_configs/*.xml"/>
+  </section>
+
+  <section name="dialplan" description="Regex/XML Dialplan">
+    <X-PRE-PROCESS cmd="include" data="dialplan/*.xml"/>
+  </section>
+
+  <section name="directory" description="User Directory">
+    <!-- Minimal directory for local testing if needed -->
+    <domain name="$${domain}">
+      <params>
+        <param name="dial-string" value="{presence_id=${dialed_user}@${dialed_domain}}${sofia_contact(${dialed_user}@${dialed_domain})}"/>
+      </params>
+      <users>
+        <user id="1000">
+          <params>
+            <param name="password" value="1234"/>
+          </params>
+          <variables>
+            <variable name="user_context" value="default"/>
+          </variables>
+        </user>
+      </users>
+    </domain>
+  </section>
+
+  <section name="sofia" description="Sofia Endpoint Configuration">
+    <X-PRE-PROCESS cmd="include" data="sip_profiles/*.xml"/>
+  </section>
+</configuration>

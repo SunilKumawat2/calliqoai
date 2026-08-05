@@ -1,0 +1,9 @@
+ALTER TABLE user_email_templates ADD COLUMN IF NOT EXISTS design_json JSONB;
+
+CREATE TABLE IF NOT EXISTS messaging_plugin_meta (
+  id SERIAL PRIMARY KEY,
+  key VARCHAR(255) NOT NULL UNIQUE,
+  value TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);

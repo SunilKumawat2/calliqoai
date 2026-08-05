@@ -1,0 +1,730 @@
+{
+  "info": {
+    "_postman_id": "agentlabs-rest-api-v1",
+    "name": "AgentLabs REST API",
+    "description": "Complete API collection for AgentLabs AI-powered bulk calling platform.\n\n## Authentication\n\nAll endpoints require an API key. Add your key to the collection variables:\n1. Click on the collection name\n2. Go to Variables tab\n3. Set `api_key` to your API key\n\n## Getting Started\n\n1. Generate an API key from Settings > Developer in the AgentLabs dashboard\n2. Set the `base_url` variable to your instance URL\n3. Set your `api_key`\n4. Start making requests!",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{api_key}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://your-agentlabs-instance.com",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "your-api-key-here",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Info",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "health"]
+            },
+            "description": "Check API health status (no authentication required)"
+          }
+        },
+        {
+          "name": "API Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1"]
+            },
+            "description": "Get API information and available endpoints"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Calls",
+      "item": [
+        {
+          "name": "Trigger Call",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"your-agent-uuid\",\n  \"toNumber\": \"+14155551234\",\n  \"fromNumber\": \"+14155555678\",\n  \"engine\": \"elevenlabs\",\n  \"metadata\": {\n    \"source\": \"api\",\n    \"campaign\": \"demo\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/calls",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "calls"]
+            },
+            "description": "Initiate a new outbound call"
+          }
+        },
+        {
+          "name": "List Calls",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/calls?page=1&pageSize=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "calls"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Get paginated list of all calls"
+          }
+        },
+        {
+          "name": "Get Call Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/calls/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "calls", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "call-uuid-here"
+                }
+              ]
+            },
+            "description": "Get detailed information about a specific call"
+          }
+        },
+        {
+          "name": "Hangup Call",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/calls/:id/hangup",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "calls", ":id", "hangup"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "call-uuid-here"
+                }
+              ]
+            },
+            "description": "End an active call"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Campaigns",
+      "item": [
+        {
+          "name": "Create Campaign",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Q1 Outreach Campaign\",\n  \"agentId\": \"your-agent-uuid\",\n  \"timezone\": \"America/New_York\",\n  \"callWindowStart\": \"09:00\",\n  \"callWindowEnd\": \"18:00\",\n  \"maxConcurrentCalls\": 5,\n  \"retryAttempts\": 2,\n  \"retryDelayMinutes\": 30\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/campaigns",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "campaigns"]
+            },
+            "description": "Create a new calling campaign"
+          }
+        },
+        {
+          "name": "List Campaigns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/campaigns?page=1&pageSize=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "campaigns"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Get paginated list of campaigns"
+          }
+        },
+        {
+          "name": "Get Campaign Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/campaigns/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "campaigns", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "campaign-uuid-here"
+                }
+              ]
+            },
+            "description": "Get detailed information about a campaign"
+          }
+        },
+        {
+          "name": "Add Campaign Contacts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contacts\": [\n    {\n      \"phoneNumber\": \"+14155551234\",\n      \"firstName\": \"John\",\n      \"lastName\": \"Doe\",\n      \"email\": \"john@example.com\",\n      \"customFields\": {\n        \"company\": \"Acme Inc\"\n      }\n    },\n    {\n      \"phoneNumber\": \"+14155555678\",\n      \"firstName\": \"Jane\",\n      \"lastName\": \"Smith\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/campaigns/:id/contacts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "campaigns", ":id", "contacts"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "campaign-uuid-here"
+                }
+              ]
+            },
+            "description": "Add contacts to a campaign"
+          }
+        },
+        {
+          "name": "Start Campaign",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/campaigns/:id/start",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "campaigns", ":id", "start"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "campaign-uuid-here"
+                }
+              ]
+            },
+            "description": "Start executing a campaign"
+          }
+        },
+        {
+          "name": "Pause Campaign",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/campaigns/:id/pause",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "campaigns", ":id", "pause"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "campaign-uuid-here"
+                }
+              ]
+            },
+            "description": "Pause a running campaign"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Agents",
+      "item": [
+        {
+          "name": "List Agents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/agents?page=1&pageSize=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agents"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Get paginated list of AI agents"
+          }
+        },
+        {
+          "name": "Get Agent Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/agents/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agents", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "agent-uuid-here"
+                }
+              ]
+            },
+            "description": "Get detailed information about an agent"
+          }
+        },
+        {
+          "name": "Export Agent Flow",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/agents/:id/flow",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agents", ":id", "flow"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "agent-uuid-here"
+                }
+              ]
+            },
+            "description": "Export the conversation flow for a flow agent"
+          }
+        },
+        {
+          "name": "Import Agent Flow",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"flow\": {\n    \"name\": \"Customer Support Flow\",\n    \"nodes\": [],\n    \"edges\": [],\n    \"variables\": {}\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/agents/:id/flow",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "agents", ":id", "flow"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "agent-uuid-here"
+                }
+              ]
+            },
+            "description": "Import a conversation flow to a flow agent"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contacts",
+      "item": [
+        {
+          "name": "Create Contact",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+14155551234\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john@example.com\",\n  \"company\": \"Acme Inc\",\n  \"tags\": [\"prospect\", \"enterprise\"],\n  \"customFields\": {\n    \"industry\": \"Technology\",\n    \"size\": \"500+\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/contacts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "contacts"]
+            },
+            "description": "Create a new CRM contact"
+          }
+        },
+        {
+          "name": "List Contacts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/contacts?page=1&pageSize=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "contacts"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Get paginated list of contacts"
+          }
+        },
+        {
+          "name": "Get Contact Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/contacts/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "contacts", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "contact-uuid-here"
+                }
+              ]
+            },
+            "description": "Get detailed information about a contact"
+          }
+        },
+        {
+          "name": "Update Contact",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe Updated\",\n  \"stage\": \"qualified\",\n  \"tags\": [\"prospect\", \"enterprise\", \"priority\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/contacts/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "contacts", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "contact-uuid-here"
+                }
+              ]
+            },
+            "description": "Update an existing contact"
+          }
+        },
+        {
+          "name": "Delete Contact",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/contacts/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "contacts", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "contact-uuid-here"
+                }
+              ]
+            },
+            "description": "Delete a contact"
+          }
+        },
+        {
+          "name": "Bulk Import Contacts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contacts\": [\n    {\n      \"phone\": \"+14155551111\",\n      \"firstName\": \"Alice\",\n      \"lastName\": \"Johnson\",\n      \"email\": \"alice@example.com\"\n    },\n    {\n      \"phone\": \"+14155552222\",\n      \"firstName\": \"Bob\",\n      \"lastName\": \"Williams\"\n    },\n    {\n      \"phone\": \"+14155553333\",\n      \"firstName\": \"Carol\",\n      \"lastName\": \"Brown\",\n      \"company\": \"Tech Corp\"\n    }\n  ],\n  \"skipDuplicates\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/contacts/bulk-import",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "contacts", "bulk-import"]
+            },
+            "description": "Import multiple contacts at once (up to 10,000)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Credits",
+      "item": [
+        {
+          "name": "Get Credit Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/credits/balance",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "credits", "balance"]
+            },
+            "description": "Get current credit balance"
+          }
+        },
+        {
+          "name": "Get Credit Usage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/credits/usage?days=30",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "credits", "usage"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Get credit usage history"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "Get Call Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/analytics/calls?days=30",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "analytics", "calls"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Get aggregated call statistics"
+          }
+        },
+        {
+          "name": "Get Campaign Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/analytics/campaigns",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "analytics", "campaigns"]
+            },
+            "description": "Get analytics for all campaigns"
+          }
+        },
+        {
+          "name": "Get Analytics Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/analytics/summary?days=30",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "analytics", "summary"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Get overall analytics summary"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Create Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://your-server.com/webhooks/agentlabs\",\n  \"events\": [\n    \"call.completed\",\n    \"call.failed\",\n    \"campaign.completed\"\n  ],\n  \"description\": \"Production webhook for call events\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "webhooks"]
+            },
+            "description": "Create a new webhook subscription"
+          }
+        },
+        {
+          "name": "List Webhooks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "webhooks"]
+            },
+            "description": "Get all webhook subscriptions"
+          }
+        },
+        {
+          "name": "List Supported Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/events",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "webhooks", "events"]
+            },
+            "description": "Get list of all supported webhook events"
+          }
+        },
+        {
+          "name": "Update Webhook",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://your-server.com/webhooks/agentlabs-v2\",\n  \"events\": [\n    \"call.completed\",\n    \"call.failed\",\n    \"campaign.completed\",\n    \"credits.low\"\n  ],\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "webhooks", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "webhook-uuid-here"
+                }
+              ]
+            },
+            "description": "Update a webhook subscription"
+          }
+        },
+        {
+          "name": "Delete Webhook",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "webhooks", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "webhook-uuid-here"
+                }
+              ]
+            },
+            "description": "Delete a webhook subscription"
+          }
+        },
+        {
+          "name": "Test Webhook",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/:id/test",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "webhooks", ":id", "test"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "webhook-uuid-here"
+                }
+              ]
+            },
+            "description": "Send a test payload to verify webhook configuration"
+          }
+        }
+      ]
+    }
+  ]
+}

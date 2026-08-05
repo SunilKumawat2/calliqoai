@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Voice Engine Plugin - Documentation | {{app_name}}</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-light: #818cf8;
+            --primary-dark: #4f46e5;
+            --secondary: #0ea5e9;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #0f172a;
+            --gray: #64748b;
+            --light: #f8fafc;
+            --white: #ffffff;
+            --border: #e2e8f0;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background: var(--white);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: var(--white);
+            padding: 60px 0;
+        }
+        
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+        }
+        
+        header p {
+            font-size: 1.2rem;
+            color: #ffffff;
+            max-width: 700px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin-right: 8px;
+            margin-top: 16px;
+        }
+        
+        .badge-fs {
+            background: rgba(14, 165, 233, 0.3);
+        }
+        
+        .badge-ai {
+            background: rgba(99, 102, 241, 0.3);
+        }
+        
+        nav {
+            background: var(--white);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 32px;
+            padding: 16px 0;
+            overflow-x: auto;
+        }
+        
+        nav a {
+            color: var(--gray);
+            text-decoration: none;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: color 0.2s;
+        }
+        
+        nav a:hover {
+            color: var(--primary);
+        }
+        
+        main {
+            padding: 48px 0;
+        }
+        
+        section {
+            margin-bottom: 64px;
+        }
+        
+        h2 {
+            font-size: 1.75rem;
+            color: var(--dark);
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--primary);
+        }
+        
+        h3 {
+            font-size: 1.25rem;
+            color: var(--dark);
+            margin: 32px 0 16px;
+        }
+        
+        p {
+            margin-bottom: 16px;
+            color: var(--gray);
+        }
+        
+        ul, ol {
+            margin-left: 24px;
+            margin-bottom: 16px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+            color: var(--gray);
+        }
+        
+        .quick-start {
+            background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+            border: 2px solid var(--primary-light);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 32px 0;
+        }
+        
+        .quick-start h3 {
+            color: var(--primary-dark);
+            margin-top: 0;
+            font-size: 1.5rem;
+        }
+        
+        .quick-start ol {
+            margin-left: 24px;
+        }
+        
+        .quick-start li {
+            margin-bottom: 12px;
+            color: var(--dark);
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin: 24px 0;
+        }
+        
+        .card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            transition: box-shadow 0.2s, transform 0.2s;
+        }
+        
+        .card:hover {
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--light);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+        
+        .card h4 {
+            color: var(--dark);
+            margin: 0 0 8px;
+        }
+        
+        .card p {
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        
+        pre {
+            background: var(--dark);
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 16px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: var(--light);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        pre code {
+            background: none;
+            padding: 0;
+        }
+        
+        .alert {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 24px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .alert-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        
+        .alert-info {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .alert-warning {
+            background: #fffbeb;
+            border-left: 4px solid var(--warning);
+        }
+        
+        .alert-danger {
+            background: #fef2f2;
+            border-left: 4px solid var(--danger);
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        th {
+            background: var(--light);
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        tr:hover td {
+            background: #f8fafc;
+        }
+        
+        .endpoint {
+            background: var(--light);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 24px 0;
+        }
+        
+        .endpoint-method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.75rem;
+            margin-right: 12px;
+        }
+        
+        .method-get { background: #dbeafe; color: #1d4ed8; }
+        .method-post { background: #dcfce7; color: #16a34a; }
+        .method-put { background: #fef3c7; color: #d97706; }
+        .method-delete { background: #fee2e2; color: #dc2626; }
+        
+        .endpoint-path {
+            font-family: monospace;
+            font-size: 1rem;
+            color: var(--dark);
+        }
+        
+        footer {
+            background: var(--dark);
+            color: var(--white);
+            padding: 48px 0;
+            text-align: center;
+        }
+        
+        footer p {
+            color: rgba(255,255,255,0.7);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Custom Voice Engine Plugin</h1>
+            <p>Self-hosted Custom Voice Engine powered by FreeSWITCH. Integrates local audio streaming via mod_audio_fork with pluggable STT (Deepgram, Sarvam), LLM (OpenRouter), and TTS (Deepgram Aura, Sarvam) providers.</p>
+            <span class="badge">Version 1.0.0</span>
+            <span class="badge badge-fs">FreeSWITCH ESL</span>
+            <span class="badge badge-ai">STT / LLM / TTS Pipeline</span>
+        </div>
+    </header>
+    
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#quick-start">Quick Start</a></li>
+                <li><a href="#installation">Installation</a></li>
+                <li><a href="#freeswitch">FreeSWITCH Setup</a></li>
+                <li><a href="#memory">Customer Memory</a></li>
+                <li><a href="#caching">Semantic Cache</a></li>
+                <li><a href="#advanced-mechanics">Advanced Mechanics</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+                <li><a href="#api-reference">API Reference</a></li>
+            </ul>
+        </div>
+    </nav>
+    
+    <main>
+        <div class="container">
+             <section id="overview">
+                <h2>Overview</h2>
+                <p>The Custom Voice Engine Plugin provides a highly optimized, production-ready voice automation pipeline. It connects directly to your SIP trunks using FreeSWITCH, intercepting audio using <code>mod_audio_fork</code> to stream directly into a Node.js WebSocket backend. The backend orchestrates real-time Speech-to-Text translation, executes system prompts and tool calling via OpenRouter LLMs, synthesizes response text using TTS engines, and streams audio back to the caller.</p>
+                
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#8505;</span>
+                    <div><strong>Why use the Custom Voice Engine?</strong> Unlike closed-source, full-stack voice API solutions, the Custom Voice Engine plugin gives you complete control over your telephony infrastructure, data retention, billing logic, and AI prompt engineering.</div>
+                </div>
+            </section>
+
+            <section id="features">
+                <h2>Features</h2>
+                <div class="card-grid">
+                    <div class="card">
+                        <div class="card-icon">📞</div>
+                        <h4>FreeSWITCH Integration</h4>
+                        <p>Manages calls via Event Socket Library (ESL) and streams 8kHz/16kHz raw PCM audio bidirectionally over WebSockets.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">🎙️</div>
+                        <h4>Pluggable STT</h4>
+                        <p>Low-latency transcription using Deepgram Nova-2 streaming or Sarvam AI Speech-to-Text APIs.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">🧠</div>
+                        <h4>OpenRouter LLM Adapter</h4>
+                        <p>Use GPT-4o-mini, Gemini Flash, Claude 3.5 Sonnet, or Llama-3 models. Supports context compression and tool calling.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">🔊</div>
+                        <h4>Pluggable TTS</h4>
+                        <p>Real-time speech synthesis with Deepgram Aura (Asteria, Orion) or Sarvam AI voice models.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">💾</div>
+                        <h4>Customer Memory</h4>
+                        <p>Extracts, indexes, and retrieves facts, preferences, and outcomes from previous customer calls.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">⚡</div>
+                        <h4>Semantic Cache</h4>
+                        <p>Speeds up repeat responses and reduces LLM tokens by caching answers in Redis.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="quick-start">
+                <h2>Quick Start Guide</h2>
+                <div class="quick-start">
+                    <h3>5-Minute Tenant Setup</h3>
+                    <ol>
+                        <li>Navigate to the <strong>Voice Engine</strong> settings in the dashboard.</li>
+                        <li>Input your <strong>Deepgram API Key</strong> and <strong>OpenRouter API Key</strong>.</li>
+                        <li>Click <strong>Save Configuration</strong>.</li>
+                        <li>Create a new <strong>Voice Agent</strong> with your custom system prompt and select a preferred voice.</li>
+                        <li>Register a phone number and map it to your newly created Voice Agent.</li>
+                    </ol>
+                </div>
+            </section>
+
+            <section id="installation">
+                <h2>Installation</h2>
+                <p>The plugin is designed to automatically compile and run table migrations when loaded by the AgentLabs server.</p>
+                <pre><code># Install dependencies
+npm install @deepgram/sdk ws ioredis axios uuid
+
+# The table schema migrations will run automatically on server restart:
+# - ve_freeswitch_nodes
+# - ve_provider_configs
+# - ve_voice_agents
+# - ve_sessions
+# - ve_call_recordings
+# - ve_customer_memory
+# - ve_customer_facts
+# - ve_conversation_memory
+# - ve_llm_cache
+# - ve_usage_tracking</code></pre>
+            </section>
+
+            <section id="freeswitch">
+                <h2>FreeSWITCH &amp; mod_audio_fork Setup</h2>
+                <p>To connect calls to your Custom Voice Engine, FreeSWITCH needs to compile and load the <code>mod_audio_fork</code> module. We provide pre-packaged Docker and Kubernetes deployment files under the plugin's <code>docker/</code> directory, but you can also install and run it natively on a standard Ubuntu 24.04/Debian VM.</p>
+
+                <h3>Native VM Installation &amp; Compilation (Ubuntu 24.04 / Debian)</h3>
+                <p>Follow these steps to compile and install FreeSWITCH along with the required <code>mod_audio_fork</code> module:</p>
+
+                <h4>1. Install Build Dependencies</h4>
+                <pre><code>sudo apt-get update && sudo apt-get install -y \
+    build-essential cmake git ca-certificates wget \
+    autoconf automake libtool m4 pkg-config \
+    libssl-dev libedit-dev libsqlite3-dev libcurl4-openssl-dev \
+    libspeex-dev libspeexdsp-dev libopus-dev libsndfile1-dev \
+    liblua5.2-dev uuid-dev zlib1g-dev \
+    libjpeg-dev libpng-dev libtiff-dev \
+    libwebsockets-dev python3-dev libasound2-dev \
+    libogg-dev libvorbis-dev libshout3-dev libmpg123-dev \
+    unixodbc-dev nasm yasm</code></pre>
+
+                <h4>2. Compile Legacy PCRE1 from Source</h4>
+                <p>Since Ubuntu 24.04 has deprecated PCRE1 in favor of PCRE2, compile PCRE1 manually for FreeSWITCH 1.10.x:</p>
+                <pre><code>mkdir -p ~/freeswitch-build
+cd ~/freeswitch-build
+wget https://ftp.exim.org/pub/pcre/pcre-8.45.tar.gz
+tar -xvf pcre-8.45.tar.gz
+cd pcre-8.45
+./configure --prefix=/usr --enable-utf8 --enable-unicode-properties
+make -j$(nproc)
+sudo make install</code></pre>
+
+                <h4>3. Compile Sofia-SIP and SpanDSP</h4>
+                <pre><code># Build Sofia-SIP
+cd ~/freeswitch-build
+git clone https://github.com/freeswitch/sofia-sip.git
+cd sofia-sip
+./bootstrap.sh
+./configure
+make -j$(nproc)
+sudo make install
+
+# Build SpanDSP
+cd ~/freeswitch-build
+git clone https://github.com/freeswitch/spandsp.git
+cd spandsp
+./bootstrap.sh
+./configure
+make -j$(nproc)
+sudo make install</code></pre>
+
+                <h4>4. Compile FreeSWITCH with mod_audio_fork</h4>
+                <p>Clone FreeSWITCH, copy the module files, apply linkage &amp; Makefile patches, and compile:</p>
+                <pre><code>cd ~/freeswitch-build
+git clone --depth 1 -b v1.10.12 https://github.com/signalwire/freeswitch.git
+cd freeswitch
+
+# Clone public mod_audio_fork fork
+git clone --depth 1 https://github.com/dochong/drachtio-freeswitch-modules.git ~/freeswitch-build/drachtio-modules
+cp -r ~/freeswitch-build/drachtio-modules/modules/mod_audio_fork src/mod/applications/mod_audio_fork
+
+# Enable module
+sed -i 's/#applications\/mod_audio_fork/applications\/mod_audio_fork/' modules.conf
+
+# --- Patches required for native C/C++ linking compatibility ---
+# 1. Edit src/mod/applications/mod_audio_fork/lws_glue.h to wrap declarations in extern "C"
+# 2. Correct the signature of fork_service_thread to: switch_status_t fork_service_thread(int *pRunning);
+# 3. Edit src/mod/applications/mod_audio_fork/Makefile to look exactly like:
+#
+# MODNAME=mod_audio_fork
+# LOCAL_OBJS=lws_glue.o
+# LOCAL_LDFLAGS=`pkg-config --libs libwebsockets` -lstdc++
+# LOCAL_CXXFLAGS=-std=c++11
+# BASE=../../../..
+# include $(BASE)/build/modmake.rules
+
+# Generate build configuration
+./bootstrap.sh -j
+./configure --prefix=/usr/local/freeswitch --enable-core-odbc-support CFLAGS="-Wno-error" CXXFLAGS="-Wno-error"
+make CFLAGS="-Wno-error" CXXFLAGS="-Wno-error" -j$(nproc)
+sudo make install
+
+# Copy configuration templates & sounds
+sudo make samples
+sudo mkdir -p /usr/local/freeswitch/share/freeswitch/sounds/music
+sudo make sounds-install
+sudo make moh-install
+sudo ldconfig</code></pre>
+
+                <h4>5. Compile and Enable Audio Format Modules</h4>
+                <p>To play synthesized text-to-speech (TTS) responses back to the caller over ESL, FreeSWITCH requires format modules to read the generated audio files. Build and load <code>mod_sndfile</code> (for WAV format support) and <code>mod_native_file</code> (for raw L16 PCM support):</p>
+                <pre><code># Build and install mod_sndfile (WAV file support)
+cd ~/freeswitch-build/freeswitch/src/mod/formats/mod_sndfile
+make
+sudo make install
+
+# Build and install mod_native_file (raw L16 PCM support)
+cd ~/freeswitch-build/freeswitch/src/mod/formats/mod_native_file
+make
+sudo make install
+
+# Enable the modules to auto-load on FreeSWITCH startup:
+# Edit /usr/local/freeswitch/conf/autoload_configs/modules.conf.xml and add:
+# &lt;load module="mod_sndfile"/&gt;
+# &lt;load module="mod_native_file"/&gt;</code></pre>
+                <h3>AWS / Firewall Inbound Rules Configuration</h3>
+                <p>If your FreeSWITCH instance is deployed on AWS EC2 (or another cloud provider behind a firewall/security group), you <strong>must</strong> configure the following inbound security rules to allow SIP signaling, web console connections, and RTP media traffic:</p>
+                <table class="table" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                    <thead>
+                        <tr style="background-color: #f2f2f2; border-bottom: 2px solid #ddd; text-align: left;">
+                            <th style="padding: 8px;">Type</th>
+                            <th style="padding: 8px;">Protocol</th>
+                            <th style="padding: 8px;">Port Range</th>
+                            <th style="padding: 8px;">Source</th>
+                            <th style="padding: 8px;">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 8px;">Custom UDP</td>
+                            <td style="padding: 8px;">UDP</td>
+                            <td style="padding: 8px;"><code>5060</code></td>
+                            <td style="padding: 8px;"><code>0.0.0.0/0</code></td>
+                            <td style="padding: 8px;">SIP Signaling (Internal Profile / Default SIP Port)</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 8px;">Custom UDP</td>
+                            <td style="padding: 8px;">UDP</td>
+                            <td style="padding: 8px;"><code>5080</code></td>
+                            <td style="padding: 8px;"><code>0.0.0.0/0</code></td>
+                            <td style="padding: 8px;">SIP Signaling (External Profile / Gateway Trunking)</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 8px;">Custom UDP</td>
+                            <td style="padding: 8px;">UDP</td>
+                            <td style="padding: 8px;"><code>16384 - 32768</code></td>
+                            <td style="padding: 8px;"><code>0.0.0.0/0</code></td>
+                            <td style="padding: 8px;">RTP Audio/Media Streams (FreeSWITCH media range)</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 8px;">SSH</td>
+                            <td style="padding: 8px;">TCP</td>
+                            <td style="padding: 8px;"><code>22</code></td>
+                            <td style="padding: 8px;"><code>0.0.0.0/0</code> or Your IP</td>
+                            <td style="padding: 8px;">SSH Remote Shell Access</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 8px;">HTTP</td>
+                            <td style="padding: 8px;">TCP</td>
+                            <td style="padding: 8px;"><code>80</code></td>
+                            <td style="padding: 8px;"><code>0.0.0.0/0</code></td>
+                            <td style="padding: 8px;">HTTP Web Traffic (Optional / Let's Encrypt)</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 8px;">HTTPS</td>
+                            <td style="padding: 8px;">TCP</td>
+                            <td style="padding: 8px;"><code>443</code></td>
+                            <td style="padding: 8px;"><code>0.0.0.0/0</code></td>
+                            <td style="padding: 8px;">HTTPS Web Traffic / Secure WebSockets</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div style="margin-top: 15px; margin-bottom: 25px; padding: 12px; background-color: #fff3cd; border: 1px solid #ffeeba; border-radius: 4px; color: #856404;">
+                    <strong>IMPORTANT:</strong> Make sure to open the RTP port range <code>16384-32768</code> on UDP. If these ports are blocked, your calls will connect but you will hear <strong>dead silence (no audio)</strong> because the audio packet streams (RTP) cannot traverse the firewall.
+                </div>
+
+                <h3>Dynamic IP Routing &amp; Variable Broadcast</h3>
+                <p>Because the Node.js server container is assigned a dynamic IP address on every redeploy, the plugin automatically broadcasts its container bridge IP to all online FreeSWITCH nodes via ESL on startup and during health checks. This injects a global variable called <code>ve_audio_ws_url</code> into FreeSWITCH dynamically.</p>
+                
+                <h3>Native Ubuntu Configuration Paths</h3>
+                <ul>
+                    <li><strong>Configuration Directory:</strong> <code>/usr/local/freeswitch/etc/freeswitch/</code></li>
+                    <li><strong>SIP Gateways:</strong> Place your gateway configurations (e.g. <code>twilio.xml</code>) in <code>/usr/local/freeswitch/etc/freeswitch/sip_profiles/external/</code>.</li>
+                    <li><strong>Dialplans:</strong> Place your dialplan configuration XML files in <code>/usr/local/freeswitch/etc/freeswitch/dialplan/public/</code>.</li>
+                </ul>
+
+                <h3>Applying Configuration Changes</h3>
+                <p>To apply your settings without restarting the FreeSWITCH service, execute these commands in your shell:</p>
+                <pre><code># Reload SIP profiles to detect new gateways
+fs_cli -x "sofia profile external rescan"
+
+# Reload XML Dialplans to detect new routing extensions
+fs_cli -x "reloadxml"</code></pre>
+
+                <h3>Example Dialplan (01_custom_voice_engine.xml)</h3>
+                <pre><code>&lt;extension name="ai_voice_agent"&gt;
+  &lt;condition field="destination_number" expression="^(\+?\d+)$"&gt;
+    &lt;action application="answer"/&gt;
+    &lt;action application="playback" data="silence_stream://500"/&gt;
+    &lt;action application="set" data="tts_engine=flite"/&gt;
+    &lt;action application="set" data="tts_voice=slt"/&gt;
+    
+    &lt;!-- Streams audio to the dynamic WebSocket URL resolved by the plugin --&gt;
+    &lt;action application="set" data="dummy_fork=${uuid_audio_fork(${uuid} start ${ve_audio_ws_url}/${uuid} mono 8k)}"/&gt;
+    &lt;action application="park"/&gt;
+  &lt;/condition&gt;
+&lt;/extension&gt;</code></pre>
+            </section>
+
+            <section id="memory">
+                <h2>Customer Memory System</h2>
+                <p>The customer memory service runs automatically after each call session completes. It generates a summary, determines outcome and sentiment, and extracts new customer facts (preferences, complains, tags) via LLM extraction. These facts are stored in <code>ve_customer_facts</code> and automatically injected into the system prompt of subsequent calls matching the customer's phone number.</p>
+            </section>
+
+            <section id="caching">
+                <h2>Semantic LLM caching</h2>
+                <p>By saving response embeddings in Redis, the engine can match new user transcripts against previously processed answers. If the cosine similarity matches above 0.92, the engine immediately yields the cached response, saving model latency and API costs.</p>
+            </section>
+
+            <section id="advanced-mechanics">
+                <h2>Advanced ESL &amp; Telephony Mechanics</h2>
+                <p>The stability of the bidirectional voice pipeline relies on key protocol improvements that handle low-level event parsing and connection synchronization correctly:</p>
+                
+                <h3>1. Content-Length Based ESL Parser</h3>
+                <p>To avoid packet loss or malformed data under heavy call volume, the Event Socket Library (ESL) interface does not rely on line splits. Instead, it extracts the <code>Content-Length</code> envelope header first, then extracts exactly that number of bytes from the socket buffer to parse the nested headers and payload bodies reliably.</p>
+
+                <h3>2. Event Subclass Subscriptions</h3>
+                <p>FreeSWITCH expects subclasses to follow the <code>CUSTOM</code> event name explicitly during subscription commands. The plugin establishes two separate event plain commands to avoid subscription failures:</p>
+                <pre><code># Subscribing to channel lifecycle events
+event plain CHANNEL_CREATE CHANNEL_ANSWER CHANNEL_HANGUP CHANNEL_DESTROY
+
+# Subscribing to custom media stream playbacks
+event plain CUSTOM mod_audio_fork::play_audio</code></pre>
+
+                <h3>3. Connection-Gated Greeting Playbacks</h3>
+                <p>To prevent welcome messages (e.g. <code>firstMessage</code>) from playing to a dead/establishing connection, the session pipeline initialization is deferred until the WebSocket connection from <code>mod_audio_fork</code> is fully established and the audio output callbacks are active. Furthermore, standard binary streams bypass JSON handshakes to prevent FreeSWITCH client protocol errors.</p>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting &amp; Gotchas</h2>
+                <p>Building real-time telephony pipelines involves strict integration rules. Below are the critical troubleshooting lessons learned to resolve common crashes, silence, or audio distortion issues:</p>
+                
+                <h3>1. FreeSWITCH Crash Loops (Segmentation Faults)</h3>
+                <p><strong>Symptom:</strong> FreeSWITCH crashes with a <code>segfault</code> core dump immediately when a call is answered or hung up.</p>
+                <p><strong>Cause:</strong> Attempting to destroy mutexes (<code>switch_mutex_destroy</code>) or conditional variables (<code>switch_thread_cond_destroy</code>) that were allocated out of FreeSWITCH's session memory pool <em>after</em> that session is already released and reclaimed.</p>
+                <p><strong>Fix:</strong> Ensure lifecycle release handlers in <code>lws_glue.cpp</code> check <code>!cb->session_released</code> before executing cleanup functions on session variables.</p>
+
+                <h3>2. ESM Runtime Errors (<code>require is not defined</code>)</h3>
+                <p><strong>Symptom:</strong> Node.js server throws <code>ReferenceError: require is not defined</code> in the <code>onAudioOut</code> handler.</p>
+                <p><strong>Cause:</strong> The backend is configured as an ES Module (<code>"type": "module"</code> in <code>package.json</code>). Using inline CommonJS <code>require("fs")</code> calls inside compiled or raw plugin scripts will fail at runtime.</p>
+                <p><strong>Fix:</strong> Use standard ES imports (<code>import fs from "fs";</code>) at the top of the file instead of inline <code>require()</code> statements.</p>
+
+                <h3>3. Silence on Caller Phone (Leg Selection)</h3>
+                <p><strong>Symptom:</strong> Node.js logs show successful broadcast commands, but the caller hears absolute silence on their phone speaker.</p>
+                <p><strong>Cause:</strong> Appending <code>aleg</code> to the broadcast command (<code>uuid_broadcast [uuid] [file] aleg</code>) on a <strong>parked</strong> channel. Parked channels are single-leg sessions and are not bridged yet, so the audio gets routed to a non-existent leg and discarded.</p>
+                <p><strong>Fix:</strong> Remove the <code>aleg</code> parameter and broadcast directly to the channel: <code>uuid_broadcast [uuid] [file]</code>.</p>
+
+                <h3>4. Invalid File Format Errors</h3>
+                <p><strong>Symptom:</strong> FreeSWITCH logs show <code>[ERR] switch_core_file.c:346 Invalid file format [wav]</code> or <code>Invalid file format [raw/l16]</code>.</p>
+                <p><strong>Cause:</strong> The FreeSWITCH installation is missing compiled format modules. By default, FreeSWITCH does not have the WAV parser (<code>mod_sndfile</code>) or raw headerless PCM reader (<code>mod_native_file</code>) compiled.</p>
+                <p><strong>Fix:</strong> Navigate to the source folders on the VM and build them:
+                <pre><code># Install WAV Support:
+cd ~/freeswitch-build/freeswitch/src/mod/formats/mod_sndfile
+make && sudo make install
+
+# Install Raw PCM Support:
+cd ~/freeswitch-build/freeswitch/src/mod/formats/mod_native_file
+make && sudo make install</code></pre>
+                Then, load them in FreeSWITCH using <code>load mod_sndfile</code> / <code>load mod_native_file</code>.</p>
+
+                <h3>5. Metallic Echo / Screeching Distortion</h3>
+                <p><strong>Symptom:</strong> The caller hears loud screeching digital static or a distorted metallic echo, but the recording WAV file sounds perfectly clear.</p>
+                <p><strong>Cause:</strong> Byte-order (endianness) mismatch. Standard raw L16 audio is Big-Endian in telephony, but generated Node.js/Deepgram buffers are Little-Endian. Playing Little-Endian files directly as L16 swaps every 16-bit byte, causing static.</p>
+                <p><strong>Fix:</strong> Always use standard <code>.wav</code> files with headers (since WAV headers specify sample rate and Little-Endian format automatically), or perform a <code>buffer.swap16()</code> conversion in Node.js before saving raw L16 streams.</p>
+            </section>
+
+            <section id="api-reference">
+                <h2>API Reference</h2>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/voice-engine/config</span>
+                    <p>Retrieve current tenant provider credentials (masked).</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-put">PUT</span>
+                    <span class="endpoint-path">/api/voice-engine/config</span>
+                    <p>Update tenant provider configurations for STT, LLM, and TTS.</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/voice-engine/agents</span>
+                    <p>Create a new voice agent with prompt instructions and behavioral rules.</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/voice-engine/calls</span>
+                    <p>Fetch call logs, transcripts, usage metrics, and sentiment analyses.</p>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 {{app_name}}. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

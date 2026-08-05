@@ -1,0 +1,72 @@
+# ============================================================
+# FreeSWITCH with mod_audio_fork
+# For AI Voice Engine Plugin
+# ============================================================
+FROM debian:bookworm-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git ca-certificates wget \
+    autoconf automake libtool m4 pkg-config \
+    libssl-dev libedit-dev libsqlite3-dev libcurl4-openssl-dev \
+    libspeex-dev libspeexdsp-dev libopus-dev libsndfile1-dev \
+    liblua5.2-dev libpcre3-dev uuid-dev zlib1g-dev \
+    libjpeg-dev libpng-dev libtiff-dev \
+    libwebsockets-dev \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build FreeSWITCH from source with mod_audio_fork
+WORKDIR /usr/src
+RUN git clone --depth 1 -b v1.10.12 https://github.com/signalwire/freeswitch.git
+
+WORKDIR /usr/src/freeswitch
+
+# Clone and add mod_audio_fork
+RUN git clone --depth 1 https://github.com/drachtio/drachtio-freeswitch-modules.git /usr/src/drachtio-modules && \
+    cp -r /usr/src/drachtio-modules/modules/mod_audio_fork src/mod/applications/mod_audio_fork && \
+    sed -i 's/#applications\/mod_audio_fork/applications\/mod_audio_fork/' modules.conf || echo "applications/mod_audio_fork" >> modules.conf
+
+# Bootstrap, Configure and Build
+RUN ./bootstrap.sh -j
+RUN ./configure --prefix=/usr/local/freeswitch --enable-core-odbc-support
+RUN make -j$(nproc)
+RUN make install
+
+# ── Production Image ──────────────────────────────────────
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl3 libedit2 libsqlite3-0 libcurl4 \
+    libspeex1 libspeexdsp1 libopus0 libsndfile1 \
+    liblua5.2-0 libpcre3 uuid-runtime curl \
+    libwebsockets17 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/freeswitch /usr/local/freeswitch
+
+# Create freeswitch user
+RUN groupadd -r freeswitch && useradd -r -g freeswitch freeswitch && \
+    chown -R freeswitch:freeswitch /usr/local/freeswitch
+
+ENV PATH="/usr/local/freeswitch/bin:${PATH}"
+
+# Copy custom configs
+COPY freeswitch-configs/ /usr/local/freeswitch/conf/
+
+# SIP ports
+EXPOSE 5060/udp 5060/tcp 5061/tcp
+# ESL port
+EXPOSE 8021/tcp
+# RTP ports
+EXPOSE 16384-32768/udp
+# WebSocket for mod_audio_fork
+EXPOSE 8089/tcp
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD fs_cli -x "status" | grep -q "UP" || exit 1
+
+USER freeswitch
+WORKDIR /usr/local/freeswitch
+
+CMD ["freeswitch", "-nonat", "-nc"]

@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REST API Plugin - Documentation | AgentLabs</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-light: #818cf8;
+            --primary-dark: #4f46e5;
+            --secondary: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1e293b;
+            --gray: #64748b;
+            --light: #f1f5f9;
+            --white: #ffffff;
+            --border: #e2e8f0;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background: var(--white);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        
+        /* Header */
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: var(--white);
+            padding: 60px 0;
+        }
+        
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+        }
+        
+        header p {
+            font-size: 1.2rem;
+            color: #ffffff;
+            max-width: 700px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin-right: 8px;
+            margin-top: 16px;
+        }
+        
+        /* Navigation */
+        nav {
+            background: var(--white);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 32px;
+            padding: 16px 0;
+            overflow-x: auto;
+        }
+        
+        nav a {
+            color: var(--gray);
+            text-decoration: none;
+            font-weight: 500;
+            white-space: nowrap;
+            transition: color 0.2s;
+        }
+        
+        nav a:hover {
+            color: var(--primary);
+        }
+        
+        /* Main Content */
+        main {
+            padding: 48px 0;
+        }
+        
+        section {
+            margin-bottom: 64px;
+        }
+        
+        h2 {
+            font-size: 1.75rem;
+            color: var(--dark);
+            margin-bottom: 24px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--primary);
+        }
+        
+        h3 {
+            font-size: 1.25rem;
+            color: var(--dark);
+            margin: 32px 0 16px;
+        }
+        
+        h4 {
+            font-size: 1rem;
+            color: var(--gray);
+            margin: 24px 0 12px;
+        }
+        
+        p {
+            margin-bottom: 16px;
+            color: var(--gray);
+        }
+        
+        /* Quick Start Box */
+        .quick-start {
+            background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+            border: 2px solid var(--secondary);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 32px 0;
+        }
+        
+        .quick-start h3 {
+            color: var(--secondary);
+            margin-top: 0;
+            font-size: 1.5rem;
+        }
+        
+        .quick-start ol {
+            margin-left: 24px;
+        }
+        
+        .quick-start li {
+            margin-bottom: 12px;
+            color: var(--dark);
+        }
+        
+        /* Cards */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin: 24px 0;
+        }
+        
+        .card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            transition: box-shadow 0.2s, transform 0.2s;
+        }
+        
+        .card:hover {
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--light);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+        
+        .card h4 {
+            color: var(--dark);
+            margin: 0 0 8px;
+        }
+        
+        .card p {
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        
+        /* Code Blocks */
+        pre {
+            background: var(--dark);
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 16px 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        code {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: var(--light);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        pre code {
+            background: none;
+            padding: 0;
+        }
+        
+        .code-comment {
+            color: #6b7280;
+        }
+        
+        .code-string {
+            color: #a5d6ff;
+        }
+        
+        .code-keyword {
+            color: #ff7b72;
+        }
+        
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        th {
+            background: var(--light);
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        tr:hover td {
+            background: #f8fafc;
+        }
+        
+        /* Alert Boxes */
+        .alert {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 24px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .alert-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        
+        .alert-info {
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .alert-warning {
+            background: #fffbeb;
+            border-left: 4px solid var(--warning);
+        }
+        
+        .alert-success {
+            background: #f0fdf4;
+            border-left: 4px solid var(--secondary);
+        }
+        
+        .alert-danger {
+            background: #fef2f2;
+            border-left: 4px solid var(--danger);
+        }
+        
+        /* Steps */
+        .steps {
+            counter-reset: step;
+            margin: 24px 0;
+        }
+        
+        .step {
+            position: relative;
+            padding-left: 60px;
+            padding-bottom: 32px;
+            border-left: 2px solid var(--border);
+            margin-left: 20px;
+        }
+        
+        .step:last-child {
+            border-left: none;
+            padding-bottom: 0;
+        }
+        
+        .step::before {
+            counter-increment: step;
+            content: counter(step);
+            position: absolute;
+            left: -21px;
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            color: var(--white);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        
+        .step h4 {
+            margin-top: 0;
+            color: var(--dark);
+        }
+        
+        /* API Endpoint */
+        .endpoint {
+            background: var(--light);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 24px 0;
+        }
+        
+        .endpoint-method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.75rem;
+            margin-right: 12px;
+        }
+        
+        .method-get { background: #dbeafe; color: #1d4ed8; }
+        .method-post { background: #dcfce7; color: #16a34a; }
+        .method-put { background: #fef3c7; color: #d97706; }
+        .method-delete { background: #fee2e2; color: #dc2626; }
+        
+        .endpoint-path {
+            font-family: monospace;
+            font-size: 1rem;
+            color: var(--dark);
+        }
+        
+        /* Footer */
+        footer {
+            background: var(--dark);
+            color: var(--white);
+            padding: 48px 0;
+            text-align: center;
+        }
+        
+        footer p {
+            color: rgba(255,255,255,0.7);
+        }
+        
+        /* Print Styles */
+        @media print {
+            header { padding: 30px 0; }
+            nav { display: none; }
+            .card:hover { transform: none; box-shadow: none; }
+            pre { white-space: pre-wrap; }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            header h1 { font-size: 1.75rem; }
+            nav ul { gap: 16px; }
+            .step { padding-left: 48px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>REST API Plugin</h1>
+            <p>Connect your external systems to AgentLabs with a powerful, secure REST API. Trigger calls, manage campaigns, and receive real-time webhooks programmatically.</p>
+            <span class="badge">Version 2.0.0</span>
+            <span class="badge">AgentLabs Compatible</span>
+        </div>
+    </header>
+    
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="#quick-start">Quick Start</a></li>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#installation">Installation</a></li>
+                <li><a href="#authentication">Authentication</a></li>
+                <li><a href="#api-reference">API Reference</a></li>
+                <li><a href="#examples">Examples</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+                <li><a href="#changelog">Changelog</a></li>
+            </ul>
+        </div>
+    </nav>
+    
+    <main>
+        <div class="container">
+            <!-- Quick Start -->
+            <section id="quick-start">
+                <h2>Quick Start Guide</h2>
+                <p>Get up and running with the REST API Plugin in just 5 minutes. Follow these simple steps:</p>
+                
+                <div class="quick-start">
+                    <h3>5-Minute Setup</h3>
+                    <ol>
+                        <li><strong>Copy the plugin folder</strong> to your AgentLabs <code>plugins/</code> directory</li>
+                        <li><strong>Run the database migration:</strong> <code>npm run db:push</code></li>
+                        <li><strong>Restart your AgentLabs application:</strong> <code>pm2 restart agentlabs</code></li>
+                        <li><strong>Create an API key:</strong> Go to Settings &rarr; Developer Access &rarr; Create API Key</li>
+                        <li><strong>Make your first API call:</strong> See the example below</li>
+                    </ol>
+                </div>
+                
+                <h3>Your First API Call</h3>
+                <p>Once you have your API key, you can trigger a call with a simple HTTP request:</p>
+                
+<pre>
+<span class="code-comment"># Trigger an outbound call</span>
+curl -X POST https://your-domain.com/api/v1/calls \
+  -H "Authorization: Bearer agl_sk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentId": "your-agent-id",
+    "toNumber": "+14155551234"
+  }'
+</pre>
+                
+                <div class="alert alert-success">
+                    <span class="alert-icon">&#10004;</span>
+                    <div>
+                        <strong>That's it!</strong> Your API is now ready to use. Continue reading for detailed documentation on all available endpoints.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Features -->
+            <section id="features">
+                <h2>Features</h2>
+                <p>The REST API Plugin provides everything you need to integrate AgentLabs with your existing systems.</p>
+                
+                <div class="card-grid">
+                    <div class="card">
+                        <div class="card-icon">&#128273;</div>
+                        <h4>Secure API Keys</h4>
+                        <p>Industry-standard API key authentication with bcrypt-hashed storage and optional IP whitelisting.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128222;</div>
+                        <h4>Calls API</h4>
+                        <p>Trigger outbound calls, view call history, access transcripts and recordings programmatically.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128227;</div>
+                        <h4>Campaigns API</h4>
+                        <p>Create bulk calling campaigns, add contacts, start/pause operations from your system.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#129302;</div>
+                        <h4>Agents API</h4>
+                        <p>List and manage your AI voice agents, export and import conversation flows.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128101;</div>
+                        <h4>Contacts API</h4>
+                        <p>Full CRUD operations for your CRM contacts with bulk import support.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128276;</div>
+                        <h4>Webhooks</h4>
+                        <p>Subscribe to real-time events and receive notifications when calls complete.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#9889;</div>
+                        <h4>Rate Limiting</h4>
+                        <p>Built-in rate limiting to prevent abuse with clear headers showing your limits.</p>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">&#128209;</div>
+                        <h4>Interactive Docs</h4>
+                        <p>Swagger UI playground to test API endpoints directly in your browser.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Installation -->
+            <section id="installation">
+                <h2>Installation</h2>
+                <p>Choose your preferred installation method. The Admin UI installer is recommended for most users.</p>
+                
+                <h3>Requirements</h3>
+                <ul>
+                    <li>AgentLabs v4.0.0 or higher</li>
+                    <li>Node.js 18 or higher</li>
+                    <li>PostgreSQL 14 or higher</li>
+                    <li>Admin access to your AgentLabs installation</li>
+                </ul>
+                
+                <h3>Method 1: Admin UI Installer (Recommended)</h3>
+                <div class="alert alert-success">
+                    <span class="alert-icon">&#9989;</span>
+                    <div>
+                        <strong>Easiest Method</strong> - Upload the plugin ZIP file directly from your browser. Database migrations run automatically.
+                    </div>
+                </div>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Open Plugin Installer</h4>
+                        <p>Log in as an administrator and go to <strong>Admin Panel</strong> &rarr; <strong>Settings</strong> &rarr; <strong>Plugins</strong> tab.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Upload Plugin ZIP</h4>
+                        <p>Click <strong>"Upload Plugin"</strong> and select the <code>AgentLabs-RestAPI-Plugin-v2.0.0.zip</code> file. The installer validates the manifest, extracts files, and runs database migrations automatically.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Restart Application</h4>
+                        <p>Restart your AgentLabs server to load the plugin:</p>
+<pre>
+pm2 restart agentlabs
+</pre>
+                    </div>
+                    <div class="step">
+                        <h4>Verify Installation</h4>
+                        <p>Check the health endpoint:</p>
+<pre>
+curl https://your-domain.com/api/plugins/health
+
+<span class="code-comment"># Expected: REST API shows as "installed" with all tables "ok"</span>
+</pre>
+                        <p>You can also visit <code>https://your-domain.com/api/docs</code> to see the interactive API documentation.</p>
+                    </div>
+                </div>
+                
+                <h3>Method 2: Manual Installation (SSH)</h3>
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#128161;</span>
+                    <div>
+                        <strong>For advanced users</strong> who prefer command-line installation or need to customize the process.
+                    </div>
+                </div>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Extract Plugin Files</h4>
+                        <p>Upload and extract the plugin ZIP on your server:</p>
+<pre>
+cd /path/to/agentlabs
+unzip AgentLabs-RestAPI-Plugin-v2.0.0.zip -d plugins/
+</pre>
+                    </div>
+                    <div class="step">
+                        <h4>Run Database Migration</h4>
+                        <p>Execute the SQL migration to create the required tables:</p>
+<pre>
+psql $DATABASE_URL -f plugins/rest-api/migrations/001_api_tables.sql
+</pre>
+                        <p>This creates the following tables:</p>
+                        <ul>
+                            <li><code>api_keys</code> - API key credentials, scopes, rate limits, IP whitelist</li>
+                            <li><code>api_audit_logs</code> - Request audit trail with method, path, status, response time</li>
+                            <li><code>api_rate_limits</code> - Sliding window rate limit tracking per API key</li>
+                        </ul>
+                    </div>
+                    <div class="step">
+                        <h4>Restart Application</h4>
+                        <p>Restart your AgentLabs server to load the plugin:</p>
+<pre>
+<span class="code-comment"># Production</span>
+pm2 restart agentlabs
+
+<span class="code-comment"># Development</span>
+npm run dev
+</pre>
+                    </div>
+                    <div class="step">
+                        <h4>Verify Installation</h4>
+                        <p>Check the health endpoint:</p>
+<pre>
+<span class="code-comment"># Check health</span>
+curl https://your-domain.com/api/plugins/health
+
+<span class="code-comment"># Check API docs page</span>
+curl https://your-domain.com/api/docs
+</pre>
+                    </div>
+                </div>
+                
+                <h3>Upgrading from Previous Versions</h3>
+                <div class="alert alert-warning">
+                    <span class="alert-icon">&#9888;</span>
+                    <div>
+                        <strong>Upgrading?</strong> If you already have the REST API plugin installed, simply upload the new ZIP via Admin UI or replace the files manually. Existing API keys, audit logs, and rate limits will be preserved.
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Authentication -->
+            <section id="authentication">
+                <h2>Authentication</h2>
+                <p>All API requests require authentication using an API key. Here's how to get started:</p>
+                
+                <h3>Creating an API Key</h3>
+                <div class="steps">
+                    <div class="step">
+                        <h4>Log in to AgentLabs</h4>
+                        <p>Log in to your AgentLabs account as a regular user.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Go to Developer Settings</h4>
+                        <p>Navigate to <strong>Settings</strong> &rarr; <strong>Developer Access</strong> tab.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Create New API Key</h4>
+                        <p>Click <strong>"Create API Key"</strong>, give it a name (e.g., "Production Integration"), and select the permission scopes you need.</p>
+                    </div>
+                    <div class="step">
+                        <h4>Copy Your Key</h4>
+                        <p>Your API key will be displayed <strong>only once</strong>. Copy it immediately and store it securely.</p>
+                    </div>
+                </div>
+                
+                <div class="alert alert-warning">
+                    <span class="alert-icon">&#9888;</span>
+                    <div>
+                        <strong>Important:</strong> Your API key is shown only once when created. If you lose it, you'll need to create a new one.
+                    </div>
+                </div>
+                
+                <h3>Using Your API Key</h3>
+                <p>Include your API key in every request using one of these methods:</p>
+                
+                <h4>Option 1: Authorization Header (Recommended)</h4>
+<pre>
+curl -H "Authorization: Bearer agl_sk_YOUR_API_KEY" \
+     https://your-domain.com/api/v1/calls
+</pre>
+                
+                <h4>Option 2: X-API-Key Header</h4>
+<pre>
+curl -H "X-API-Key: agl_sk_YOUR_API_KEY" \
+     https://your-domain.com/api/v1/calls
+</pre>
+                
+                <h3>Permission Scopes</h3>
+                <p>API keys can be granted specific permissions to limit their access:</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Scope</th>
+                            <th>Description</th>
+                            <th>Access</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>calls:read</code></td>
+                            <td>View call history and details</td>
+                            <td>Read</td>
+                        </tr>
+                        <tr>
+                            <td><code>calls:write</code></td>
+                            <td>Trigger and manage calls</td>
+                            <td>Write</td>
+                        </tr>
+                        <tr>
+                            <td><code>campaigns:read</code></td>
+                            <td>View campaigns</td>
+                            <td>Read</td>
+                        </tr>
+                        <tr>
+                            <td><code>campaigns:write</code></td>
+                            <td>Create and manage campaigns</td>
+                            <td>Write</td>
+                        </tr>
+                        <tr>
+                            <td><code>agents:read</code></td>
+                            <td>View agents</td>
+                            <td>Read</td>
+                        </tr>
+                        <tr>
+                            <td><code>agents:write</code></td>
+                            <td>Create and manage agents</td>
+                            <td>Write</td>
+                        </tr>
+                        <tr>
+                            <td><code>contacts:read</code></td>
+                            <td>View contacts</td>
+                            <td>Read</td>
+                        </tr>
+                        <tr>
+                            <td><code>contacts:write</code></td>
+                            <td>Create and manage contacts</td>
+                            <td>Write</td>
+                        </tr>
+                        <tr>
+                            <td><code>credits:read</code></td>
+                            <td>View credit balance and usage</td>
+                            <td>Read</td>
+                        </tr>
+                        <tr>
+                            <td><code>webhooks:read</code></td>
+                            <td>View webhook subscriptions</td>
+                            <td>Read</td>
+                        </tr>
+                        <tr>
+                            <td><code>webhooks:write</code></td>
+                            <td>Manage webhook subscriptions</td>
+                            <td>Write</td>
+                        </tr>
+                        <tr>
+                            <td><code>analytics:read</code></td>
+                            <td>View analytics data</td>
+                            <td>Read</td>
+                        </tr>
+                        <tr>
+                            <td><code>admin</code></td>
+                            <td>Full administrative access</td>
+                            <td>Full</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+            
+            <!-- API Reference -->
+            <section id="api-reference">
+                <h2>API Reference</h2>
+                <p>All API endpoints are prefixed with <code>/api/v1</code>. For example: <code>https://your-domain.com/api/v1/calls</code></p>
+                
+                <div class="alert alert-info">
+                    <span class="alert-icon">&#128712;</span>
+                    <div>
+                        <strong>Interactive Documentation:</strong> Visit <code>/api/docs/playground</code> on your AgentLabs installation to test these endpoints interactively.
+                    </div>
+                </div>
+                
+                <h3>Calls</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/v1/calls</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Trigger a new outbound call</p>
+                </div>
+                
+                <h4>Request Body</h4>
+<pre>
+{
+  "agentId": "550e8400-e29b-41d4-a716-446655440000",
+  "toNumber": "+14155551234",
+  "fromNumber": "+14155559999",  <span class="code-comment">// Optional</span>
+  "engine": "twilio-openai",      <span class="code-comment">// Optional: elevenlabs, plivo, twilio-openai</span>
+  "metadata": {                   <span class="code-comment">// Optional: custom data</span>
+    "customerId": "C123"
+  }
+}
+</pre>
+                
+                <h4>Response</h4>
+<pre>
+{
+  "success": true,
+  "data": {
+    "callId": "550e8400-e29b-41d4-a716-446655440001",
+    "status": "queued",
+    "toNumber": "+14155551234",
+    "createdAt": "2024-01-01T00:00:00.000Z"
+  }
+}
+</pre>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/calls</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">List all calls with pagination</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/calls/:id</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Get details of a specific call including transcript and recording</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/v1/calls/:id/hangup</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Terminate an active call</p>
+                </div>
+                
+                <h3>Campaigns</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/campaigns</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">List all campaigns</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/v1/campaigns</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Create a new campaign</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/v1/campaigns/:id/start</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Start a campaign</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/v1/campaigns/:id/pause</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Pause a running campaign</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/v1/campaigns/:id/stop</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Stop a campaign permanently</p>
+                </div>
+                
+                <h3>Agents</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/agents</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">List all AI voice agents</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/agents/:id</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Get agent details</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/agents/:id/flow</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Export an agent's conversation flow</p>
+                </div>
+                
+                <h3>Contacts</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/contacts</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">List all contacts</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/v1/contacts</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Create a new contact</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/v1/contacts/bulk</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Import multiple contacts at once</p>
+                </div>
+                
+                <h3>Webhooks</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/webhooks</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">List webhook subscriptions</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-post">POST</span>
+                    <span class="endpoint-path">/api/v1/webhooks</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Create a new webhook subscription</p>
+                </div>
+                
+                <h3>Credits</h3>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/credits</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Get current credit balance</p>
+                </div>
+                
+                <div class="endpoint">
+                    <span class="endpoint-method method-get">GET</span>
+                    <span class="endpoint-path">/api/v1/credits/usage</span>
+                    <p style="margin-top: 12px; margin-bottom: 0;">Get credit usage history</p>
+                </div>
+            </section>
+            
+            <!-- Examples -->
+            <section id="examples">
+                <h2>Code Examples</h2>
+                <p>Here are some common integration examples to help you get started quickly.</p>
+                
+                <h3>JavaScript / Node.js</h3>
+<pre>
+<span class="code-keyword">const</span> axios = require('axios');
+
+<span class="code-keyword">const</span> API_KEY = 'agl_sk_YOUR_API_KEY';
+<span class="code-keyword">const</span> BASE_URL = 'https://your-domain.com/api/v1';
+
+<span class="code-comment">// Trigger a call</span>
+<span class="code-keyword">async function</span> triggerCall(agentId, phoneNumber) {
+  <span class="code-keyword">const</span> response = <span class="code-keyword">await</span> axios.post(
+    `${BASE_URL}/calls`,
+    {
+      agentId: agentId,
+      toNumber: phoneNumber
+    },
+    {
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+  
+  <span class="code-keyword">return</span> response.data;
+}
+
+<span class="code-comment">// Usage</span>
+triggerCall('agent-id-here', '+14155551234')
+  .then(result => console.log('Call triggered:', result))
+  .catch(error => console.error('Error:', error));
+</pre>
+                
+                <h3>Python</h3>
+<pre>
+<span class="code-keyword">import</span> requests
+
+API_KEY = 'agl_sk_YOUR_API_KEY'
+BASE_URL = 'https://your-domain.com/api/v1'
+
+<span class="code-keyword">def</span> trigger_call(agent_id, phone_number):
+    response = requests.post(
+        f'{BASE_URL}/calls',
+        json={
+            'agentId': agent_id,
+            'toNumber': phone_number
+        },
+        headers={
+            'Authorization': f'Bearer {API_KEY}',
+            'Content-Type': 'application/json'
+        }
+    )
+    <span class="code-keyword">return</span> response.json()
+
+<span class="code-comment"># Usage</span>
+result = trigger_call('agent-id-here', '+14155551234')
+print('Call triggered:', result)
+</pre>
+                
+                <h3>PHP</h3>
+<pre>
+&lt;?php
+
+$apiKey = 'agl_sk_YOUR_API_KEY';
+$baseUrl = 'https://your-domain.com/api/v1';
+
+<span class="code-keyword">function</span> triggerCall($agentId, $phoneNumber) {
+    <span class="code-keyword">global</span> $apiKey, $baseUrl;
+    
+    $ch = curl_init("$baseUrl/calls");
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+        'agentId' => $agentId,
+        'toNumber' => $phoneNumber
+    ]));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Authorization: Bearer $apiKey",
+        'Content-Type: application/json'
+    ]);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    
+    $response = curl_exec($ch);
+    curl_close($ch);
+    
+    <span class="code-keyword">return</span> json_decode($response, true);
+}
+
+<span class="code-comment">// Usage</span>
+$result = triggerCall('agent-id-here', '+14155551234');
+print_r($result);
+</pre>
+            </section>
+            
+            <!-- Troubleshooting -->
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+                <p>Common issues and their solutions:</p>
+                
+                <h3>401 Unauthorized</h3>
+                <div class="alert alert-danger">
+                    <span class="alert-icon">&#10060;</span>
+                    <div>
+                        <strong>Error:</strong> "Invalid or expired API key"
+                    </div>
+                </div>
+                <p><strong>Solutions:</strong></p>
+                <ul>
+                    <li>Verify your API key is correct and hasn't been revoked</li>
+                    <li>Check that you're using the <code>Authorization: Bearer</code> header format</li>
+                    <li>Ensure there are no extra spaces in your API key</li>
+                    <li>Create a new API key if the current one is compromised</li>
+                </ul>
+                
+                <h3>403 Forbidden</h3>
+                <div class="alert alert-danger">
+                    <span class="alert-icon">&#10060;</span>
+                    <div>
+                        <strong>Error:</strong> "Insufficient permissions for this endpoint"
+                    </div>
+                </div>
+                <p><strong>Solutions:</strong></p>
+                <ul>
+                    <li>Check that your API key has the required scope for the endpoint</li>
+                    <li>Create a new API key with the appropriate scopes</li>
+                    <li>For example, triggering calls requires the <code>calls:write</code> scope</li>
+                </ul>
+                
+                <h3>429 Too Many Requests</h3>
+                <div class="alert alert-warning">
+                    <span class="alert-icon">&#9888;</span>
+                    <div>
+                        <strong>Error:</strong> "Rate limit exceeded"
+                    </div>
+                </div>
+                <p><strong>Solutions:</strong></p>
+                <ul>
+                    <li>Implement exponential backoff in your code</li>
+                    <li>Check the <code>X-RateLimit-Reset</code> header to know when to retry</li>
+                    <li>Reduce the frequency of your API calls</li>
+                    <li>Contact support if you need higher rate limits</li>
+                </ul>
+                
+                <h3>Plugin Not Loading</h3>
+                <p>If the plugin doesn't appear after installation:</p>
+                <ul>
+                    <li>Verify the plugin folder is in the correct location: <code>plugins/rest-api/</code></li>
+                    <li>Check that <code>plugin.json</code> exists in the plugin folder</li>
+                    <li>Look at the server logs for any error messages</li>
+                    <li>Ensure database migrations have been run</li>
+                </ul>
+                
+                <h3>Need More Help?</h3>
+                <p>If you're still having issues:</p>
+                <ul>
+                    <li>Check the API documentation at <code>/api/docs</code></li>
+                    <li>Review the server logs for detailed error messages</li>
+                    <li>Contact AgentLabs support with your error details</li>
+                </ul>
+            </section>
+            
+            <section id="changelog">
+                <h2>Changelog</h2>
+                
+                <h3>v2.0.0 - February 2026</h3>
+                <h4>Added</h4>
+                <ul>
+                    <li><strong>Admin UI Plugin Installer</strong> - Upload plugin ZIP files directly from Admin Panel &rarr; Settings &rarr; Plugins. Automatic manifest validation, file extraction, and database migration execution.</li>
+                    <li><strong>Plugin installer security</strong> - ZIP path traversal protection, manifest validation, and migration path checks.</li>
+                </ul>
+                <h4>Changed</h4>
+                <ul>
+                    <li><strong>Build system modernized</strong> - Per-file ESM compilation with esbuild. Module resolution works in both development and production environments.</li>
+                    <li><strong>Enhanced API documentation UI</strong> - Improved dark mode support and code examples.</li>
+                </ul>
+                <h4>Security</h4>
+                <ul>
+                    <li>Plugin installer includes ZIP path traversal protection.</li>
+                    <li>API key validation improvements with better error messages.</li>
+                </ul>
+                
+                <h3>v1.1.0 - December 2024</h3>
+                <h4>Added</h4>
+                <ul>
+                    <li>Dynamic loading with proper cleanup on uninstall</li>
+                    <li>Conditional UI: Developer tab and API Keys tab only appear when plugin is installed</li>
+                    <li>Dedicated build script for independent plugin builds</li>
+                    <li>ESM/CJS compatibility for development and production</li>
+                </ul>
+                
+                <h3>v1.0.0 - November 2024</h3>
+                <h4>Initial Release</h4>
+                <ul>
+                    <li>API key management with customizable prefixes and scopes</li>
+                    <li>REST endpoints for Calls, Campaigns, Agents, Contacts, Credits, Analytics, and Webhooks</li>
+                    <li>Interactive Swagger UI and Redoc documentation</li>
+                    <li>HMAC-SHA256 request signing and webhook signature verification</li>
+                    <li>Rate limiting per API key with configurable limits</li>
+                    <li>Audit logging for all API requests</li>
+                    <li>IP allowlisting support</li>
+                </ul>
+            </section>
+        </div>
+    </main>
+    
+    <footer>
+        <div class="container">
+            <p><strong>REST API Plugin for AgentLabs</strong></p>
+            <p>Version 2.0.0 | &copy; 2026 AgentLabs. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

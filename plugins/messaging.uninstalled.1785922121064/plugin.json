@@ -1,0 +1,124 @@
+{
+  "name": "messaging",
+  "displayName": "Messaging Plugin",
+  "version": "1.0.3",
+  "description": "Email and WhatsApp messaging integration for AI agents. Send emails via SMTP and WhatsApp messages via WhatsWay API during or after calls.",
+  "author": "AgentLabs",
+  "license": "Commercial",
+  "homepage": "https://agentlabs.io/plugins/messaging",
+  "compatibility": {
+    "agentlabs": ">=1.0.0",
+    "node": ">=18.0.0"
+  },
+  "entryPoint": "index.ts",
+  "registerFunction": "registerMessagingRoutes",
+  "database": {
+    "migrations": [
+      "migrations/001_messaging_tables.sql",
+      "migrations/002_meta_whatsapp.sql",
+      "migrations/003_whatsapp_conversations.sql",
+      "migrations/004_logs_content.sql",
+      "migrations/005_design_json_and_meta.sql"
+    ],
+    "tables": [
+      "user_email_templates",
+      "whatsway_settings",
+      "meta_whatsapp_settings",
+      "messaging_logs",
+      "whatsapp_conversations",
+      "whatsapp_messages",
+      "meta_whatsapp_admin_config",
+      "messaging_plugin_meta"
+    ]
+  },
+  "routes": {
+    "api": [
+      {
+        "path": "/api/messaging/email-templates",
+        "description": "User email template management"
+      },
+      {
+        "path": "/api/messaging/whatsway",
+        "description": "WhatsWay settings and templates"
+      },
+      {
+        "path": "/api/messaging/meta-whatsapp",
+        "description": "Meta WhatsApp Business API settings and templates"
+      },
+      {
+        "path": "/api/messaging/conversations",
+        "description": "WhatsApp conversation inbox (user auth)"
+      },
+      {
+        "path": "/api/messaging/logs",
+        "description": "Messaging logs"
+      },
+      {
+        "path": "/api/admin/messaging",
+        "description": "Admin messaging oversight"
+      },
+      {
+        "path": "/api/admin/messaging/whatsapp-config",
+        "description": "Admin WhatsApp provider configuration"
+      },
+      {
+        "path": "/api/webhooks/messaging",
+        "description": "ElevenLabs webhook handlers for messaging"
+      },
+      {
+        "path": "/api/webhooks/messaging/meta/webhook",
+        "description": "Meta WhatsApp Cloud API inbound webhook"
+      }
+    ]
+  },
+  "ui": {
+    "adminSettings": {
+      "menu": "messaging",
+      "label": "Messaging",
+      "component": "AdminMessagingPage",
+      "icon": "Mail"
+    },
+    "userSettings": {
+      "tab": "messaging",
+      "label": "Messaging",
+      "component": "UserMessagingPage"
+    },
+    "frontendBundle": "dist/bundle.js"
+  },
+  "permissions": {
+    "required": [
+      "session-auth-middleware",
+      "admin-auth-middleware"
+    ]
+  },
+  "features": [
+    "Email Template Management",
+    "SMTP Email Sending",
+    "WhatsWay WhatsApp Integration",
+    "Meta WhatsApp Business API (Cloud API)",
+    "WhatsApp Template Messages",
+    "WhatsApp Conversations Inbox",
+    "Meta Embedded Signup",
+    "AI WhatsApp Auto-Reply",
+    "Coexistence Support",
+    "Inbound Message Webhooks",
+    "Messaging Logs & Analytics",
+    "ElevenLabs Webhook Tools",
+    "Flow Builder Email Node",
+    "Flow Builder WhatsApp Node",
+    "Per-Agent Messaging Toggles",
+    "Admin Messaging Dashboard"
+  ],
+  "settings": {
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "label": "Enable Messaging Plugin",
+      "description": "Enable or disable the messaging plugin"
+    }
+  },
+  "environmentVariables": {
+    "required": [],
+    "optional": []
+  }
+}

@@ -1,0 +1,2752 @@
+openapi: 3.0.3
+info:
+  title: AgentLabs REST API
+  description: |
+    Welcome to the AgentLabs REST API documentation. This API enables you to programmatically automate AI-powered voice communications at scale.
+  version: 1.0.0
+
+servers:
+  - url: /api/v1
+    description: API v1
+
+tags:
+  - name: Introduction
+    description: |
+      ## Welcome to AgentLabs API
+
+      AgentLabs provides a powerful REST API for automating AI-powered voice calls. Whether you're building customer outreach, appointment reminders, lead qualification, or interactive voice applications, our API gives you full control.
+
+      <br /><br />
+
+      ---
+
+      <br />
+
+      ## Getting Started
+
+      <br />
+
+      ### Step 1: Generate an API Key
+
+      Navigate to your AgentLabs dashboard → Settings → Developer tab to create an API key. Keep this key secure—it provides full access to your account.
+
+      <br />
+
+      ### Step 2: Make Your First Request
+
+      Test your connection with a simple health check:
+
+      ```bash
+      curl -X GET "https://your-domain.com/api/v1/health"
+      ```
+
+      <br />
+
+      ### Step 3: Authenticate Requests
+
+      Include your API key in every request using one of these methods:
+
+      ```bash
+      # Option 1: Authorization header (recommended)
+      curl -H "Authorization: Bearer YOUR_API_KEY" ...
+
+      # Option 2: X-API-Key header
+      curl -H "X-API-Key: YOUR_API_KEY" ...
+      ```
+
+      <br /><br />
+
+      ---
+
+      <br />
+
+      ## Core Concepts
+
+      <br />
+
+      | Concept | Description |
+      |---------|-------------|
+      | **Agents** | AI voice agents that handle conversations. Two types: Flow (visual conversation builder) and Incoming (for inbound calls). |
+      | **Campaigns** | Bulk calling operations targeting multiple contacts with the same agent. |
+      | **Calls** | Individual voice call records with transcripts, recordings, and analytics. |
+      | **Contacts** | Your CRM leads with phone numbers, custom fields, and AI-enriched data. |
+      | **Credits** | Billing units where 1 credit = 1 minute of call time. |
+      | **Webhooks** | Real-time event notifications delivered to your endpoints. |
+
+      <br /><br />
+
+      ---
+
+      <br />
+
+      ## Telephony Engines
+
+      AgentLabs supports three telephony engines for different use cases:
+
+      <br />
+
+      | Engine | AI Provider | Best For |
+      |--------|-------------|----------|
+      | `elevenlabs` | ElevenLabs Conversational AI | High-quality voices, 29 languages |
+      | `plivo` | OpenAI Realtime API | India and APAC regions |
+      | `twilio-openai` | OpenAI Realtime API | Global coverage, reliable routing |
+
+      <br /><br />
+
+      ---
+
+      <br />
+
+      ## Authentication
+
+      All API endpoints (except `/health`) require authentication. Include your API key in every request:
+
+      <br />
+
+      - **Authorization Header**: `Authorization: Bearer YOUR_API_KEY`
+      - **X-API-Key Header**: `X-API-Key: YOUR_API_KEY`
+
+      <br />
+
+      API keys have scoped permissions. Ensure your key has the required scopes for the endpoints you're accessing.
+
+      <br /><br />
+
+      ---
+
+      <br />
+
+      ## Rate Limiting
+
+      Requests are rate-limited based on your subscription plan:
+
+      <br />
+
+      | Plan | Limit |
+      |------|-------|
+      | Free | 60 requests/minute |
+      | Pro | 300 requests/minute |
+      | Enterprise | 1000 requests/minute |
+
+      <br />
+
+      **Rate limit headers in responses:**
+
+      - `X-RateLimit-Limit` — Maximum requests per window
+      - `X-RateLimit-Remaining` — Remaining requests
+      - `X-RateLimit-Reset` — Unix timestamp when window resets
+
+      <br /><br />
+
+      ---
+
+      <br />
+
+      ## Response Format
+
+      <br />
+
+      ### Success Response
+
+      ```json
+      {
+        "success": true,
+        "data": { ... },
+        "meta": {
+          "requestId": "uuid",
+          "timestamp": "2024-01-01T00:00:00.000Z"
+        }
+      }
+      ```
+
+      <br />
+
+      ### Error Response
+
+      ```json
+      {
+        "success": false,
+        "error": {
+          "code": "ERROR_CODE",
+          "message": "Human readable message",
+          "details": { ... }
+        },
+        "meta": { ... }
+      }
+      ```
+
+      <br /><br />
+
+      ---
+
+      <br />
+
+      ## Common Error Codes
+
+      <br />
+
+      | Code | HTTP Status | Description |
+      |------|-------------|-------------|
+      | `VALIDATION_ERROR` | 400 | Invalid request parameters |
+      | `UNAUTHORIZED` | 401 | Missing or invalid API key |
+      | `FORBIDDEN` | 403 | Insufficient permissions |
+      | `NOT_FOUND` | 404 | Resource not found |
+      | `INSUFFICIENT_CREDITS` | 402 | Not enough credits |
+      | `RATE_LIMIT_EXCEEDED` | 429 | Too many requests |
+
+      <br />
+      
+  - name: Calls
+    description: |
+      ## Voice Call Management
+      
+      The Calls API allows you to trigger outbound calls, monitor active calls, and retrieve call history with transcripts and recordings.
+      
+      **Common Use Cases:**
+      - Trigger individual calls to leads
+      - Check call status and duration
+      - Retrieve transcripts and AI summaries
+      - Hang up active calls
+      
+      **Credit Usage:** Each call consumes credits based on duration (1 credit = 1 minute).
+      
+  - name: Campaigns
+    description: |
+      ## Bulk Calling Campaigns
+      
+      Campaigns enable you to call multiple contacts automatically using a single AI agent. Perfect for outreach, reminders, and surveys.
+      
+      **Campaign Lifecycle:**
+      1. Create a campaign (status: `draft`)
+      2. Add contacts to the campaign
+      3. Start the campaign (status: `running`)
+      4. Monitor progress or pause if needed
+      5. Campaign completes when all contacts are called
+      
+      **Features:**
+      - Schedule campaigns for specific times
+      - Set calling windows (e.g., 9 AM - 6 PM)
+      - Configure retry attempts for unanswered calls
+      - Limit concurrent calls
+      
+  - name: Agents
+    description: |
+      ## AI Voice Agents
+      
+      Agents are your AI-powered conversational assistants. They handle voice interactions using advanced conversation flows.
+      
+      **Agent Types:**
+      
+      | Type | Description |
+      |------|-------------|
+      | `flow` | Visual conversation builder with decision trees and LLM-powered responses |
+      | `incoming` | Handles inbound calls on purchased phone numbers |
+      
+      **Note:** Agents must be active (`isActive: true`) before they can be used in calls or campaigns.
+      
+  - name: Contacts
+    description: |
+      ## CRM Contact Management
+      
+      Manage your leads and contacts with full CRUD operations. Contacts can be enriched with AI-generated summaries and sentiment analysis after calls.
+      
+      **Features:**
+      - Store custom fields for personalization
+      - Tag contacts for segmentation
+      - Track lead stages through your funnel
+      - Bulk import up to 10,000 contacts at once
+      
+      **AI Enrichment:** After a call, contacts are automatically updated with:
+      - Conversation summary
+      - Sentiment analysis
+      - Lead score adjustments
+      
+  - name: Credits
+    description: |
+      ## Credit Balance & Usage
+      
+      Monitor your credit balance and usage history. Credits are consumed during calls at a rate of 1 credit per minute.
+      
+      **Understanding Credits:**
+      - Credits are deducted in real-time during calls
+      - Partial minutes are rounded up
+      - Campaigns pause automatically when credits run low
+      - View historical usage for budgeting
+      
+  - name: Analytics
+    description: |
+      ## Call & Campaign Analytics
+      
+      Access aggregated statistics and insights about your calling activity. Use this data to optimize campaigns and measure ROI.
+      
+      **Available Metrics:**
+      - Total calls and minutes
+      - Answer rates and outcomes
+      - Average call duration
+      - Campaign performance comparisons
+      - Daily/weekly/monthly trends
+      
+  - name: Webhooks
+    description: |
+      ## Real-Time Event Notifications
+      
+      Webhooks deliver real-time notifications to your server when events occur. Use them to sync data, trigger workflows, or build integrations.
+      
+      **Supported Events:**
+      - `call.started` — Call initiated
+      - `call.completed` — Call ended
+      - `call.failed` — Call failed
+      - `campaign.started` — Campaign began execution
+      - `campaign.completed` — Campaign finished
+      - `campaign.paused` — Campaign paused
+      
+      **Security:** All webhook payloads include an HMAC-SHA256 signature in the `X-Webhook-Signature` header for verification.
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Health Check
+      description: |
+        Verify the API is operational. This endpoint does not require authentication and is useful for monitoring and uptime checks.
+        
+        **Use Case:** Add this endpoint to your monitoring tools to detect API outages.
+      operationId: healthCheck
+      tags: [Introduction]
+      security: []
+      responses:
+        '200':
+          description: API is healthy and ready to accept requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /calls:
+    get:
+      summary: List Calls
+      description: |
+        Retrieve a paginated list of all calls made from your account. Results include calls from all telephony engines (ElevenLabs, Plivo, Twilio-OpenAI).
+        
+        **Tip:** Use the `page` and `pageSize` parameters to navigate through large result sets efficiently.
+        
+        **Required Scope:** `calls:read`
+      operationId: listCalls
+      tags: [Calls]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of calls with pagination metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Trigger Call
+      description: |
+        Initiate an outbound call using a specified AI agent. The call will be placed immediately unless scheduled for a future time.
+        
+        <br />
+        
+        **Prerequisites:**
+        - An active AI agent (flow or incoming type)
+        - Sufficient credits in your account
+        - An active phone number (or provide `fromNumber`)
+        
+        <br />
+        
+        **Telephony Engines:**
+        - `elevenlabs` — Best voice quality, 29 languages
+        - `plivo` — India/APAC optimized
+        - `twilio-openai` — Global coverage
+        
+        <br />
+        
+        **Required Scope:** `calls:write`
+      operationId: triggerCall
+      tags: [Calls]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TriggerCallRequest'
+            examples:
+              basic:
+                summary: Basic call
+                value:
+                  agentId: "550e8400-e29b-41d4-a716-446655440000"
+                  toNumber: "+14155551234"
+              withEngine:
+                summary: Specify engine
+                value:
+                  agentId: "550e8400-e29b-41d4-a716-446655440000"
+                  toNumber: "+14155551234"
+                  engine: "twilio-openai"
+                  fromNumber: "+14155559999"
+      responses:
+        '201':
+          description: Call initiated successfully. Returns call ID and initial status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriggerCallResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/InsufficientCredits'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /calls/{id}:
+    get:
+      summary: Get Call Details
+      description: |
+        Retrieve detailed information about a specific call including:
+        - Call status and duration
+        - Full conversation transcript
+        - AI-generated summary
+        - Sentiment analysis
+        - Recording URL (if available)
+        
+        <br />
+        
+        **Tip:** Poll this endpoint to track call progress. Status will transition from `queued` → `ringing` → `in-progress` → `completed`.
+        
+        <br />
+        
+        **Required Scope:** `calls:read`
+      operationId: getCall
+      tags: [Calls]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Complete call details with transcript and analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /calls/{id}/hangup:
+    post:
+      summary: Hangup Call
+      description: |
+        Terminate an active call immediately. Use this to end calls that are in progress.
+        
+        **Note:** This only works for calls with status `in-progress` or `ringing`. Completed or failed calls cannot be hung up.
+        
+        **Required Scope:** `calls:write`
+      operationId: hangupCall
+      tags: [Calls]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Hangup request accepted. Call will terminate shortly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HangupResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /campaigns:
+    get:
+      summary: List Campaigns
+      description: |
+        Retrieve all campaigns with their current status and progress metrics.
+        
+        <br />
+        
+        **Campaign Statuses:**
+        - `draft` — Created but not started
+        - `scheduled` — Waiting for scheduled start time
+        - `running` — Actively making calls
+        - `paused` — Temporarily stopped
+        - `completed` — All contacts processed
+        - `cancelled` — Permanently stopped
+        
+        <br />
+        
+        **Required Scope:** `campaigns:read`
+      operationId: listCampaigns
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of campaigns with progress metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create Campaign
+      description: |
+        Create a new bulk calling campaign with optional contacts CSV upload. The campaign starts in `draft` status and won't execute until you start it.
+        
+        <br />
+        
+        **Simplified Workflow:**
+        1. Create campaign with contacts CSV → 2. Start campaign
+        
+        <br />
+        
+        **Request Format:**
+        This endpoint accepts `multipart/form-data` to allow simultaneous campaign creation and contact import.
+        
+        <br />
+        
+        **Campaign Data Options:**
+        - Send as JSON string in `data` field, OR
+        - Send as individual form fields (name, agentId, etc.)
+        
+        <br />
+        
+        **CSV Upload (Optional):**
+        Include a `contacts` field with your CSV file. Recognized columns:
+        - `phone` or `phone_number` — Required
+        - `firstName`, `lastName`, `name`, `email`
+        - Any other columns become custom fields
+        
+        <br />
+        
+        **Configuration Options:**
+        - **Calling Windows:** Restrict calls to business hours
+        - **Concurrent Calls:** Control call volume (1-100)
+        - **Retry Logic:** Automatically retry unanswered calls
+        - **Scheduling:** Start immediately or at a future time
+        
+        <br />
+        
+        **Required Scope:** `campaigns:write`
+      operationId: createCampaign
+      tags: [Campaigns]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - name
+                - agentId
+              properties:
+                data:
+                  type: string
+                  description: Campaign data as JSON string (alternative to individual fields)
+                  example: '{"name": "Q1 Outreach", "agentId": "550e8400-e29b-41d4-a716-446655440000"}'
+                name:
+                  type: string
+                  description: Campaign name (use either this or data field)
+                  example: "Q1 Lead Outreach"
+                agentId:
+                  type: string
+                  format: uuid
+                  description: Agent to use for calls
+                phoneNumberId:
+                  type: string
+                  format: uuid
+                  description: Phone number to call from
+                engine:
+                  type: string
+                  enum: [elevenlabs, plivo, twilio-openai]
+                  description: Telephony engine
+                scheduledStartTime:
+                  type: string
+                  format: date-time
+                  description: When to start the campaign
+                timezone:
+                  type: string
+                  example: "America/New_York"
+                callWindowStart:
+                  type: string
+                  pattern: '^\d{2}:\d{2}$'
+                  example: "09:00"
+                callWindowEnd:
+                  type: string
+                  pattern: '^\d{2}:\d{2}$'
+                  example: "18:00"
+                maxConcurrentCalls:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  example: 10
+                contacts:
+                  type: string
+                  format: binary
+                  description: Optional CSV file with contacts
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCampaignRequest'
+            examples:
+              basic:
+                summary: Basic campaign (JSON)
+                value:
+                  name: "Q1 Lead Outreach"
+                  agentId: "550e8400-e29b-41d4-a716-446655440000"
+              scheduled:
+                summary: Scheduled campaign
+                value:
+                  name: "Appointment Reminders"
+                  agentId: "550e8400-e29b-41d4-a716-446655440000"
+                  scheduledStartTime: "2024-01-15T09:00:00Z"
+                  timezone: "America/New_York"
+                  callWindowStart: "09:00"
+                  callWindowEnd: "18:00"
+                  maxConcurrentCalls: 10
+      responses:
+        '201':
+          description: Campaign created with optional contact import results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/CampaignResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          contacts:
+                            type: object
+                            description: Present only if CSV was uploaded
+                            properties:
+                              fileName:
+                                type: string
+                              totalRows:
+                                type: integer
+                              contactsAdded:
+                                type: integer
+                              contactsSkipped:
+                                type: integer
+                              invalidRows:
+                                type: integer
+              example:
+                success: true
+                data:
+                  id: "550e8400-e29b-41d4-a716-446655440000"
+                  name: "Q1 Lead Outreach"
+                  status: "draft"
+                  agentId: "550e8400-e29b-41d4-a716-446655440001"
+                  contacts:
+                    fileName: "leads.csv"
+                    totalRows: 150
+                    contactsAdded: 145
+                    contactsSkipped: 3
+                    invalidRows: 2
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /campaigns/{id}:
+    get:
+      summary: Get Campaign Details
+      description: |
+        Retrieve detailed information about a campaign including:
+        - Current status and progress
+        - Contact counts (total, called, remaining)
+        - Schedule and timing information
+        - Configuration settings
+        
+        <br />
+        
+        **Required Scope:** `campaigns:read`
+      operationId: getCampaign
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Campaign details with progress metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /campaigns/{id}/contacts:
+    post:
+      summary: Add Campaign Contacts
+      description: |
+        Add contacts to a campaign's call list. You can add up to 10,000 contacts per request.
+        
+        <br />
+        
+        **Important:** Contacts can only be added when the campaign status is `draft` or `paused`. Running campaigns will reject new contacts.
+        
+        <br />
+        
+        **Contact Fields:**
+        - `phoneNumber` (required) — Phone number in E.164 format
+        - `firstName`, `lastName`, `email` — Optional contact info
+        - `customFields` — Key-value pairs for personalization in agent scripts
+        
+        <br />
+        
+        **Tip:** Use `customFields` to pass data like appointment times or account numbers that your agent can reference during the call.
+        
+        <br />
+        
+        **Required Scope:** `campaigns:write`
+      operationId: addCampaignContacts
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCampaignContactsRequest'
+            examples:
+              simple:
+                summary: Basic contacts
+                value:
+                  contacts:
+                    - phoneNumber: "+14155551234"
+                      firstName: "John"
+                      lastName: "Doe"
+                    - phoneNumber: "+14155555678"
+                      firstName: "Jane"
+                      lastName: "Smith"
+              withCustomFields:
+                summary: Contacts with custom fields
+                value:
+                  contacts:
+                    - phoneNumber: "+14155551234"
+                      firstName: "John"
+                      customFields:
+                        appointmentTime: "2:00 PM"
+                        doctorName: "Dr. Smith"
+      responses:
+        '201':
+          description: Contacts added with success/skip counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddContactsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /campaigns/{id}/contacts-upload:
+    post:
+      summary: Upload CSV Contacts
+      description: |
+        Upload a CSV file to add contacts to a campaign. This is the recommended method for bulk contact imports.
+        
+        <br />
+        
+        **CSV Format:**
+        The CSV must include a header row. Recognized columns:
+        - `phone` or `phone_number` — Required, contact phone number
+        - `firstName` or `first_name` — First name
+        - `lastName` or `last_name` — Last name  
+        - `name` — Full name (splits into first/last automatically)
+        - `email` — Email address
+        - Any other columns become custom fields
+        
+        <br />
+        
+        **ElevenLabs Format Support:**
+        Columns prefixed with `dynamic_data.` are automatically converted to custom fields.
+        
+        <br />
+        
+        **Example CSV:**
+        ```
+        phone,firstName,lastName,appointmentTime
+        +14155551234,John,Doe,2:00 PM
+        +14155555678,Jane,Smith,3:30 PM
+        ```
+        
+        <br />
+        
+        **Limits:**
+        - Maximum file size: 10MB
+        - Maximum contacts: 10,000 per upload
+        
+        <br />
+        
+        **Required Scope:** `campaigns:write`
+      operationId: uploadCampaignContacts
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV file containing contacts
+      responses:
+        '201':
+          description: CSV processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      campaignId:
+                        type: string
+                        format: uuid
+                      fileName:
+                        type: string
+                        example: "contacts.csv"
+                      totalRows:
+                        type: integer
+                        description: Total rows parsed from CSV
+                        example: 150
+                      contactsAdded:
+                        type: integer
+                        description: New contacts added
+                        example: 145
+                      contactsSkipped:
+                        type: integer
+                        description: Duplicate contacts skipped
+                        example: 3
+                      invalidRows:
+                        type: integer
+                        description: Rows with invalid phone numbers
+                        example: 2
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /campaigns/{id}/start:
+    post:
+      summary: Start Campaign
+      description: |
+        Begin executing a campaign. The system will start placing calls to contacts according to your configuration.
+        
+        <br />
+        
+        **Prerequisites:**
+        - Campaign must have at least one contact
+        - Sufficient credits for estimated calls
+        - Associated agent must be active
+        
+        <br />
+        
+        **Behavior:**
+        - Calls are placed respecting `maxConcurrentCalls` limit
+        - Calling windows are honored (no calls outside configured hours)
+        - Failed calls are retried based on `retryAttempts` setting
+        
+        <br />
+        
+        **Required Scope:** `campaigns:write`
+      operationId: startCampaign
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Campaign started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignActionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          $ref: '#/components/responses/InsufficientCredits'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /campaigns/{id}/pause:
+    post:
+      summary: Pause Campaign
+      description: |
+        Temporarily pause a running campaign. Active calls will complete, but no new calls will be initiated.
+        
+        <br />
+        
+        **Resume:** Use the Start Campaign endpoint to resume a paused campaign.
+        
+        <br />
+        
+        **Use Cases:**
+        - Credit running low
+        - Need to add more contacts
+        - Business hours ended
+        
+        <br />
+        
+        **Required Scope:** `campaigns:write`
+      operationId: pauseCampaign
+      tags: [Campaigns]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Campaign paused. Active calls will complete.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignActionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /agents:
+    get:
+      summary: List Agents
+      description: |
+        Retrieve all AI agents in your account. Each agent represents a configured voice assistant with its own personality, language, and behavior.
+        
+        <br />
+        
+        **Agent Status:**
+        - `isActive: true` — Agent is ready for calls
+        - `isActive: false` — Agent is disabled
+        
+        <br />
+        
+        **Required Scope:** `agents:read`
+      operationId: listAgents
+      tags: [Agents]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of agents with basic information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /agents/{id}:
+    get:
+      summary: Get Agent Details
+      description: |
+        Retrieve complete configuration for an agent including:
+        - System prompt and first message
+        - Voice and LLM settings
+        - Transfer configuration
+        - Language and personality settings
+        
+        <br />
+        
+        **Use Case:** Inspect agent settings before using in campaigns or calls.
+        
+        <br />
+        
+        **Required Scope:** `agents:read`
+      operationId: getAgent
+      tags: [Agents]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Complete agent configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agents/{id}/flow:
+    get:
+      summary: Export Agent Flow
+      description: |
+        Export the visual conversation flow for a Flow-type agent. Returns the complete flow structure including nodes, edges, and variables.
+        
+        <br />
+        
+        **Use Cases:**
+        - Backup agent configurations
+        - Clone flows to other agents
+        - Version control flow designs
+        - Share flows between accounts
+        
+        <br />
+        
+        **Note:** Only works for agents with `type: flow`. Incoming agents don't have exportable flows.
+        
+        <br />
+        
+        **Required Scope:** `agents:read`
+      operationId: exportAgentFlow
+      tags: [Agents]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Complete flow definition with nodes and edges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlowExportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: Import Agent Flow
+      description: |
+        Replace an agent's conversation flow with an imported definition. Use this to restore backups or deploy flows from templates.
+        
+        <br />
+        
+        **Warning:** This replaces the existing flow entirely. Export the current flow first if you want to preserve it.
+        
+        <br />
+        
+        **Flow Structure:**
+        - `nodes` — Array of flow nodes (message, question, condition, etc.)
+        - `edges` — Connections between nodes
+        - `variables` — Flow variables for data collection
+        
+        <br />
+        
+        **Required Scope:** `agents:write`
+      operationId: importAgentFlow
+      tags: [Agents]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlowImportRequest'
+      responses:
+        '200':
+          description: Flow imported and agent updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlowImportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /contacts:
+    get:
+      summary: List Contacts
+      description: |
+        Retrieve all contacts from your CRM. Contacts are enriched with AI-generated data after calls.
+        
+        <br />
+        
+        **Contact Data Includes:**
+        - Basic info (name, phone, email, company)
+        - Custom fields for personalization
+        - Tags for segmentation
+        - Lead stage and score
+        - AI summary and sentiment (post-call)
+        
+        <br />
+        
+        **Required Scope:** `contacts:read`
+      operationId: listContacts
+      tags: [Contacts]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: List of contacts with enriched data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create Contact
+      description: |
+        Add a new contact to your CRM. The phone number is required; all other fields are optional.
+        
+        <br />
+        
+        **Best Practices:**
+        - Use E.164 format for phone numbers (+1234567890)
+        - Add custom fields that your agents can reference
+        - Use tags for easy filtering and segmentation
+        
+        <br />
+        
+        **Required Scope:** `contacts:write`
+      operationId: createContact
+      tags: [Contacts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContactRequest'
+            examples:
+              basic:
+                summary: Basic contact
+                value:
+                  phone: "+14155551234"
+                  firstName: "John"
+                  lastName: "Doe"
+                  email: "john@example.com"
+              withCustomFields:
+                summary: Contact with custom fields
+                value:
+                  phone: "+14155551234"
+                  firstName: "John"
+                  company: "Acme Corp"
+                  tags: ["lead", "enterprise"]
+                  customFields:
+                    accountId: "ACC-12345"
+                    preferredTime: "morning"
+      responses:
+        '201':
+          description: Contact created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /contacts/{id}:
+    get:
+      summary: Get Contact Details
+      description: |
+        Retrieve complete information about a contact including call history and AI enrichment.
+        
+        <br />
+        
+        **AI Enrichment (after calls):**
+        - `aiSummary` — AI-generated summary of conversations
+        - `sentiment` — Detected sentiment (positive, neutral, negative)
+        - `leadScore` — Automatically calculated lead score
+        
+        <br />
+        
+        **Required Scope:** `contacts:read`
+      operationId: getContact
+      tags: [Contacts]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Complete contact details with AI enrichment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: Update Contact
+      description: |
+        Update contact information. Only include fields you want to change.
+        
+        <br />
+        
+        **Tip:** Update the `stage` field to move contacts through your sales funnel.
+        
+        <br />
+        
+        **Required Scope:** `contacts:write`
+      operationId: updateContact
+      tags: [Contacts]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateContactRequest'
+      responses:
+        '200':
+          description: Contact updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete Contact
+      description: |
+        Permanently delete a contact and all associated data.
+        
+        <br />
+        
+        **Warning:** This action cannot be undone. Call history remains but will no longer be linked to this contact.
+        
+        <br />
+        
+        **Required Scope:** `contacts:write`
+      operationId: deleteContact
+      tags: [Contacts]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Contact permanently deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /contacts/bulk-import:
+    post:
+      summary: Bulk Import Contacts
+      description: |
+        Import up to 10,000 contacts in a single request. Ideal for syncing from external CRMs or uploading lists.
+        
+        <br />
+        
+        **Behavior:**
+        - Duplicate phone numbers are skipped
+        - Invalid records are counted in `failed` response field
+        - Import is atomic — all succeed or detailed errors returned
+        
+        <br />
+        
+        **Performance Tip:** For very large imports, batch into multiple requests of 5,000 contacts each.
+        
+        <br />
+        
+        **Required Scope:** `contacts:write`
+      operationId: bulkImportContacts
+      tags: [Contacts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkImportRequest'
+      responses:
+        '201':
+          description: Import completed with success/failure counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkImportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /credits/balance:
+    get:
+      summary: Get Credit Balance
+      description: |
+        Check your current credit balance. Use this to verify you have sufficient credits before starting campaigns.
+        
+        <br />
+        
+        **Credit System:**
+        - 1 credit = 1 minute of call time
+        - Partial minutes are rounded up
+        - Balance updates in real-time during calls
+        
+        <br />
+        
+        **Required Scope:** `credits:read`
+      operationId: getCreditBalance
+      tags: [Credits]
+      responses:
+        '200':
+          description: Current credit balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditBalanceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /credits/usage:
+    get:
+      summary: Get Credit Usage
+      description: |
+        Retrieve credit usage history for budgeting and analysis. Shows daily usage breakdown.
+        
+        <br />
+        
+        **Use Cases:**
+        - Track spending over time
+        - Identify high-usage periods
+        - Plan credit purchases
+        - Generate billing reports
+        
+        <br />
+        
+        **Required Scope:** `credits:read`
+      operationId: getCreditUsage
+      tags: [Credits]
+      parameters:
+        - name: days
+          in: query
+          description: Number of days to include in the report (default 30, max 90)
+          schema:
+            type: integer
+            default: 30
+            minimum: 1
+            maximum: 90
+      responses:
+        '200':
+          description: Daily credit usage breakdown
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditUsageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /analytics/calls:
+    get:
+      summary: Get Call Analytics
+      description: |
+        Retrieve aggregated call statistics. Useful for dashboards and performance monitoring.
+        
+        <br />
+        
+        **Metrics Included:**
+        - Total calls and minutes
+        - Answer rate and average duration
+        - Outcome distribution (completed, failed, no-answer)
+        - Daily trends
+        
+        <br />
+        
+        **Required Scope:** `analytics:read`
+      operationId: getCallAnalytics
+      tags: [Analytics]
+      parameters:
+        - name: days
+          in: query
+          description: Number of days to analyze (default 30, max 90)
+          schema:
+            type: integer
+            default: 30
+            minimum: 1
+            maximum: 90
+      responses:
+        '200':
+          description: Call analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallAnalyticsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /analytics/campaigns:
+    get:
+      summary: Get Campaign Analytics
+      description: |
+        Retrieve performance analytics for all campaigns. Compare effectiveness across different campaigns.
+        
+        <br />
+        
+        **Metrics Per Campaign:**
+        - Total contacts and calls made
+        - Answer rate and completion rate
+        - Average call duration
+        - Cost (credits used)
+        
+        <br />
+        
+        **Required Scope:** `analytics:read`
+      operationId: getCampaignAnalytics
+      tags: [Analytics]
+      responses:
+        '200':
+          description: Performance metrics for all campaigns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignAnalyticsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /analytics/summary:
+    get:
+      summary: Get Analytics Summary
+      description: |
+        Get a high-level summary of all activity. Perfect for executive dashboards and quick status checks.
+        
+        <br />
+        
+        **Summary Includes:**
+        - Total calls, campaigns, and contacts
+        - Credit usage and balance
+        - Success rates and key metrics
+        - Comparison to previous period
+        
+        <br />
+        
+        **Required Scope:** `analytics:read`
+      operationId: getAnalyticsSummary
+      tags: [Analytics]
+      parameters:
+        - name: days
+          in: query
+          description: Time period to summarize (default 30 days)
+          schema:
+            type: integer
+            default: 30
+      responses:
+        '200':
+          description: High-level analytics summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /webhooks:
+    get:
+      summary: List Webhooks
+      description: |
+        Retrieve all webhook subscriptions. Each webhook listens for specific events and delivers payloads to your endpoint.
+        
+        <br />
+        
+        **Webhook Status:**
+        - `active` — Receiving events
+        - `inactive` — Paused, not receiving events
+        - `failed` — Too many delivery failures
+        
+        <br />
+        
+        **Required Scope:** `webhooks:read`
+      operationId: listWebhooks
+      tags: [Webhooks]
+      responses:
+        '200':
+          description: List of webhook subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create Webhook
+      description: |
+        Subscribe to events with a new webhook. Your endpoint will receive HTTP POST requests when events occur.
+        
+        <br />
+        
+        **Setup Requirements:**
+        - HTTPS endpoint (HTTP not allowed for security)
+        - Endpoint must respond with 2xx within 30 seconds
+        - Failed deliveries are retried with exponential backoff
+        
+        <br />
+        
+        **Signature Verification:**
+        Each payload includes an `X-Webhook-Signature` header with an HMAC-SHA256 signature. Verify this to ensure authenticity.
+        
+        <br />
+        
+        **Required Scope:** `webhooks:write`
+      operationId: createWebhook
+      tags: [Webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookRequest'
+            examples:
+              callEvents:
+                summary: Subscribe to call events
+                value:
+                  url: "https://your-server.com/webhooks/agentlabs"
+                  events: ["call.started", "call.completed", "call.failed"]
+              allEvents:
+                summary: Subscribe to all events
+                value:
+                  url: "https://your-server.com/webhooks/agentlabs"
+                  events: ["call.started", "call.completed", "call.failed", "campaign.started", "campaign.completed"]
+      responses:
+        '201':
+          description: Webhook created with signing secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /webhooks/events:
+    get:
+      summary: List Supported Events
+      description: |
+        Get a list of all event types you can subscribe to. Use these event names when creating webhooks.
+        
+        <br />
+        
+        **Event Categories:**
+        - `call.*` — Call lifecycle events
+        - `campaign.*` — Campaign lifecycle events
+        - `contact.*` — Contact changes
+        - `subscription.*` — Billing events
+        
+        <br />
+        
+        **Required Scope:** `webhooks:read`
+      operationId: listWebhookEvents
+      tags: [Webhooks]
+      responses:
+        '200':
+          description: List of available event types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEventsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /webhooks/{id}:
+    put:
+      summary: Update Webhook
+      description: |
+        Modify a webhook's configuration. You can change the URL, events, or active status.
+        
+        <br />
+        
+        **Tip:** Set `active: false` to temporarily pause a webhook without deleting it.
+        
+        <br />
+        
+        **Required Scope:** `webhooks:write`
+      operationId: updateWebhook
+      tags: [Webhooks]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWebhookRequest'
+      responses:
+        '200':
+          description: Webhook configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete Webhook
+      description: |
+        Permanently delete a webhook subscription. No further events will be delivered to this endpoint.
+        
+        **Required Scope:** `webhooks:write`
+      operationId: deleteWebhook
+      tags: [Webhooks]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Webhook deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /webhooks/{id}/test:
+    post:
+      summary: Test Webhook
+      description: |
+        Send a test payload to verify your webhook endpoint is configured correctly. The test payload mimics a real event.
+        
+        <br />
+        
+        **Test Process:**
+        1. AgentLabs sends a test payload to your URL
+        2. Your server should return 2xx status
+        3. Response includes success/failure and timing info
+        
+        <br />
+        
+        **Troubleshooting:**
+        - Ensure your endpoint is publicly accessible
+        - Check that you respond within 30 seconds
+        - Verify SSL certificate is valid
+        
+        <br />
+        
+        **Required Scope:** `webhooks:write`
+      operationId: testWebhook
+      tags: [Webhooks]
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Test results with timing and response info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookTestResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token (API key)
+
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      description: Resource UUID
+      schema:
+        type: string
+        format: uuid
+    PageParam:
+      name: page
+      in: query
+      description: Page number (1-indexed)
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+    PageSizeParam:
+      name: pageSize
+      in: query
+      description: Items per page (max 100)
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication required or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InsufficientCredits:
+      description: Insufficient credits
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    Meta:
+      type: object
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+
+    PaginationMeta:
+      allOf:
+        - $ref: '#/components/schemas/Meta'
+        - type: object
+          properties:
+            pagination:
+              type: object
+              properties:
+                page:
+                  type: integer
+                pageSize:
+                  type: integer
+                totalItems:
+                  type: integer
+                totalPages:
+                  type: integer
+                hasNext:
+                  type: boolean
+                hasPrev:
+                  type: boolean
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid request parameters
+            details:
+              type: object
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    HealthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            status:
+              type: string
+              example: healthy
+            version:
+              type: string
+              example: v1
+            timestamp:
+              type: string
+              format: date-time
+
+    DeleteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            deleted:
+              type: boolean
+              example: true
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    TriggerCallRequest:
+      type: object
+      required:
+        - agentId
+        - toNumber
+      properties:
+        agentId:
+          type: string
+          format: uuid
+          description: ID of the agent to use for the call
+        toNumber:
+          type: string
+          description: Phone number to call (E.164 format recommended)
+          example: "+14155551234"
+        fromNumber:
+          type: string
+          description: Caller ID phone number (optional, uses default if not provided)
+        engine:
+          type: string
+          enum: [elevenlabs, plivo, twilio-openai]
+          description: Telephony engine to use
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Custom metadata to attach to the call
+        scheduledAt:
+          type: string
+          format: date-time
+          description: Schedule call for a future time
+
+    TriggerCallResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            callId:
+              type: string
+              format: uuid
+            status:
+              type: string
+              example: queued
+            agentId:
+              type: string
+              format: uuid
+            toNumber:
+              type: string
+            fromNumber:
+              type: string
+            engine:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    Call:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        engine:
+          type: string
+          enum: [elevenlabs, plivo, twilio-openai]
+        agentId:
+          type: string
+          format: uuid
+        toNumber:
+          type: string
+        fromNumber:
+          type: string
+        status:
+          type: string
+          enum: [queued, ringing, in-progress, completed, failed, no-answer, busy]
+        duration:
+          type: integer
+          description: Duration in seconds
+        creditsUsed:
+          type: number
+        transcript:
+          type: string
+        aiSummary:
+          type: string
+        recordingUrl:
+          type: string
+        sentiment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+
+    CallListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Call'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    CallDetailResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Call'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    HangupResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            callId:
+              type: string
+            status:
+              type: string
+              example: hangup_requested
+            message:
+              type: string
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CreateCampaignRequest:
+      type: object
+      required:
+        - name
+        - agentId
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        agentId:
+          type: string
+          format: uuid
+        phoneNumberId:
+          type: string
+          format: uuid
+        engine:
+          type: string
+          enum: [elevenlabs, plivo, twilio-openai]
+        scheduledStartTime:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          example: America/New_York
+        callWindowStart:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          example: "09:00"
+        callWindowEnd:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          example: "18:00"
+        maxConcurrentCalls:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 5
+        retryAttempts:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 2
+        retryDelayMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          default: 30
+
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+          enum: [draft, scheduled, running, paused, completed, cancelled]
+        agentId:
+          type: string
+          format: uuid
+        phoneNumberId:
+          type: string
+          format: uuid
+        totalContacts:
+          type: integer
+        calledContacts:
+          type: integer
+        scheduledStartTime:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    CampaignResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Campaign'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CampaignListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Campaign'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    AddCampaignContactsRequest:
+      type: object
+      required:
+        - contacts
+      properties:
+        contacts:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          items:
+            type: object
+            required:
+              - phoneNumber
+            properties:
+              phoneNumber:
+                type: string
+              firstName:
+                type: string
+              lastName:
+                type: string
+              email:
+                type: string
+                format: email
+              customFields:
+                type: object
+                additionalProperties:
+                  type: string
+
+    AddContactsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            campaignId:
+              type: string
+            contactsAdded:
+              type: integer
+            contactsSkipped:
+              type: integer
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CampaignActionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            campaignId:
+              type: string
+            status:
+              type: string
+            message:
+              type: string
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    Agent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum: [flow, incoming]
+        telephonyProvider:
+          type: string
+        language:
+          type: string
+        isActive:
+          type: boolean
+        transferEnabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AgentDetail:
+      allOf:
+        - $ref: '#/components/schemas/Agent'
+        - type: object
+          properties:
+            systemPrompt:
+              type: string
+            firstMessage:
+              type: string
+            llmModel:
+              type: string
+            temperature:
+              type: number
+            voiceId:
+              type: string
+            openaiVoice:
+              type: string
+            transferPhoneNumber:
+              type: string
+            maxDurationSeconds:
+              type: integer
+
+    AgentListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Agent'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    AgentDetailResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/AgentDetail'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    FlowExportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            version:
+              type: string
+            agentId:
+              type: string
+            agentName:
+              type: string
+            exportedAt:
+              type: string
+              format: date-time
+            flow:
+              type: object
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+                nodes:
+                  type: array
+                  items:
+                    type: object
+                edges:
+                  type: array
+                  items:
+                    type: object
+                variables:
+                  type: object
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    FlowImportRequest:
+      type: object
+      required:
+        - flow
+      properties:
+        flow:
+          type: object
+          required:
+            - nodes
+            - edges
+          properties:
+            name:
+              type: string
+            nodes:
+              type: array
+              items:
+                type: object
+            edges:
+              type: array
+              items:
+                type: object
+            variables:
+              type: object
+
+    FlowImportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            agentId:
+              type: string
+            message:
+              type: string
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CreateContactRequest:
+      type: object
+      required:
+        - phone
+      properties:
+        phone:
+          type: string
+          minLength: 10
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        company:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        customFields:
+          type: object
+          additionalProperties: true
+
+    UpdateContactRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        company:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        customFields:
+          type: object
+        stage:
+          type: string
+
+    Contact:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+        company:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        customFields:
+          type: object
+        stage:
+          type: string
+        leadScore:
+          type: integer
+        aiSummary:
+          type: string
+        sentiment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ContactResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Contact'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    ContactListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contact'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    BulkImportRequest:
+      type: object
+      required:
+        - contacts
+      properties:
+        contacts:
+          type: array
+          minItems: 1
+          maxItems: 10000
+          items:
+            $ref: '#/components/schemas/CreateContactRequest'
+        skipDuplicates:
+          type: boolean
+          default: true
+
+    BulkImportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            imported:
+              type: integer
+            skipped:
+              type: integer
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  row:
+                    type: integer
+                  phoneNumber:
+                    type: string
+                  error:
+                    type: string
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CreditBalanceResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            available:
+              type: number
+            reserved:
+              type: number
+            total:
+              type: number
+            currency:
+              type: string
+              example: credits
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CreditUsageResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            period:
+              type: object
+              properties:
+                start:
+                  type: string
+                  format: date-time
+                end:
+                  type: string
+                  format: date-time
+            usage:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    type: string
+                    format: date
+                  calls:
+                    type: integer
+                  minutes:
+                    type: integer
+                  credits:
+                    type: number
+            total:
+              type: object
+              properties:
+                calls:
+                  type: integer
+                minutes:
+                  type: integer
+                credits:
+                  type: number
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CallAnalyticsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            totalCalls:
+              type: integer
+            completedCalls:
+              type: integer
+            failedCalls:
+              type: integer
+            totalDurationMinutes:
+              type: integer
+            averageDurationSeconds:
+              type: integer
+            creditsUsed:
+              type: number
+            period:
+              type: object
+              properties:
+                start:
+                  type: string
+                  format: date-time
+                end:
+                  type: string
+                  format: date-time
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CampaignAnalyticsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              campaignId:
+                type: string
+              name:
+                type: string
+              status:
+                type: string
+              totalContacts:
+                type: integer
+              completed:
+                type: integer
+              successful:
+                type: integer
+              failed:
+                type: integer
+              pending:
+                type: integer
+              successRate:
+                type: integer
+              startedAt:
+                type: string
+                format: date-time
+              completedAt:
+                type: string
+                format: date-time
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    AnalyticsSummaryResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            period:
+              type: object
+              properties:
+                start:
+                  type: string
+                  format: date-time
+                end:
+                  type: string
+                  format: date-time
+                days:
+                  type: integer
+            calls:
+              type: object
+              properties:
+                total:
+                  type: integer
+                completed:
+                  type: integer
+            campaigns:
+              type: object
+              properties:
+                total:
+                  type: integer
+                running:
+                  type: integer
+                completed:
+                  type: integer
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    CreateWebhookRequest:
+      type: object
+      required:
+        - url
+        - events
+      properties:
+        url:
+          type: string
+          format: uri
+          description: HTTPS endpoint to receive webhook payloads
+        events:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+              - call.started
+              - call.completed
+              - call.failed
+              - campaign.started
+              - campaign.completed
+              - campaign.paused
+              - contact.created
+              - contact.updated
+              - credits.low
+              - credits.depleted
+        secret:
+          type: string
+          description: Custom signing secret (auto-generated if not provided)
+        description:
+          type: string
+
+    UpdateWebhookRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        description:
+          type: string
+
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        description:
+          type: string
+        lastDeliveryAt:
+          type: string
+          format: date-time
+        lastDeliveryStatus:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    WebhookResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          allOf:
+            - $ref: '#/components/schemas/Webhook'
+            - type: object
+              properties:
+                secret:
+                  type: string
+                  description: Only returned on creation
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    WebhookListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Webhook'
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    WebhookEventsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            events:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  description:
+                    type: string
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    WebhookTestResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            delivered:
+              type: boolean
+            statusCode:
+              type: integer
+            message:
+              type: string
+        meta:
+          $ref: '#/components/schemas/Meta'
