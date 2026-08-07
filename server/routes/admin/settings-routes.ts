@@ -55,19 +55,27 @@ export function registerSettingsRoutes(router: Router) {
       
       const dbTwilioSid = settings.twilio_account_sid;
       const dbTwilioToken = settings.twilio_auth_token;
-      const dbTwilioConfigured = !!(dbTwilioSid && dbTwilioSid.trim() && dbTwilioToken && dbTwilioToken.trim());
-      settings.twilio_configured = dbTwilioConfigured;
+      const envTwilioSid = process.env.TWILIO_ACCOUNT_SID;
+      const envTwilioToken = process.env.TWILIO_AUTH_TOKEN;
+      const hasTwilioSid = (dbTwilioSid && dbTwilioSid.trim()) || (envTwilioSid && envTwilioSid.trim());
+      const hasTwilioToken = (dbTwilioToken && dbTwilioToken.trim()) || (envTwilioToken && envTwilioToken.trim());
+      settings.twilio_configured = !!(hasTwilioSid && hasTwilioToken);
       
       const dbPlivoAuthId = settings.plivo_auth_id;
       const dbPlivoAuthToken = settings.plivo_auth_token;
-      const dbPlivoConfigured = !!(dbPlivoAuthId && dbPlivoAuthId.trim() && dbPlivoAuthToken && dbPlivoAuthToken.trim());
-      settings.plivo_configured = dbPlivoConfigured;
+      const envPlivoAuthId = process.env.PLIVO_AUTH_ID;
+      const envPlivoAuthToken = process.env.PLIVO_AUTH_TOKEN;
+      const hasPlivoId = (dbPlivoAuthId && dbPlivoAuthId.trim() && dbPlivoAuthId !== 'your_plivo_auth_id_here') || (envPlivoAuthId && envPlivoAuthId.trim() && envPlivoAuthId !== 'your_plivo_auth_id_here');
+      const hasPlivoToken = (dbPlivoAuthToken && dbPlivoAuthToken.trim() && dbPlivoAuthToken !== 'your_plivo_auth_token_here') || (envPlivoAuthToken && envPlivoAuthToken.trim() && envPlivoAuthToken !== 'your_plivo_auth_token_here');
+      settings.plivo_configured = !!(hasPlivoId && hasPlivoToken);
       
       const poolStats = await ElevenLabsPoolService.getPoolStats();
-      settings.elevenlabs_configured = poolStats.totalKeys > 0;
+      const envApiKey = process.env.ELEVENLABS_API_KEY;
+      settings.elevenlabs_configured = poolStats.totalKeys > 0 || !!(envApiKey && envApiKey.trim());
       
       const dbOpenAIKey = settings.openai_api_key;
-      settings.openai_configured = !!(dbOpenAIKey && dbOpenAIKey.trim());
+      const envOpenAIKey = process.env.OPENAI_API_KEY;
+      settings.openai_configured = !!((dbOpenAIKey && dbOpenAIKey.trim()) || (envOpenAIKey && envOpenAIKey.trim()));
       
       const openaiRealtimeCredentials = await db.select().from(openaiCredentials).where(eq(openaiCredentials.isActive, true));
       settings.openai_realtime_configured = openaiRealtimeCredentials.length > 0;

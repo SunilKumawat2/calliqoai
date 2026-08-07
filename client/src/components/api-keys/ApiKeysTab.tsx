@@ -71,7 +71,7 @@ export function ApiKeysTab() {
   const [selectedKey, setSelectedKey] = useState<ApiKey | null>(null);
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [showSecret, setShowSecret] = useState(false);
-  
+
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyScopes, setNewKeyScopes] = useState<string[]>(['calls:read', 'credits:read']);
   const [newKeyIpWhitelist, setNewKeyIpWhitelist] = useState("");
@@ -338,7 +338,7 @@ export function ApiKeysTab() {
                 data-testid="input-key-name"
               />
             </div>
-            
+
             <div>
               <Label>Permissions (Scopes)</Label>
               <div className="grid grid-cols-2 gap-2 mt-2 max-h-48 overflow-y-auto">

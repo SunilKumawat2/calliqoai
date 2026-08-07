@@ -64,6 +64,7 @@ export default function AdminDashboard() {
   const { t } = useTranslation();
   const [location] = useLocation();
   const [activeTab, setActiveTab] = useState("analytics");
+  const [plivoStatus, setPlivoStatus] = useState<ConnectionStatus | null>(null);
   const [twilioStatus, setTwilioStatus] = useState<ConnectionStatus | null>(null);
   const [elevenLabsStatus, setElevenLabsStatus] = useState<ConnectionStatus | null>(null);
   const [openaiStatus, setOpenaiStatus] = useState<ConnectionStatus | null>(null);
@@ -148,6 +149,19 @@ export default function AdminDashboard() {
     setCheckingStatus(true);
 
     try {
+      // Test Plivo connection
+      if (settingsToUse?.plivo_configured) {
+        try {
+          const plivoResponse = await apiRequest("POST", "/api/admin/test-connection/plivo");
+          const plivoResult = await plivoResponse.json();
+          setPlivoStatus(plivoResult as ConnectionStatus);
+        } catch (err) {
+          setPlivoStatus({ connected: false, error: t("adminDashboard.status.testFailed", { error: err instanceof Error ? err.message : t("common.unknownError") }) });
+        }
+      } else {
+        setPlivoStatus({ connected: false, error: t("adminDashboard.status.notConfigured") });
+      }
+
       // Test Twilio connection
       if (settingsToUse?.twilio_configured) {
         try {
@@ -201,6 +215,7 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error('Error checking API connections:', error);
+      setPlivoStatus({ connected: false, error: t("adminDashboard.status.checkFailed") });
       setTwilioStatus({ connected: false, error: t("adminDashboard.status.checkFailed") });
       setElevenLabsStatus({ connected: false, error: t("adminDashboard.status.checkFailed") });
       setOpenaiStatus({ connected: false, error: t("adminDashboard.status.checkFailed") });
@@ -221,6 +236,7 @@ export default function AdminDashboard() {
       .catch((err) => {
         console.error('Connection check chain error:', err);
         // Reset error states on chain failure
+        setPlivoStatus({ connected: false, error: t("adminDashboard.status.checkFailed") });
         setTwilioStatus({ connected: false, error: t("adminDashboard.status.checkFailed") });
         setElevenLabsStatus({ connected: false, error: t("adminDashboard.status.checkFailed") });
         setOpenaiStatus({ connected: false, error: t("adminDashboard.status.checkFailed") });
@@ -272,6 +288,36 @@ export default function AdminDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+          <div
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${plivoStatus?.connected
+              ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+              : 'bg-slate-50 dark:bg-slate-900/30 border-slate-200 dark:border-slate-700'
+              }`}
+            data-testid={plivoStatus?.connected ? "status-plivo-connected" : "status-plivo-disconnected"}
+            title={plivoStatus?.error || undefined}
+          >
+            <div className={`p-1 rounded-full ${plivoStatus?.connected
+              ? 'bg-emerald-500'
+              : 'bg-slate-400'
+              }`}>
+              <Phone className="h-3 w-3 text-white" />
+            </div>
+            <div className="flex flex-col">
+              <span className={`text-xs font-medium ${plivoStatus?.connected
+                ? 'text-emerald-700 dark:text-emerald-400'
+                : 'text-slate-600 dark:text-slate-400'
+                }`}>
+                Plivo
+              </span>
+              <span className={`text-[10px] ${plivoStatus?.connected
+                ? 'text-emerald-600/70 dark:text-emerald-500/70'
+                : 'text-slate-500 dark:text-slate-500'
+                }`}>
+                {plivoStatus?.connected ? t("adminDashboard.status.connected") : t("adminDashboard.status.notConnected")}
+              </span>
+            </div>
+          </div>
+
           <div
             className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${twilioStatus?.connected
               ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'

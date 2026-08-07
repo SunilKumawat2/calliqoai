@@ -154,12 +154,12 @@ export default function Campaigns() {
     const sessionKey = `phone_alert_dismissed_${user.id}`;
     try {
       const dismissedData = sessionStorage.getItem(sessionKey);
-      
+
       if (dismissedData) {
         const { ids: dismissedIds } = JSON.parse(dismissedData);
         const dismissedSet = new Set(dismissedIds || []);
         const hasNewUnassigned = unassignedIds.some(id => !dismissedSet.has(id));
-        
+
         if (!hasNewUnassigned) {
           return;
         }
@@ -167,7 +167,7 @@ export default function Campaigns() {
     } catch {
       sessionStorage.removeItem(sessionKey);
     }
-    
+
     setShowPhoneNumberAlert(true);
   }, [userLoading, isLoading, user, isPro, unassignedIds.join(',')]);
 
@@ -238,8 +238,8 @@ export default function Campaigns() {
               <p className="text-muted-foreground mt-0.5">{t('campaigns.description')}</p>
             </div>
           </div>
-          <Button 
-            onClick={() => setCreateDialogOpen(true)} 
+          <Button
+            onClick={() => setCreateDialogOpen(true)}
             className="bg-gradient-to-r from-orange-600 to-amber-600 text-white shadow-lg"
             data-testid="button-create-campaign"
           >
@@ -247,7 +247,7 @@ export default function Campaigns() {
             {t('campaigns.createNew')}
           </Button>
         </div>
-        
+
         <div className="relative mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <div className="bg-white/80 dark:bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-orange-100/50 dark:border-orange-800/30">
             <div className="text-2xl font-bold text-orange-700 dark:text-orange-300">{campaigns.length}</div>
@@ -288,7 +288,7 @@ export default function Campaigns() {
               {t('campaigns.deletedCampaigns')} ({deletedCount})
             </TabsTrigger>
           </TabsList>
-          
+
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto sm:flex-1 sm:justify-end">
             <div className="relative w-full sm:w-auto sm:min-w-[250px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -339,7 +339,7 @@ export default function Campaigns() {
                 <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                   {t('campaigns.getStartedCreate')}
                 </p>
-                <Button 
+                <Button
                   onClick={() => setCreateDialogOpen(true)}
                   className="bg-gradient-to-r from-orange-600 to-amber-600 text-white"
                 >
@@ -359,10 +359,10 @@ export default function Campaigns() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {activePagination.paginatedItems.map((campaign) => {
-                  const successRate = campaign.completedCalls > 0 
+                  const successRate = campaign.completedCalls > 0
                     ? ((campaign.successfulCalls / campaign.completedCalls) * 100).toFixed(1)
                     : undefined;
-                  
+
                   return (
                     <CampaignCard
                       key={campaign.id}
@@ -435,7 +435,7 @@ export default function Campaigns() {
                 {deletedPagination.paginatedItems.map((campaign) => (
                   <Card key={campaign.id} className="p-6 relative overflow-hidden opacity-75 hover:opacity-100 transition-opacity" data-testid={`card-deleted-campaign-${campaign.id}`}>
                     <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-gray-400 via-gray-500 to-gray-400" />
-                    
+
                     <div className="flex items-start justify-between gap-3 mb-4">
                       <div className="flex-1 min-w-0">
                         <h3 className="text-lg font-semibold text-foreground truncate mb-1" data-testid="text-deleted-campaign-name">
@@ -488,15 +488,15 @@ export default function Campaigns() {
       </Tabs>
 
       <CreateCampaignDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
-      <EditCampaignDialog 
-        campaign={editingCampaign as any} 
-        open={!!editingCampaign} 
-        onOpenChange={(open: boolean) => !open && setEditingCampaign(null)} 
+      <EditCampaignDialog
+        campaign={editingCampaign as any}
+        open={!!editingCampaign}
+        onOpenChange={(open: boolean) => !open && setEditingCampaign(null)}
       />
-      <CampaignDetailsDialog 
-        campaign={viewingCampaign} 
-        open={!!viewingCampaign} 
-        onOpenChange={(open: boolean) => !open && setViewingCampaign(null)} 
+      <CampaignDetailsDialog
+        campaign={viewingCampaign}
+        open={!!viewingCampaign}
+        onOpenChange={(open: boolean) => !open && setViewingCampaign(null)}
       />
 
       <AlertDialog open={showPhoneNumberAlert} onOpenChange={setShowPhoneNumberAlert}>
@@ -511,12 +511,12 @@ export default function Campaigns() {
               </AlertDialogTitle>
             </div>
             <AlertDialogDescription className="text-base">
-              {t('campaigns.proUserPhoneNumberMessage', 
+              {t('campaigns.proUserPhoneNumberMessage',
                 `You have ${campaignsWithoutPhoneNumber.length} campaign(s) that need a phone number assigned. As a Pro user, you need to use your own phone number for campaigns.`
               ).replace('${count}', String(campaignsWithoutPhoneNumber.length))}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          
+
           {campaignsWithoutPhoneNumber.length > 0 && (
             <div className="my-4 max-h-32 overflow-y-auto">
               <p className="text-sm text-muted-foreground mb-2">{t('campaigns.affectedCampaigns', 'Affected campaigns:')}</p>
@@ -537,7 +537,7 @@ export default function Campaigns() {
           )}
 
           <AlertDialogFooter>
-            <AlertDialogCancel 
+            <AlertDialogCancel
               onClick={handleDismissAlert}
               data-testid="button-dismiss-phone-alert"
             >

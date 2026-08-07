@@ -138,7 +138,7 @@ const groupedTimezones = TIMEZONE_OPTIONS.reduce((acc, tz) => {
 // Get current time in a timezone
 function getCurrentTimeInTimezone(timezone: string): string {
   try {
-    return new Date().toLocaleTimeString('en-US', { 
+    return new Date().toLocaleTimeString('en-US', {
       timeZone: timezone,
       hour: '2-digit',
       minute: '2-digit',
@@ -331,7 +331,7 @@ export default function Settings() {
     fetch('/api/auth/logout', {
       method: 'POST',
       credentials: 'include',
-    }).catch(() => {});
+    }).catch(() => { });
     AuthStorage.clearAuth();
     window.location.href = "/";
   };
@@ -394,7 +394,9 @@ export default function Settings() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList data-testid="tabs-settings">
-          <TabsTrigger value="profile" data-testid="tab-profile">{t('settings.profile')}</TabsTrigger>
+          <TabsTrigger value="profile" data-testid="tab-profile">{t('settings.profile')}
+
+          </TabsTrigger>
           <TabsTrigger value="kyc" data-testid="tab-kyc">
             <ShieldCheck className="h-4 w-4 mr-2" />
             {t('settings.kycDocuments')}
@@ -429,20 +431,20 @@ export default function Settings() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="first-name">{t('settings.firstName')}</Label>
-                      <Input 
-                        id="first-name" 
+                      <Input
+                        id="first-name"
                         value={firstName}
                         onChange={(e) => setFirstName(e.target.value)}
-                        data-testid="input-first-name" 
+                        data-testid="input-first-name"
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="last-name">{t('settings.lastName')}</Label>
-                      <Input 
-                        id="last-name" 
+                      <Input
+                        id="last-name"
                         value={lastName}
                         onChange={(e) => setLastName(e.target.value)}
-                        data-testid="input-last-name" 
+                        data-testid="input-last-name"
                       />
                     </div>
                   </div>
@@ -452,12 +454,12 @@ export default function Settings() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="company">{t('settings.company')}</Label>
-                    <Input 
-                      id="company" 
+                    <Input
+                      id="company"
                       value={company}
                       onChange={(e) => setCompany(e.target.value)}
-                      placeholder={t('settings.companyPlaceholder')} 
-                      data-testid="input-company" 
+                      placeholder={t('settings.companyPlaceholder')}
+                      data-testid="input-company"
                     />
                   </div>
                 </div>
@@ -508,7 +510,7 @@ export default function Settings() {
               <Separator />
 
               <div className="flex justify-end">
-                <Button 
+                <Button
                   onClick={handleSaveProfile}
                   disabled={updateProfileMutation.isPending}
                   data-testid="button-save-profile"
@@ -529,36 +531,36 @@ export default function Settings() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="current-password">{t('settings.currentPassword')}</Label>
-                    <Input 
-                      id="current-password" 
-                      type="password" 
+                    <Input
+                      id="current-password"
+                      type="password"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
-                      data-testid="input-current-password" 
+                      data-testid="input-current-password"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="new-password">{t('settings.newPassword')}</Label>
-                    <Input 
-                      id="new-password" 
+                    <Input
+                      id="new-password"
                       type="password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      data-testid="input-new-password" 
+                      data-testid="input-new-password"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="confirm-password">{t('settings.confirmPassword')}</Label>
-                    <Input 
-                      id="confirm-password" 
+                    <Input
+                      id="confirm-password"
                       type="password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      data-testid="input-confirm-password" 
+                      data-testid="input-confirm-password"
                     />
                   </div>
                   <div className="flex justify-end">
-                    <Button 
+                    <Button
                       onClick={handleChangePassword}
                       disabled={changePasswordMutation.isPending || !currentPassword || !newPassword}
                       data-testid="button-change-password"
@@ -637,8 +639,8 @@ export default function Settings() {
                       <p className="text-sm text-muted-foreground">{t('settings.exportDataDescription')}</p>
                     </div>
                   </div>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => exportDataMutation.mutate()}
                     disabled={exportDataMutation.isPending}
                     data-testid="button-export-data"
@@ -669,70 +671,70 @@ export default function Settings() {
 
                 {/* Delete Account */}
                 <div className="flex items-center justify-between p-4 border border-destructive/50 rounded-lg bg-destructive/5">
-                    <div className="flex items-center gap-3">
-                      <Trash2 className="h-5 w-5 text-destructive" />
-                      <div>
-                        <p className="font-medium text-destructive">{t('settings.deleteAccount')}</p>
-                        <p className="text-sm text-muted-foreground">{t('settings.deleteAccountWarning')}</p>
-                      </div>
+                  <div className="flex items-center gap-3">
+                    <Trash2 className="h-5 w-5 text-destructive" />
+                    <div>
+                      <p className="font-medium text-destructive">{t('settings.deleteAccount')}</p>
+                      <p className="text-sm text-muted-foreground">{t('settings.deleteAccountWarning')}</p>
                     </div>
-                    <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="destructive" data-testid="button-delete-account">
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          {t('settings.deleteAccount')}
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <div className="flex items-center gap-2 text-destructive">
-                            <AlertTriangle className="h-5 w-5" />
-                            <AlertDialogTitle>{t('settings.confirmDeleteAccount')}</AlertDialogTitle>
-                          </div>
-                          <AlertDialogDescription className="space-y-3">
-                            <p>{t('settings.deleteAccountConfirmMessage')}</p>
-                            <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20">
-                              <p className="text-sm font-medium text-destructive">{t('settings.deleteAccountConsequences')}</p>
-                              <ul className="text-sm text-muted-foreground mt-2 space-y-1 list-disc list-inside">
-                                <li>{t('settings.deleteConsequence1')}</li>
-                                <li>{t('settings.deleteConsequence2')}</li>
-                                <li>{t('settings.deleteConsequence3')}</li>
-                              </ul>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="delete-password">{t('settings.enterPasswordToConfirm')}</Label>
-                              <Input
-                                id="delete-password"
-                                type="password"
-                                placeholder={t('settings.yourPassword')}
-                                value={deletePassword}
-                                onChange={(e) => setDeletePassword(e.target.value)}
-                                data-testid="input-delete-password"
-                              />
-                            </div>
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel onClick={() => setDeletePassword("")} data-testid="button-cancel-delete">
-                            {t('common.cancel')}
-                          </AlertDialogCancel>
-                          <Button
-                            variant="destructive"
-                            onClick={handleDeleteAccount}
-                            disabled={deleteAccountMutation.isPending || !deletePassword}
-                            data-testid="button-confirm-delete"
-                          >
-                            {deleteAccountMutation.isPending ? (
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4 mr-2" />
-                            )}
-                            {t('settings.permanentlyDelete')}
-                          </Button>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
                   </div>
+                  <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" data-testid="button-delete-account">
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        {t('settings.deleteAccount')}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <div className="flex items-center gap-2 text-destructive">
+                          <AlertTriangle className="h-5 w-5" />
+                          <AlertDialogTitle>{t('settings.confirmDeleteAccount')}</AlertDialogTitle>
+                        </div>
+                        <AlertDialogDescription className="space-y-3">
+                          <p>{t('settings.deleteAccountConfirmMessage')}</p>
+                          <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20">
+                            <p className="text-sm font-medium text-destructive">{t('settings.deleteAccountConsequences')}</p>
+                            <ul className="text-sm text-muted-foreground mt-2 space-y-1 list-disc list-inside">
+                              <li>{t('settings.deleteConsequence1')}</li>
+                              <li>{t('settings.deleteConsequence2')}</li>
+                              <li>{t('settings.deleteConsequence3')}</li>
+                            </ul>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="delete-password">{t('settings.enterPasswordToConfirm')}</Label>
+                            <Input
+                              id="delete-password"
+                              type="password"
+                              placeholder={t('settings.yourPassword')}
+                              value={deletePassword}
+                              onChange={(e) => setDeletePassword(e.target.value)}
+                              data-testid="input-delete-password"
+                            />
+                          </div>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setDeletePassword("")} data-testid="button-cancel-delete">
+                          {t('common.cancel')}
+                        </AlertDialogCancel>
+                        <Button
+                          variant="destructive"
+                          onClick={handleDeleteAccount}
+                          disabled={deleteAccountMutation.isPending || !deletePassword}
+                          data-testid="button-confirm-delete"
+                        >
+                          {deleteAccountMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4 mr-2" />
+                          )}
+                          {t('settings.permanentlyDelete')}
+                        </Button>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               </div>
             </div>
           </Card>
@@ -757,7 +759,7 @@ function KycDocumentsSection({ user }: { user: User | undefined }) {
       const formData = new FormData();
       formData.append('document', file);
       formData.append('documentType', documentType);
-      
+
       const token = AuthStorage.getToken();
       const response = await fetch('/api/kyc/upload', {
         method: 'POST',
@@ -765,7 +767,7 @@ function KycDocumentsSection({ user }: { user: User | undefined }) {
         credentials: 'include',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       });
-      
+
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.error || 'Upload failed');
