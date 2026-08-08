@@ -760,25 +760,36 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
       // SIP phone numbers are only valid when SIP plugin is enabled
       let hasSipPhoneNumber = false;
       if ((campaign as any).sipPhoneNumberId) {
-        const plugins = await getPluginStatus();
-        const sipPlugin = plugins.find(p => p.name === 'sip-engine');
-        if (!sipPlugin?.enabled) {
-          // SIP phone number is configured but plugin is disabled - return clear error
-          return res.status(400).json({ 
-            error: "SIP Engine plugin is not enabled",
-            message: "This campaign uses a SIP phone number, but the SIP Engine plugin is currently disabled. Please contact your administrator to enable the plugin."
-          });
+        const agent = campaign.agentId ? await storage.getAgent(campaign.agentId) : null;
+        if (agent?.telephonyProvider === 'custom-voice-engine') {
+          const userSipResult = await db.execute(sql`
+            SELECT id FROM user_sip_phone_numbers 
+            WHERE id = ${(campaign as any).sipPhoneNumberId} 
+              AND user_id = ${req.userId!}
+            LIMIT 1
+          `);
+          hasSipPhoneNumber = userSipResult.rows.length > 0;
+        } else {
+          const plugins = await getPluginStatus();
+          const sipPlugin = plugins.find(p => p.name === 'sip-engine');
+          if (!sipPlugin?.enabled) {
+            // SIP phone number is configured but plugin is disabled - return clear error
+            return res.status(400).json({ 
+              error: "SIP Engine plugin is not enabled",
+              message: "This campaign uses a SIP phone number, but the SIP Engine plugin is currently disabled. Please contact your administrator to enable the plugin."
+            });
+          }
+          // Verify the SIP phone number exists and belongs to user
+          const [sipPhone] = await db
+            .select()
+            .from(sipPhoneNumbers)
+            .where(and(
+              eq(sipPhoneNumbers.id, (campaign as any).sipPhoneNumberId),
+              eq(sipPhoneNumbers.userId, req.userId!)
+            ))
+            .limit(1);
+          hasSipPhoneNumber = !!sipPhone;
         }
-        // Verify the SIP phone number exists and belongs to user
-        const [sipPhone] = await db
-          .select()
-          .from(sipPhoneNumbers)
-          .where(and(
-            eq(sipPhoneNumbers.id, (campaign as any).sipPhoneNumberId),
-            eq(sipPhoneNumbers.userId, req.userId!)
-          ))
-          .limit(1);
-        hasSipPhoneNumber = !!sipPhone;
       }
       
       if (!campaign.agentId || (!campaign.phoneNumberId && !campaign.plivoPhoneNumberId && !hasSipPhoneNumber)) {
