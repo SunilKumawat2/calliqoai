@@ -64,10 +64,10 @@ async function lookupAnyCallByAgentId(elevenLabsAgentId, userId) {
     const callRows = Array.isArray(callResult) ? callResult : callResult.rows || [];
     if (callRows.length > 0) {
       const row = callRows[0];
-      console.log(`💬 [Messaging Webhook] Found matching record in calls table for agent: ${elevenLabsAgentId}`);
+      console.log(`\u{1F4AC} [Messaging Webhook] Found matching record in calls table for agent: ${elevenLabsAgentId}`);
       return {
         phone: row.phone_number,
-        callId: row.id,
+        sipCallId: row.id,
         contactData: {
           contact_name: row.contact_name || "",
           contact_phone: row.phone_number,
@@ -90,7 +90,7 @@ async function lookupAnyCallByAgentId(elevenLabsAgentId, userId) {
     `);
     const sipRows = Array.isArray(sipResult) ? sipResult : sipResult.rows || [];
     if (sipRows.length > 0) {
-      console.log(`💬 [Messaging Webhook] Found matching record in sip_calls table for agent: ${elevenLabsAgentId}`);
+      console.log(`\u{1F4AC} [Messaging Webhook] Found matching record in sip_calls table for agent: ${elevenLabsAgentId}`);
       return buildSipLookupResult(sipRows[0]);
     }
   } catch (err) {
@@ -213,7 +213,7 @@ router.post("/send-email/:token/:agentId", async (req, res) => {
     const { recipient_email: rawRecipientEmail, template_name: requestedTemplateName, variables, dynamic_variables } = req.body;
     const template_name = savedEmailTemplate || requestedTemplateName;
     let recipient_email = stripUnresolvedElevenLabsVar(rawRecipientEmail);
-    console.log(`📧 [Messaging Webhook] Headers: ${JSON.stringify(req.headers, null, 2)}`);
+    console.log(`\u{1F4E7} [Messaging Webhook] Headers: ${JSON.stringify(req.headers, null, 2)}`);
     const rawConvId = req.query.conversationId || req.body.conversationId || req.headers["elevenlabs-conversation-id"] || req.headers["x-elevenlabs-conversation-id"] || req.headers["xi-conversation-id"];
     const conversationId = stripUnresolvedElevenLabsVar(rawConvId);
     const callId = req.query.callId || req.body.callId;
@@ -291,8 +291,10 @@ router.post("/send-email/:token/:agentId", async (req, res) => {
 });
 router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
   const startTime = Date.now();
-  console.log(`\u{1F4AC} [Messaging Webhook] ===== SEND WHATSAPP WEBHOOK HIT =====`);
   const { token, agentId: elevenLabsAgentId } = req.params;
+  console.log(`\u{1F4AC} [Messaging Webhook] Agent ID: ${elevenLabsAgentId}`);
+  console.log(`\u{1F4AC} [Messaging Webhook] Headers: ${JSON.stringify(req.headers, null, 2)}`);
+  console.log(`\u{1F4AC} [Messaging Webhook] Query: ${JSON.stringify(req.query)}`);
   try {
     if (!validateAppointmentWebhookToken(token)) {
       console.warn(`\u{1F4AC} [Messaging Webhook] Invalid authentication token`);
@@ -309,8 +311,7 @@ router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
     }
     const { id: dbAgentId, user_id: userId, messaging_whatsapp_template: savedWhatsappTemplate, messaging_whatsapp_variables: savedWhatsappVariables } = agentRows[0];
     const { template_name: requestedTemplateName, language, phone_number: rawPhoneNumber, template_variables, headerVariable: incomingHeader, buttonVariables: incomingButtons } = req.body;
-    console.log(`💬 [Messaging Webhook] Incoming Request Body: ${JSON.stringify(req.body, null, 2)}`);
-    console.log(`💬 [Messaging Webhook] Headers: ${JSON.stringify(req.headers, null, 2)}`);
+    console.log(`\u{1F4AC} [Messaging Webhook] Incoming Request Body: ${JSON.stringify(req.body, null, 2)}`);
     const template_name = savedWhatsappTemplate || requestedTemplateName;
     if (!template_name) {
       return res.json({
@@ -321,6 +322,7 @@ router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
     let recipientPhone = stripUnresolvedElevenLabsVar(rawPhoneNumber);
     let digits = recipientPhone.replace(/[^0-9]/g, "");
     let contactData = {};
+    console.log(`\u{1F4AC} [Messaging Webhook] Headers: ${JSON.stringify(req.headers, null, 2)}`);
     const rawConversationId = req.query.conversationId || req.body.conversationId || req.headers["elevenlabs-conversation-id"] || req.headers["x-elevenlabs-conversation-id"] || req.headers["xi-conversation-id"];
     const resolvedConversationId = stripUnresolvedElevenLabsVar(rawConversationId);
     if (digits.length < 6 || Array.isArray(template_variables) && template_variables.length > 0 || savedWhatsappVariables) {
@@ -335,7 +337,6 @@ router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
         const callRows = Array.isArray(callResult) ? callResult : callResult.rows || [];
         if (callRows.length > 0) {
           const row = callRows[0];
-          // Always prioritize the customer phone number from our database if available
           if (row.phone_number) {
             recipientPhone = row.phone_number;
             digits = recipientPhone.replace(/[^0-9]/g, "");
@@ -350,9 +351,10 @@ router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
           };
         }
       }
-      if ((!recipientPhone || recipientPhone.replace(/[^0-9]/g, "").length < 6) && resolvedConversationId) {
-        console.log(`\u{1F4AC} [Messaging Webhook] Attempting conversationId fallback for: ${resolvedConversationId}`);
-        const convResult = await db.execute(sql`
+    }
+    if ((!recipientPhone || recipientPhone.replace(/[^0-9]/g, "").length < 6) && resolvedConversationId) {
+      console.log(`\u{1F4AC} [Messaging Webhook] Attempting conversationId fallback for: ${resolvedConversationId}`);
+      const convResult = await db.execute(sql`
           SELECT c.phone_number, c.from_number, COALESCE(ct.first_name || ' ' || ct.last_name, ct.first_name, '') as contact_name, ct.email as contact_email, a.name as agent_name
           FROM calls c
           LEFT JOIN contacts ct ON c.contact_id = ct.id
@@ -361,66 +363,84 @@ router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
           AND c.user_id = ${userId}
           ORDER BY c.created_at DESC LIMIT 1
         `);
-        const convRows = Array.isArray(convResult) ? convResult : convResult.rows || [];
-        if (convRows.length > 0) {
-          const row = convRows[0];
-          const resolvedPhone = row.phone_number || row.from_number || "";
-          // Always prioritize the customer phone number from our database if available
-          if (resolvedPhone) {
-            recipientPhone = resolvedPhone;
-            digits = recipientPhone.replace(/[^0-9]/g, "");
-            console.log(`\u{1F4AC} [Messaging Webhook] Resolved real customer phone from calls table: ${recipientPhone}`);
-          }
-          contactData = {
-            contact_name: row.contact_name || "",
-            contact_phone: resolvedPhone || recipientPhone,
-            contact_email: row.contact_email || "",
-            agent_name: row.agent_name || "",
-            system__caller_id: recipientPhone
-          };
-        }
-      }
-      let sipCallId = "";
-      let resolvedSipConversationId = "";
-      if ((!recipientPhone || recipientPhone.replace(/[^0-9]/g, "").length < 6) && resolvedConversationId) {
-        console.log(`\u{1F4AC} [Messaging Webhook] Attempting sip_calls fallback for conversationId: ${resolvedConversationId}`);
-        const sipLookup = await lookupSipCallByConversationId(resolvedConversationId, userId);
-        if (sipLookup && sipLookup.phone) {
-          recipientPhone = sipLookup.phone;
+      const convRows = Array.isArray(convResult) ? convResult : convResult.rows || [];
+      if (convRows.length > 0) {
+        const row = convRows[0];
+        const resolvedPhone = row.phone_number || row.from_number || "";
+        if (resolvedPhone) {
+          recipientPhone = resolvedPhone;
           digits = recipientPhone.replace(/[^0-9]/g, "");
-          contactData = sipLookup.contactData;
-          sipCallId = sipLookup.sipCallId;
-          resolvedSipConversationId = sipLookup.conversationId;
-          console.log(`\u{1F4AC} [Messaging Webhook] Resolved phone from sip_calls (by convId): ${recipientPhone}`);
+          console.log(`\u{1F4AC} [Messaging Webhook] Resolved real customer phone from calls table: ${recipientPhone}`);
         }
+        contactData = {
+          contact_name: row.contact_name || "",
+          contact_phone: resolvedPhone || recipientPhone,
+          contact_email: row.contact_email || "",
+          agent_name: row.agent_name || "",
+          system__caller_id: recipientPhone
+        };
       }
-      if (!recipientPhone || recipientPhone.replace(/[^0-9]/g, "").length < 6) {
-        console.log(`💬 [Messaging Webhook] Attempting agent-based lookup for agent: ${elevenLabsAgentId}`);
-        const anyLookup = await lookupAnyCallByAgentId(elevenLabsAgentId, userId);
-        if (anyLookup && anyLookup.phone) {
-          recipientPhone = anyLookup.phone;
-          digits = recipientPhone.replace(/[^0-9]/g, "");
-          contactData = anyLookup.contactData;
-          sipCallId = anyLookup.callId || anyLookup.sipCallId;
-          resolvedSipConversationId = anyLookup.conversationId;
-          console.log(`💬 [Messaging Webhook] Resolved phone from agent-based lookup: ${recipientPhone}`);
-        }
-      }
-      if (!recipientPhone || recipientPhone.replace(/[^0-9]/g, "").length < 6) {
-        return res.json({
-          success: false,
-          message: "Could not determine the recipient phone number."
-        });
-      }
-      if (sipCallId || resolvedSipConversationId) {
-        const apptData = await lookupAppointmentData(sipCallId, resolvedSipConversationId, userId);
-        if (Object.keys(apptData).length > 0) {
-          contactData = { ...contactData, ...apptData };
-          console.log(`\u{1F4AC} [Messaging Webhook] Enriched contactData with appointment fields: ${Object.keys(apptData).join(", ")}`);
-        }
-      }
-      console.log(`\u{1F4AC} [Messaging Webhook] Final Resolved Contact Data: ${JSON.stringify(contactData)}`);
     }
+    let sipCallId = "";
+    let resolvedSipConversationId = "";
+    if ((!recipientPhone || recipientPhone.replace(/[^0-9]/g, "").length < 6) && resolvedConversationId) {
+      console.log(`\u{1F4AC} [Messaging Webhook] Attempting sip_calls fallback for conversationId: ${resolvedConversationId}`);
+      const sipLookup = await lookupSipCallByConversationId(resolvedConversationId, userId);
+      if (sipLookup && sipLookup.phone) {
+        recipientPhone = sipLookup.phone;
+        digits = recipientPhone.replace(/[^0-9]/g, "");
+        contactData = sipLookup.contactData;
+        sipCallId = sipLookup.sipCallId;
+        resolvedSipConversationId = sipLookup.conversationId;
+        console.log(`\u{1F4AC} [Messaging Webhook] Resolved phone from sip_calls (by convId): ${recipientPhone}`);
+      }
+    }
+    if (!recipientPhone || recipientPhone.replace(/[^0-9]/g, "").length < 6) {
+      console.log(`\u{1F4AC} [Messaging Webhook] Attempting agent-based lookup for agent: ${elevenLabsAgentId}`);
+      const anyLookup = await lookupAnyCallByAgentId(elevenLabsAgentId, userId);
+      if (anyLookup && anyLookup.phone) {
+        recipientPhone = anyLookup.phone;
+        digits = recipientPhone.replace(/[^0-9]/g, "");
+        contactData = anyLookup.contactData;
+        sipCallId = anyLookup.callId || anyLookup.sipCallId;
+        resolvedSipConversationId = anyLookup.conversationId;
+        console.log(`\u{1F4AC} [Messaging Webhook] Resolved phone from agent-based lookup: ${recipientPhone}`);
+      }
+    }
+    if (digits.length >= 6 && Object.keys(contactData).length === 0) {
+      try {
+        console.log(`\u{1F4AC} [Messaging Webhook] Direct contact lookup for ${recipientPhone}...`);
+        const { lookupContactByPhone } = await import("../../../server/services/post-call-messaging.js");
+        const contactInfo = await lookupContactByPhone(recipientPhone, userId);
+        if (contactInfo && Object.keys(contactInfo).length > 0) {
+          contactData = {
+            contact_name: contactInfo.contact_name || "",
+            contact_phone: recipientPhone,
+            contact_email: contactInfo.contact_email || "",
+            agent_name: agentRows[0].name || "",
+            system__caller_id: recipientPhone,
+            ...contactInfo
+          };
+          console.log(`\u{1F4AC} [Messaging Webhook] Found contact by phone: ${contactData.contact_name}`);
+        }
+      } catch (err) {
+        console.warn(`\u{1F4AC} [Messaging Webhook] Direct contact lookup failed: ${err.message}`);
+      }
+    }
+    if (!recipientPhone || recipientPhone.replace(/[^0-9]/g, "").length < 6) {
+      return res.json({
+        success: false,
+        message: "Could not determine the recipient phone number."
+      });
+    }
+    if (sipCallId || resolvedSipConversationId) {
+      const apptData = await lookupAppointmentData(sipCallId, resolvedSipConversationId, userId);
+      if (Object.keys(apptData).length > 0) {
+        contactData = { ...contactData, ...apptData };
+        console.log(`\u{1F4AC} [Messaging Webhook] Enriched contactData with appointment fields: ${Object.keys(apptData).join(", ")}`);
+      }
+    }
+    console.log(`\u{1F4AC} [Messaging Webhook] Final Resolved Contact Data: ${JSON.stringify(contactData)}`);
     let components = [];
     const buttonOverrides = {};
     if (Array.isArray(template_variables) && template_variables.length > 0) {
@@ -541,8 +561,8 @@ router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
     const whatswaySettings = await whatswayService.getSettings(userId);
     let headerVariable = incomingHeader || req.body.headerVariable || null;
     const buttonVariables = incomingButtons || req.body.buttonVariables || [];
-    console.log(`💬 [Messaging Webhook] Initial Header Variable: ${JSON.stringify(headerVariable)}`);
-    console.log(`💬 [Messaging Webhook] Initial Button Variables: ${JSON.stringify(buttonVariables)}`);
+    console.log(`\u{1F4AC} [Messaging Webhook] Initial Header Variable: ${JSON.stringify(headerVariable)}`);
+    console.log(`\u{1F4AC} [Messaging Webhook] Initial Button Variables: ${JSON.stringify(buttonVariables)}`);
     if (!headerVariable && savedWhatsappVariables) {
       try {
         const parsedVars = JSON.parse(savedWhatsappVariables);
@@ -560,8 +580,6 @@ router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
       try {
         const templateDef = await metaWhatsAppService.getTemplateByName(userId, template_name);
         if (templateDef) {
-          // If a language was requested but it's the default en_US, prioritize the actual template language
-          // This fixes cases where templates are registered as 'en' but ElevenLabs sends 'en_US'
           if (language === "en_US" || !language) {
             resolvedLanguage = templateDef.language || "en_US";
           } else {
@@ -605,8 +623,12 @@ router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
               }
               if (headerUrl) {
                 const mediaTypeLowercase = headerFormat.toLowerCase();
-                const headerParam = { type: mediaTypeLowercase };
-                headerParam[mediaTypeLowercase] = { link: headerUrl.trim() };
+                const headerParam = {
+                  type: mediaTypeLowercase
+                };
+                headerParam[mediaTypeLowercase] = {
+                  link: headerUrl.trim()
+                };
                 const headerComponent = {
                   type: "header",
                   parameters: [headerParam]
@@ -662,7 +684,7 @@ router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
     let sendResult;
     if (metaSettings?.isActive) {
       console.log(`[Messaging Webhook] Using Meta WhatsApp Cloud API for user ${userId}`);
-      console.log(`💬 [Messaging Webhook] Final Constructed Components for Meta: ${JSON.stringify(components, null, 2)}`);
+      console.log(`\u{1F4AC} [Messaging Webhook] Final Constructed Components for Meta: ${JSON.stringify(components, null, 2)}`);
       sendResult = await metaWhatsAppService.sendTemplate(
         userId,
         recipientPhone,
@@ -673,7 +695,7 @@ router.post("/send-whatsapp/:token/:agentId", async (req, res) => {
       );
     } else if (whatswaySettings?.isActive) {
       console.log(`[Messaging Webhook] Using WhatsWay for user ${userId}`);
-      console.log(`💬 [Messaging Webhook] Final Constructed Components for WhatsWay: ${JSON.stringify(components, null, 2)}`);
+      console.log(`\u{1F4AC} [Messaging Webhook] Final Constructed Components for WhatsWay: ${JSON.stringify(components, null, 2)}`);
       sendResult = await whatswayService.sendTemplate(
         userId,
         recipientPhone,

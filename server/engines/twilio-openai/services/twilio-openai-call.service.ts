@@ -211,6 +211,11 @@ export class TwilioOpenAICallService {
           );
           agentConfig.tools = whatsappToolConfig.tools || agentConfig.tools;
         }
+
+        // ALWAYS ensure end_call tool is available for flow agents
+        if (!agentConfig.tools?.some(t => t.name === 'end_call')) {
+          agentConfig = OpenAIAgentFactory.addEndCallTool(agentConfig as any);
+        }
       }
       
       if (!agentConfig) {
@@ -286,6 +291,32 @@ export class TwilioOpenAICallService {
         agentConfig = naturalConfig;
       }
 
+      // Serialize tools for database metadata storage
+      const serializedTools = agentConfig?.tools?.map((t: any) => {
+        const toolAny = t as Record<string, unknown>;
+        const serialized: Record<string, unknown> = {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        };
+        if (toolAny._metadata) serialized._metadata = toolAny._metadata;
+        if (toolAny._transferNumber) serialized._transferNumber = toolAny._transferNumber;
+        if (toolAny._formId) serialized._formId = toolAny._formId;
+        if (toolAny._formName) serialized._formName = toolAny._formName;
+        if (toolAny._formFields) serialized._formFields = toolAny._formFields;
+        if (toolAny._action) serialized._action = toolAny._action;
+        return serialized;
+      }) || [];
+
+      const callMetadata = {
+        ...(metadata || {}),
+        isFlowAgent: isFlowAgent,
+        systemPrompt: agentConfig?.systemPrompt || agent.systemPrompt || 'You are a helpful AI assistant.',
+        firstMessage: agentConfig?.firstMessage || agent.firstMessage || undefined,
+        tools: serializedTools,
+        compiledTools: serializedTools, // For compatibility with Twilio stream
+      };
+
       // Normalize phone numbers early - preserve + prefix for proper E.164 format display
       const normalizedFromNumber = phoneNumber.phoneNumber.replace(/[\s\-\(\)]/g, '').replace(/^\+?/, '+');
       const normalizedToNumber = toNumber.replace(/[\s\-\(\)]/g, '').replace(/^\+?/, '+');
@@ -331,7 +362,7 @@ export class TwilioOpenAICallService {
         status: 'initiated',
         callDirection: 'outbound',
         startedAt: new Date(),
-        metadata,
+        metadata: callMetadata,
       });
 
       TwilioOpenAIAudioBridge.onSessionEnd(call.sid, async () => {

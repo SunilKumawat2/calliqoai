@@ -40,6 +40,26 @@ const filesToCompile = [
   'server/services/rag-knowledge.ts',
 ];
 
+function getTsFiles(dir) {
+  let results = [];
+  if (!fs.existsSync(dir)) return results;
+  const list = fs.readdirSync(dir);
+  list.forEach(file => {
+    const full = path.join(dir, file);
+    const stat = fs.statSync(full);
+    if (stat && stat.isDirectory()) {
+      results = results.concat(getTsFiles(full));
+    } else if (full.endsWith('.ts') && !full.endsWith('.d.ts')) {
+      results.push(path.relative(projectRoot, full).replace(/\\/g, '/'));
+    }
+  });
+  return results;
+}
+
+const cveTsFiles = getTsFiles(path.join(projectRoot, 'plugins/custom-voice-engine'));
+filesToCompile.push(...cveTsFiles);
+
+
 function fixImportPaths(filePath, content) {
   const dir = path.dirname(filePath);
   

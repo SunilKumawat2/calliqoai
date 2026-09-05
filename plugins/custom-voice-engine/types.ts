@@ -570,8 +570,8 @@ export interface VadConfig {
 
 export const DEFAULT_VAD_CONFIG: VadConfig = {
   speechThresholdMs: 250,
-  silenceThresholdMs: 500,
-  energyThreshold: 0.015,
+  silenceThresholdMs: 1500,
+  energyThreshold: 0.028,
   bargeInEnabled: true,
 };
 

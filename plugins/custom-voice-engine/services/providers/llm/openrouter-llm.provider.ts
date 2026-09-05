@@ -15,7 +15,38 @@ import type { LlmConfig, LlmMessage, LlmResponse, LlmStreamChunk, LlmToolDefinit
 import { BaseLlmProvider } from './llm-provider.interface';
 import { keepAliveAxiosConfig } from '../http-agent';
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const resolveApiKey = (apiKey?: string) => {
+  let key = apiKey || '';
+  if (!key || key.includes('your_openrouter_api_key') || key.includes('placeholder')) {
+    key = process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || '';
+  }
+  return key;
+};
+
+const getApiUrl = (apiKey?: string) => {
+  const key = resolveApiKey(apiKey);
+  if (key.startsWith('sk-proj-') || (key.startsWith('sk-') && !key.startsWith('sk-or-'))) {
+    return 'https://api.openai.com/v1/chat/completions';
+  }
+  return OPENROUTER_API_URL;
+};
+
+const getModelName = (model: string, isOpenAi: boolean) => {
+  if (model === 'gpt-realtime-1.5' || model === 'gpt-realtime-mini' || model === 'gpt-realtime' || model.includes('realtime')) {
+    return isOpenAi ? 'gpt-4o-mini' : 'openai/gpt-4o-mini';
+  }
+  if (isOpenAi) {
+    if (model.startsWith('openai/')) {
+      return model.substring(7);
+    }
+    // Default to gpt-4o-mini if it's a completely different model provider name but they use OpenAI key
+    if (model.includes('/') && !model.startsWith('openai/')) {
+      return 'gpt-4o-mini';
+    }
+    return model;
+  }
+  return model;
+};
 
 export class OpenRouterLlmProvider extends BaseLlmProvider {
   readonly name = 'openrouter' as const;
@@ -26,9 +57,11 @@ export class OpenRouterLlmProvider extends BaseLlmProvider {
     tools?: LlmToolDefinition[]
   ): Promise<LlmResponse> {
     const startTime = Date.now();
+    const isOpenAi = getApiUrl(config.apiKey).includes('openai.com');
+    const targetModel = getModelName(config.model || '', isOpenAi);
 
     const payload: Record<string, unknown> = {
-      model: config.model,
+      model: targetModel,
       messages: messages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -48,10 +81,13 @@ export class OpenRouterLlmProvider extends BaseLlmProvider {
     }
 
     try {
-      const response = await axios.post(OPENROUTER_API_URL, payload, {
+      const effectiveApiKey = resolveApiKey(config.apiKey);
+      const apiUrl = getApiUrl(effectiveApiKey);
+      console.log(`[OpenRouterLlmProvider] Routing complete() to: ${apiUrl} (model: ${targetModel})`);
+      const response = await axios.post(apiUrl, payload, {
         ...keepAliveAxiosConfig,
         headers: {
-          Authorization: `Bearer ${config.apiKey}`,
+          Authorization: `Bearer ${effectiveApiKey}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://agentlabs.io',
           'X-Title': 'AgentLabs AI Voice Engine',
@@ -94,8 +130,11 @@ export class OpenRouterLlmProvider extends BaseLlmProvider {
     config: LlmConfig,
     tools?: LlmToolDefinition[]
   ): AsyncIterable<LlmStreamChunk> {
+    const isOpenAi = getApiUrl(config.apiKey).includes('openai.com');
+    const targetModel = getModelName(config.model || '', isOpenAi);
+
     const payload: Record<string, unknown> = {
-      model: config.model,
+      model: targetModel,
       messages: messages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -129,10 +168,13 @@ export class OpenRouterLlmProvider extends BaseLlmProvider {
     resetInactivityTimer(); // Start the clock before we even get the first byte
 
     try {
-      const response = await axios.post(OPENROUTER_API_URL, payload, {
+      const effectiveApiKey = resolveApiKey(config.apiKey);
+      const apiUrl = getApiUrl(effectiveApiKey);
+      console.log(`[OpenRouterLlmProvider] Routing stream() to: ${apiUrl} (model: ${targetModel})`);
+      const response = await axios.post(apiUrl, payload, {
         ...keepAliveAxiosConfig,
         headers: {
-          Authorization: `Bearer ${config.apiKey}`,
+          Authorization: `Bearer ${effectiveApiKey}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://agentlabs.io',
           'X-Title': 'AgentLabs AI Voice Engine',

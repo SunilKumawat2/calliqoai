@@ -1,13 +1,43 @@
 import axios from "axios";
 import { BaseLlmProvider } from "./llm-provider.interface.js";
 import { keepAliveAxiosConfig } from "../http-agent.js";
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const resolveApiKey = (apiKey) => {
+  let key = apiKey || "";
+  if (!key || key.includes("your_openrouter_api_key") || key.includes("placeholder")) {
+    key = process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || "";
+  }
+  return key;
+};
+const getApiUrl = (apiKey) => {
+  const key = resolveApiKey(apiKey);
+  if (key.startsWith("sk-proj-") || key.startsWith("sk-") && !key.startsWith("sk-or-")) {
+    return "https://api.openai.com/v1/chat/completions";
+  }
+  return OPENROUTER_API_URL;
+};
+const getModelName = (model, isOpenAi) => {
+  if (model === "gpt-realtime-1.5" || model === "gpt-realtime-mini" || model === "gpt-realtime" || model.includes("realtime")) {
+    return isOpenAi ? "gpt-4o-mini" : "openai/gpt-4o-mini";
+  }
+  if (isOpenAi) {
+    if (model.startsWith("openai/")) {
+      return model.substring(7);
+    }
+    if (model.includes("/") && !model.startsWith("openai/")) {
+      return "gpt-4o-mini";
+    }
+    return model;
+  }
+  return model;
+};
 class OpenRouterLlmProvider extends BaseLlmProvider {
   name = "openrouter";
   async complete(messages, config, tools) {
     const startTime = Date.now();
+    const isOpenAi = getApiUrl(config.apiKey).includes("openai.com");
+    const targetModel = getModelName(config.model || "", isOpenAi);
     const payload = {
-      model: config.model,
+      model: targetModel,
       messages: messages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -25,10 +55,13 @@ class OpenRouterLlmProvider extends BaseLlmProvider {
       payload.tool_choice = "auto";
     }
     try {
-      const response = await axios.post(OPENROUTER_API_URL, payload, {
+      const effectiveApiKey = resolveApiKey(config.apiKey);
+      const apiUrl = getApiUrl(effectiveApiKey);
+      console.log(`[OpenRouterLlmProvider] Routing complete() to: ${apiUrl} (model: ${targetModel})`);
+      const response = await axios.post(apiUrl, payload, {
         ...keepAliveAxiosConfig,
         headers: {
-          Authorization: `Bearer ${config.apiKey}`,
+          Authorization: `Bearer ${effectiveApiKey}`,
           "Content-Type": "application/json",
           "HTTP-Referer": "https://agentlabs.io",
           "X-Title": "AgentLabs AI Voice Engine"
@@ -63,8 +96,10 @@ class OpenRouterLlmProvider extends BaseLlmProvider {
     }
   }
   async *stream(messages, config, tools) {
+    const isOpenAi = getApiUrl(config.apiKey).includes("openai.com");
+    const targetModel = getModelName(config.model || "", isOpenAi);
     const payload = {
-      model: config.model,
+      model: targetModel,
       messages: messages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -91,10 +126,13 @@ class OpenRouterLlmProvider extends BaseLlmProvider {
     };
     resetInactivityTimer();
     try {
-      const response = await axios.post(OPENROUTER_API_URL, payload, {
+      const effectiveApiKey = resolveApiKey(config.apiKey);
+      const apiUrl = getApiUrl(effectiveApiKey);
+      console.log(`[OpenRouterLlmProvider] Routing stream() to: ${apiUrl} (model: ${targetModel})`);
+      const response = await axios.post(apiUrl, payload, {
         ...keepAliveAxiosConfig,
         headers: {
-          Authorization: `Bearer ${config.apiKey}`,
+          Authorization: `Bearer ${effectiveApiKey}`,
           "Content-Type": "application/json",
           "HTTP-Referer": "https://agentlabs.io",
           "X-Title": "AgentLabs AI Voice Engine"

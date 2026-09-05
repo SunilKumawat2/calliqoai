@@ -228,21 +228,17 @@ export class DeepgramSttProvider extends BaseSttProvider {
   }
 
   private mapLanguage(lang: string): string {
-    if (!lang) return 'en-IN';
-    if (lang.includes('-')) return lang;
-
-    const langMap: Record<string, string> = {
-      en: 'en-IN',
-      hi: 'hi',
-      ta: 'ta',
-      te: 'te',
-      kn: 'kn',
-      ml: 'ml',
-      mr: 'mr',
-      gu: 'gu',
-      bn: 'bn',
-      pa: 'pa',
-    };
-    return langMap[lang] || lang;
+    if (!lang) return 'en';
+    
+    const baseLang = lang.split(/[-_]/)[0].toLowerCase();
+    
+    // Deepgram streaming WebSocket API uses 2-letter base language codes for most languages (e.g. 'en', 'hi', 'ta', 'te').
+    // Sending 'en-IN' causes 400 Bad Request: No such model/language/tier combination found.
+    const validCodes = ['en', 'hi', 'ta', 'te', 'kn', 'ml', 'mr', 'gu', 'bn', 'pa', 'es', 'fr', 'de'];
+    if (validCodes.includes(baseLang)) {
+      return baseLang;
+    }
+    
+    return baseLang || 'en';
   }
 }

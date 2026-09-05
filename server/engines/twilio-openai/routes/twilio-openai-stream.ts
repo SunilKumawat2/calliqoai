@@ -20,7 +20,7 @@ import { OpenAIPoolService } from '../../plivo/services/openai-pool.service';
 import { OpenAIAgentFactory } from '../services/openai-agent-factory';
 import { hydrateCompiledTools, type CompiledFunctionTool } from '../../../services/openai-voice-agent';
 import { db } from '../../../db';
-import { twilioOpenaiCalls, calls, users, creditTransactions, flowExecutions } from '@shared/schema';
+import { twilioOpenaiCalls, calls, users, creditTransactions, flowExecutions, agents } from '@shared/schema';
 import { eq, sql, and, desc } from 'drizzle-orm';
 import { logger } from '../../../utils/logger';
 import { TWILIO_OPENAI_CONFIG, getRecordingWebhookUrl } from '../config/twilio-openai-config';
@@ -464,10 +464,28 @@ async function initializeSession(
       }
     }
 
+    // Fetch agent from DB to check if it's a flow agent
+    let dbAgentType: string | null = null;
+    if (callRecord.agentId) {
+      try {
+        const [agentRecord] = await db
+          .select({ type: agents.type })
+          .from(agents)
+          .where(eq(agents.id, callRecord.agentId))
+          .limit(1);
+        if (agentRecord) {
+          dbAgentType = agentRecord.type;
+        }
+      } catch (err: any) {
+        logger.warn(`[TwilioOpenAI Stream] Failed to query agent type: ${err.message}`, undefined, 'TwilioOpenAI Stream');
+      }
+    }
+
     // ALWAYS ensure end_call tool is available for flow agents
     // This ensures the agent can properly end calls after completing conversations
     const hasFlowPrompt = metadata?.systemPrompt && (metadata.systemPrompt as string).includes('Conversation States');
-    if (hasFlowPrompt && !agentConfig.tools?.some((t: AgentTool) => t.name === 'end_call')) {
+    const isFlow = isFlowAgent || dbAgentType === 'flow' || hasFlowPrompt;
+    if (isFlow && !agentConfig.tools?.some((t: AgentTool) => t.name === 'end_call')) {
       agentConfig = OpenAIAgentFactory.addEndCallTool(agentConfig);
       logger.info(`Added end_call tool to flow agent for ${callSid}`, undefined, 'TwilioOpenAI Stream');
     }

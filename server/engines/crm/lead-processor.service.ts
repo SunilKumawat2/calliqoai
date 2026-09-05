@@ -1281,13 +1281,13 @@ Return ONLY the JSON object. No explanation, no markdown formatting.`;
       }
 
       // Update ve_sessions in the database with the AI analysis results
-      if (aiSummary !== call.ai_summary || sentiment !== call.sentiment || classification !== call.classification) {
+      // Note: ve_sessions does not have a `classification` column, so we only update ai_summary and sentiment
+      if (aiSummary !== call.ai_summary || sentiment !== call.sentiment) {
         try {
           await db.execute(sql`
             UPDATE ve_sessions
             SET ai_summary = ${aiSummary},
                 sentiment = ${sentiment},
-                classification = ${classification},
                 updated_at = NOW()
             WHERE id = ${sessionId}
           `);
@@ -1377,9 +1377,11 @@ Return ONLY the JSON object. No explanation, no markdown formatting.`;
           .set({ classification: category })
           .where(eq(sipCalls.id, callId));
       } else if (engine === 'custom-voice-engine') {
+        // ve_sessions table does not have a classification column — store in metadata instead
         await db.execute(sql`
           UPDATE ve_sessions
-          SET classification = ${category}
+          SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('classification', ${category}::text),
+              updated_at = NOW()
           WHERE id = ${callId}
         `);
       }

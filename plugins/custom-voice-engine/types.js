@@ -12,8 +12,8 @@ const DEFAULT_STT_FORMAT = {
 };
 const DEFAULT_VAD_CONFIG = {
   speechThresholdMs: 250,
-  silenceThresholdMs: 500,
-  energyThreshold: 0.015,
+  silenceThresholdMs: 1500,
+  energyThreshold: 0.028,
   bargeInEnabled: true
 };
 export {

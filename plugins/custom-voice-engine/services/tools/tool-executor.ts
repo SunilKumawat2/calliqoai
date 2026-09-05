@@ -44,8 +44,11 @@ export class ToolExecutor {
     } else if (name.startsWith('webhook_') || name.startsWith('send_email_') || name.startsWith('send_whatsapp_') || metadata?.webhookUrl || metadata?.url) {
       return await ToolExecutor.executeWebhook(name, params, metadata);
     } else if (name === 'end_call') {
-      setImmediate(() => { session.end('hangup').catch(() => {}); });
-      return { success: true, result: 'Ending call' };
+      console.log(`[ToolExecutor] end_call invoked — delaying hangup by 12 seconds so full farewell message plays out completely.`);
+      setTimeout(() => {
+        session.end('hangup').catch(() => {});
+      }, 12000);
+      return { success: true, result: 'Ending call after farewell.' };
     } else if (name === 'transfer_call' || name.startsWith('transfer_')) {
       const targetNumber = (params.destination as string) || (params.phoneNumber as string) || (metadata?.phoneNumber as string) || '';
       if (!targetNumber) {

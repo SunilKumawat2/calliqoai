@@ -30,6 +30,7 @@ function writeWavHeader(samplesLength, sampleRate, numChannels, bitsPerSample) {
   return header;
 }
 class AudioSession extends EventEmitter {
+  static staticGreetingCache = /* @__PURE__ */ new Map();
   id;
   channelUuid;
   isTransferred = false;
@@ -46,9 +47,13 @@ class AudioSession extends EventEmitter {
   // State
   isProcessingLlm = false;
   isPlayingTts = false;
+  ttsPlayStartTime = 0;
   sampleRateWarned = false;
   ttsGeneration = 0;
   lastTtsEndTime = 0;
+  speechState = "listening";
+  playbackTimeout = null;
+  playbackResolve = null;
   pendingTranscript = "";
   finalTranscriptTimer = null;
   conversationMessages = [];
@@ -56,6 +61,8 @@ class AudioSession extends EventEmitter {
   destroyed = false;
   silenceWarningCount = 0;
   initialized = false;
+  isDemoUser = false;
+  demoLimitTimeoutId = null;
   isCallAnswered = false;
   firstMessageTriggered = false;
   callAnsweredTime = 0;
@@ -65,6 +72,8 @@ class AudioSession extends EventEmitter {
   pcmBuffer = Buffer.alloc(0);
   totalIncomingBytes = 0;
   bargeInPreBuffer = Buffer.alloc(0);
+  turnGeneration = 0;
+  endCallTimeoutId = null;
   // Idle timeout
   idleTimeoutId = null;
   lastUserActivityTime = 0;
@@ -116,6 +125,9 @@ class AudioSession extends EventEmitter {
   get direction() {
     return this.session.direction;
   }
+  get userId() {
+    return this.session.userId;
+  }
   /**
    * Initialize the audio pipeline (connect STT, prepare LLM/TTS)
    */
@@ -153,7 +165,31 @@ class AudioSession extends EventEmitter {
         `When the user says "today", use ${now.toLocaleDateString("en-CA", formatterOptions)}. When they say "tomorrow", use ${new Date(now.getTime() + 864e5).toLocaleDateString("en-CA", formatterOptions)}.`
       ].join("\n");
       const baseSystemPrompt = this.llmConfig.systemPrompt || this.agentConfig.systemPrompt || "";
-      const finalPromptContent = this.llmConfig.systemPrompt ? baseSystemPrompt : baseSystemPrompt + dateContext;
+      const lang = this.agentConfig.language || "en";
+      const isHindi = lang.startsWith("hi");
+      const voiceCallRules = `
+
+---
+**MANDATORY VOICE CALL & CONVERSATION RULES (ALWAYS FOLLOW):**
+1. CONTEXT RETENTION & SITE VISIT RESPECT:
+   - Always retain customer preferences shared during the call (budget, location, BHK type, purpose).
+   - If the customer requests property details/images/location on WhatsApp or email, or explicitly states they do NOT want a site visit right now, IMMEDIATELY acknowledge their request ("Bilkul, main WhatsApp par saari details share kar deti hoon"), confirm WhatsApp delivery, and NEVER ask or push for a site visit again in that call!
+2. INFORMATION CAPTURE & NO CONFUSION FALLBACKS:
+   - Never output generic confusion phrases like "Aap kya keh rahe hain", "samajh nahi paa rahi hoon", or "Mujhe samajh nahi aaya".
+   - If a customer utterance is short or partially noisy, state what you already understood (e.g. "Aapne 1 BHK Gurugram budget 30-40 Lakh bataya tha...") and politely ask only for the specific missing detail.
+3. DYNAMIC RESPONSES & NO REPETITIVE FILLERS:
+   - NEVER start consecutive responses with repetitive filler words like "Achha", "Achha, samajh rahi hoon", "Sahi hai", or "Okay". Use natural, contextually rich, varied sentence openings.
+4. GENDER & RESPECTFUL ADDRESS:
+   - Always address the customer using polite respectful plural verbs (e.g. "dekh rahe hain", "chahte hain", "karenge"). Avoid gender-specific singular forms (like "dekh rahi hain", "karengi").
+5. STRICT RESPONSE FORMAT & SHORT SENTENCES:
+   - Reply in MAXIMUM 1 SHORT SENTENCE (max 10-12 words) per turn. NO LONG PARAGRAPHS. NO BULLET POINTS.
+   - Never combine multiple sentences or questions into one reply.
+6. ONE QUESTION PER TURN & MANDATORY LISTENING:
+   - Ask EXACTLY ONE question per response turn.
+   - After asking ONE question, STOP speaking immediately and WAIT for the customer's answer.
+7. AFFIRMATION HANDLING ("Haan" / "Ji" / "Acha"):
+   - If the customer says "Haan", "Ji", "Haan ji", or "Acha", acknowledge politely and smoothly advance the conversation by asking the next relevant question about their property preferences (e.g. location, budget, or 2BHK/3BHK). Never repeat "Ji bilkul, batayein!" in a loop.`;
+      const finalPromptContent = this.llmConfig.systemPrompt ? baseSystemPrompt + voiceCallRules : baseSystemPrompt + dateContext + voiceCallRules;
       this.conversationMessages.push({
         role: "system",
         content: finalPromptContent
@@ -164,11 +200,33 @@ class AudioSession extends EventEmitter {
         sessionId: this.id,
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
       });
+      try {
+        const userResult = await db.execute(sql`
+          SELECT email FROM users WHERE id = ${this.userId} LIMIT 1
+        `);
+        if (userResult.rows[0]?.email === "demo@diploy.in") {
+          this.isDemoUser = true;
+          console.log(`[AudioSession:${this.id}] Demo user detected. Enforcing 3 minute call duration limit.`);
+          if (this.isCallAnswered) {
+            this.startDemoCallDurationLimit();
+          }
+        }
+      } catch (err) {
+        console.warn(`[AudioSession:${this.id}] Failed to check demo user status:`, err.message);
+      }
       console.log(`[AudioSession:${this.id}] Pipeline initialized. direction=${this.session.direction}, answered=${this.isCallAnswered}`);
     } catch (err) {
       this.updateStatus("failed");
       throw new Error(`Pipeline initialization failed: ${err.message}`);
     }
+  }
+  startDemoCallDurationLimit() {
+    if (!this.isDemoUser || this.demoLimitTimeoutId) return;
+    console.log(`[AudioSession:${this.id}] Starting 3-minute demo call limit timer.`);
+    this.demoLimitTimeoutId = setTimeout(async () => {
+      console.log(`[AudioSession:${this.id}] Enforcing 3-minute call duration limit. Hanging up.`);
+      this.emit("hangup", "demo_limit_exceeded");
+    }, 3 * 60 * 1e3);
   }
   /**
    * Pre-synthesize the static greeting audio during pipeline init.
@@ -180,17 +238,26 @@ class AudioSession extends EventEmitter {
     if (!greeting || !this.ttsProvider) return;
     try {
       const startTime = Date.now();
-      const chunks = [];
       const config = { ...this.ttsConfig };
       if (this.agentConfig.detectLanguageEnabled) {
         config.language = this.detectTtsLanguage(greeting, config.language || "en-IN");
       }
+      const cacheKey = `${config.provider}_${config.sarvamSpeaker || config.voice}_${config.language}_${greeting}`;
+      const cached = AudioSession.staticGreetingCache.get(cacheKey);
+      if (cached) {
+        this.greetingAudioCache = cached.audio;
+        this.greetingCacheText = cached.text;
+        console.log(`[AudioSession:${this.id}] [latency] Greeting retrieved from global static cache in 0ms (${this.greetingAudioCache.length} bytes)`);
+        return;
+      }
+      const chunks = [];
       for await (const audioChunk of this.ttsProvider.synthesizeStream(greeting, config)) {
         chunks.push(audioChunk);
       }
       if (chunks.length > 0 && !this.destroyed) {
         this.greetingAudioCache = Buffer.concat(chunks);
         this.greetingCacheText = greeting;
+        AudioSession.staticGreetingCache.set(cacheKey, { audio: this.greetingAudioCache, text: greeting });
         console.log(`[AudioSession:${this.id}] [latency] Greeting pre-synthesized in ${Date.now() - startTime}ms (${this.greetingAudioCache.length} bytes cached)`);
       }
     } catch (err) {
@@ -203,25 +270,15 @@ class AudioSession extends EventEmitter {
       return;
     }
     this.firstMessageTriggered = true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
     if (!this.agentConfig.firstMessage) {
       console.log(`[AudioSession:${this.id}] triggerFirstMessage - no firstMessage configured`);
       return;
     }
     const greetingStart = Date.now();
     const isCached = this.greetingCacheText === this.agentConfig.firstMessage && !!this.greetingAudioCache;
-    console.log(`[AudioSession:${this.id}] triggerFirstMessage - speaking first message: "${this.agentConfig.firstMessage}" (cached=${isCached})`);
-    if (isCached) {
-      await this.speakText(this.agentConfig.firstMessage);
-    } else {
-      const sentences = this.splitIntoSentences(this.agentConfig.firstMessage);
-      console.log(`[AudioSession:${this.id}] triggerFirstMessage - split uncached greeting into ${sentences.length} sentences`);
-      for (const sentence of sentences) {
-        this.queueTts(sentence);
-      }
-      while (this.isProcessingTtsQueue || this.ttsQueue.length > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
+    console.log(`[AudioSession:${this.id}] triggerFirstMessage - speaking first message as single stream: "${this.agentConfig.firstMessage}" (cached=${isCached})`);
+    await this.speakText(this.agentConfig.firstMessage);
     this.conversationMessages.push({
       role: "assistant",
       content: this.agentConfig.firstMessage
@@ -261,6 +318,7 @@ class AudioSession extends EventEmitter {
       console.log(`[AudioSession:${this.id}] enableAudio - marking answered`);
       this.isCallAnswered = true;
       this.callAnsweredTime = Date.now();
+      this.startDemoCallDurationLimit();
     } else {
       console.log(`[AudioSession:${this.id}] enableAudio - already answered`);
     }
@@ -270,9 +328,19 @@ class AudioSession extends EventEmitter {
       console.log(`[AudioSession:${this.id}] callAnswered - marking answered, triggering first message`);
       this.isCallAnswered = true;
       this.callAnsweredTime = Date.now();
+      this.startDemoCallDurationLimit();
       this.emit("callAnswered");
     }
     await this.triggerFirstMessage();
+  }
+  isPlaying() {
+    return this.isPlayingTts;
+  }
+  setSpeechState(state) {
+    if (this.speechState !== state) {
+      this.speechState = state;
+      this.emit(state);
+    }
   }
   /**
    * Process incoming audio from FreeSWITCH (mod_audio_fork)
@@ -288,30 +356,50 @@ class AudioSession extends EventEmitter {
     this.mixAudioAtOffset(chunk, startOffset);
     this.lastIncomingWriteEnd = startOffset + chunk.length;
     const timeSinceLastTts = Date.now() - this.lastTtsEndTime;
-    const isWithinEchoGuardWindow = timeSinceLastTts < 250;
-    if (!isWithinEchoGuardWindow) {
-      const vadResult = this.vadDetector.processChunk(chunk, this.isPlayingTts);
-      if (vadResult.isSpeechEnd) {
-        console.log(`[AudioSession:${this.id}] VAD isSpeechEnd, provider=${this.sttProvider?.name}, hasFlush=${typeof this.sttProvider?.flush === "function"}, playingTts=${this.isPlayingTts}`);
-      }
-      if (vadResult.isSpeechStart) {
-        this.clearIdleTimeout();
-        this.silenceWarningCount = 0;
-        if (this.isPlayingTts && this.agentConfig.interruptible) {
-          this.handleInterruption();
-        }
-      }
-      if (vadResult.isSpeechEnd && this.sttProvider?.flush) {
-        console.log(`[AudioSession:${this.id}] Calling STT flush`);
-        this.sttProvider.flush().catch((err) => {
-          console.error(`[AudioSession:${this.id}] STT flush error:`, err.message);
-        });
+    const isWithinEchoGuardWindow = timeSinceLastTts < 200;
+    const vadResult = this.vadDetector.processChunk(chunk, this.isPlayingTts);
+    if (vadResult.isSpeechEnd) {
+      console.log(`[AudioSession:${this.id}] VAD isSpeechEnd, provider=${this.sttProvider?.name}, hasFlush=${typeof this.sttProvider?.flush === "function"}, playingTts=${this.isPlayingTts}`);
+    }
+    if (vadResult.isSpeechStart) {
+      this.clearIdleTimeout();
+      this.silenceWarningCount = 0;
+      if (this.isPlayingTts) {
+        console.log(`[AudioSession:${this.id}] Speech start detected during TTS playback \u2014 preserving full TTS playback`);
       }
     }
+    if (vadResult.isSpeechEnd && this.sttProvider?.flush) {
+      console.log(`[AudioSession:${this.id}] Calling STT flush`);
+      this.sttProvider.flush().catch((err) => {
+        console.error(`[AudioSession:${this.id}] STT flush error:`, err.message);
+      });
+    }
+    if (vadResult.isSpeechEnd && this.sttProvider?.name === "deepgram" && this.pendingTranscript && this.pendingTranscript.trim()) {
+      console.log(`[AudioSession:${this.id}] Force-finalizing turn on VAD speech-end (transcript: "${this.pendingTranscript}")`);
+      const text = this.pendingTranscript;
+      this.pendingTranscript = "";
+      this.lastTranscriptText = text;
+      this.lastTranscriptTime = Date.now();
+      this.lastUserActivityTime = Date.now();
+      this.clearIdleTimeout();
+      if (this.finalTranscriptTimer) {
+        clearTimeout(this.finalTranscriptTimer);
+      }
+      this.processUserUtterance(text);
+    }
     const canSendAudio = !this.isPlayingTts;
+    let sttDebugCount = this._sttDebugCount || 0;
+    sttDebugCount++;
+    this._sttDebugCount = sttDebugCount;
+    if (sttDebugCount % 100 === 1) {
+      console.log(`[AudioSession:${this.id}] STT check #${sttDebugCount}: canSendAudio=${canSendAudio}, playingTts=${this.isPlayingTts}, isWithinEchoGuard=${isWithinEchoGuardWindow}, sttConnected=${this.sttProvider?.isConnected()}`);
+    }
     if (canSendAudio) {
       this.bargeInPreBuffer = Buffer.alloc(0);
       if (!isWithinEchoGuardWindow && this.sttProvider?.isConnected()) {
+        if (sttDebugCount % 100 === 1) {
+          console.log(`[AudioSession:${this.id}] -> Calling sttProvider.sendAudio for chunk of size ${chunk.length}`);
+        }
         this.sttProvider.sendAudio(chunk);
       }
     } else {
@@ -346,14 +434,9 @@ class AudioSession extends EventEmitter {
   }
   // ── Private: Idle Timeout ──────────────────────────────
   getSilenceMessages() {
-    const lang = this.agentConfig.language || "en";
+    const lang = this.agentConfig.language || "hi";
     const baseLang = lang.split(/[-_]/)[0].toLowerCase();
     switch (baseLang) {
-      case "hi":
-        return {
-          warning: "\u0928\u092E\u0938\u094D\u0924\u0947, \u0915\u094D\u092F\u093E \u0906\u092A \u0935\u0939\u0940\u0902 \u0939\u0948\u0902? \u092E\u0941\u091D\u0947 \u0906\u092A\u0915\u0940 \u0906\u0935\u093E\u091C\u093C \u0928\u0939\u0940\u0902 \u0906 \u0930\u0939\u0940 \u0939\u0948\u0964",
-          end: "\u091A\u0942\u0902\u0915\u093F \u0906\u092A\u0915\u0940 \u0906\u0935\u093E\u091C\u093C \u0928\u0939\u0940\u0902 \u0906 \u0930\u0939\u0940 \u0939\u0948, \u0907\u0938\u0932\u093F\u090F \u0939\u092E \u0907\u0938 \u0915\u0949\u0932 \u0915\u094B \u0938\u092E\u093E\u092A\u094D\u0924 \u0915\u0930 \u0930\u0939\u0947 \u0939\u0948\u0902\u0964 \u0927\u0928\u094D\u092F\u0935\u093E\u0926\u0964"
-        };
       case "ta":
         return {
           warning: "\u0BB5\u0BA3\u0B95\u0BCD\u0B95\u0BAE\u0BCD, \u0BA8\u0BC0\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B85\u0B99\u0BCD\u0B95\u0BC7 \u0B87\u0BB0\u0BC1\u0B95\u0BCD\u0B95\u0BBF\u0BB1\u0BC0\u0BB0\u0BCD\u0B95\u0BB3\u0BBE? \u0B89\u0B99\u0BCD\u0B95\u0BB3\u0BCD \u0B95\u0BC1\u0BB0\u0BB2\u0BCD \u0B95\u0BC7\u0B9F\u0BCD\u0B95\u0BB5\u0BBF\u0BB2\u0BCD\u0BB2\u0BC8.",
@@ -369,18 +452,19 @@ class AudioSession extends EventEmitter {
           warning: "\u0CB9\u0CB2\u0CCB, \u0CA8\u0CC0\u0CB5\u0CC1 \u0C85\u0CB2\u0CCD\u0CB2\u0CC7 \u0C87\u0CA6\u0CCD\u0CA6\u0CC0\u0CB0\u0CBE? \u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C95\u0CC7\u0CB3\u0CBF\u0CB8\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CB2\u0CCD\u0CB2.",
           end: "\u0CA8\u0CBF\u0CAE\u0CCD\u0CAE \u0CA7\u0CCD\u0CB5\u0CA8\u0CBF \u0C95\u0CC7\u0CB3\u0CBF\u0CB8\u0CA6 \u0C95\u0CBE\u0CB0\u0CA3, \u0CA8\u0CBE\u0CB5\u0CC1 \u0C95\u0CB0\u0CC6\u0CAF\u0CA8\u0CCD\u0CA8\u0CC1 \u0CAE\u0CC1\u0C95\u0CCD\u0CA4\u0CBE\u0CAF\u0C97\u0CCA\u0CB3\u0CBF\u0CB8\u0CC1\u0CA4\u0CCD\u0CA4\u0CBF\u0CA6\u0CCD\u0CA6\u0CC7\u0CB5\u0CC6. \u0CA7\u0CA8\u0CCD\u0CAF\u0CB5\u0CBE\u0CA6\u0C97\u0CB3\u0CC1."
         };
+      case "hi":
       default:
         return {
-          warning: "Hello, are you still there? I can't hear you.",
-          end: "Since you are not audible, we are ending this call now. Goodbye."
+          warning: "\u0928\u092E\u0938\u094D\u0924\u0947, \u0915\u094D\u092F\u093E \u0906\u092A \u0935\u0939\u0940\u0902 \u0939\u0948\u0902? \u092E\u0941\u091D\u0947 \u0906\u092A\u0915\u0940 \u0906\u0935\u093E\u091C\u093C \u0928\u0939\u0940\u0902 \u0906 \u0930\u0939\u0940 \u0939\u0948\u0964",
+          end: "\u091A\u0942\u0902\u0915\u093F \u0906\u092A\u0915\u0940 \u0906\u0935\u093E\u091C\u093C \u0928\u0939\u0940\u0902 \u0906 \u0930\u0939\u0940 \u0939\u0948, \u0907\u0938\u0932\u093F\u090F \u0939\u092E \u0907\u0938 \u0915\u0949\u0932 \u0915\u094B \u0938\u092E\u093E\u092A\u094D\u0924 \u0915\u0930 \u0930\u0939\u0947 \u0939\u0948\u0902\u0964 \u0927\u0928\u094D\u092F\u0935\u093E\u0926\u0964"
         };
     }
   }
   resetIdleTimeout() {
     this.clearIdleTimeout();
-    if (this.destroyed) return;
-    const timeoutMs = this.agentConfig.silenceTimeoutMs || 15e3;
-    const warningInterval = Math.max(5e3, Math.floor(timeoutMs / 2));
+    if (this.destroyed || this.isPlayingTts) return;
+    const timeoutMs = this.agentConfig.silenceTimeoutMs || 25e3;
+    const warningInterval = Math.max(15e3, Math.floor(timeoutMs / 2));
     this.idleTimeoutId = setTimeout(async () => {
       if (this.destroyed) return;
       const messages = this.getSilenceMessages();
@@ -392,7 +476,8 @@ class AudioSession extends EventEmitter {
       } else {
         console.log(`[AudioSession:${this.id}] Second silence timeout reached, ending call`);
         await this.speakText(messages.end);
-        setTimeout(() => {
+        this.endCallTimeoutId = setTimeout(() => {
+          this.endCallTimeoutId = null;
           this.end("timeout");
         }, 2500);
       }
@@ -403,6 +488,11 @@ class AudioSession extends EventEmitter {
       clearTimeout(this.idleTimeoutId);
       this.idleTimeoutId = null;
     }
+    if (this.endCallTimeoutId) {
+      clearTimeout(this.endCallTimeoutId);
+      this.endCallTimeoutId = null;
+      console.log(`[AudioSession:${this.id}] Cancelled pending end-call timeout due to user activity`);
+    }
   }
   /**
    * End the session
@@ -410,6 +500,14 @@ class AudioSession extends EventEmitter {
   async end(reason = "normal") {
     if (this.destroyed) return;
     this.clearIdleTimeout();
+    if (this.endCallTimeoutId) {
+      clearTimeout(this.endCallTimeoutId);
+      this.endCallTimeoutId = null;
+    }
+    if (this.demoLimitTimeoutId) {
+      clearTimeout(this.demoLimitTimeoutId);
+      this.demoLimitTimeoutId = null;
+    }
     const answeredTime = this.callAnsweredTime > 0 ? this.callAnsweredTime : this.sessionStartTime;
     this.session.durationSeconds = Math.floor((Date.now() - answeredTime) / 1e3);
     this.session.endedAt = /* @__PURE__ */ new Date();
@@ -513,8 +611,36 @@ class AudioSession extends EventEmitter {
     this.clearIdleTimeout();
     if (this.finalTranscriptTimer) {
       clearTimeout(this.finalTranscriptTimer);
+      this.finalTranscriptTimer = null;
     }
-    this.processUserUtterance(text);
+    if (!this.accumulatedUserUtterance) {
+      this.accumulatedUserUtterance = text;
+    } else {
+      this.accumulatedUserUtterance = `${this.accumulatedUserUtterance} ${text}`;
+    }
+    const trimmedCurrent = (this.accumulatedUserUtterance || "").trim().toLowerCase();
+    const incompleteConnectors = ["lekin", "ya", "aur", "ki", "toh", "bhi", "me", "par", "ke", "ko", "taaki", "agar", "waise", "kya"];
+    const lastWord = trimmedCurrent.split(/\s+/).pop() || "";
+    const isIncomplete = incompleteConnectors.includes(lastWord) || trimmedCurrent.endsWith(",");
+    const debounceMs = isIncomplete ? 1800 : 1200;
+    this.finalTranscriptTimer = setTimeout(() => {
+      const fullText = (this.accumulatedUserUtterance || "").trim();
+      this.accumulatedUserUtterance = "";
+      this.finalTranscriptTimer = null;
+      if (fullText) {
+        const cleanText = fullText.toLowerCase().replace(/[.,!]/g, "");
+        const isSingleFiller = ["ji", "haan", "haan ji", "hmm", "hmmm", "okay", "ok", "sahi hai", "han"].includes(cleanText);
+        if (isSingleFiller && (this.isProcessingLlm || this.isPlayingTts)) {
+          console.log(`[AudioSession:${this.id}] Discarding single filler utterance while busy: "${fullText}"`);
+          return;
+        }
+        if (this.isProcessingLlm) {
+          this.pendingUtterances.push(fullText);
+        } else {
+          this.processUserUtterance(fullText);
+        }
+      }
+    }, debounceMs);
   }
   // ── Private: TTS Queue ────────────────────────────────
   ttsQueue = [];
@@ -527,35 +653,45 @@ class AudioSession extends EventEmitter {
     console.log(`[AudioSession:${this.id}] processTtsQueue - START (${this.ttsQueue.length} items, streaming=${useStreaming})`);
     let prefetchText = null;
     let prefetchPromise = null;
-    while ((this.ttsQueue.length > 0 || prefetchPromise) && !this.destroyed) {
-      if (this.ttsGeneration !== drainGeneration) {
-        this.ttsQueue.length = 0;
-        break;
+    try {
+      while ((this.ttsQueue.length > 0 || prefetchPromise) && !this.destroyed) {
+        if (this.ttsGeneration !== drainGeneration) {
+          console.log(`[AudioSession:${this.id}] processTtsQueue - generation mismatch (${this.ttsGeneration} !== ${drainGeneration}), stopping queue drain`);
+          break;
+        }
+        let text;
+        let audio;
+        if (prefetchPromise) {
+          text = prefetchText;
+          audio = await prefetchPromise;
+          prefetchPromise = null;
+          prefetchText = null;
+        } else {
+          text = this.ttsQueue.shift();
+          audio = useStreaming ? null : await this.synthesizeSentence(text);
+        }
+        if (this.ttsGeneration !== drainGeneration) {
+          console.log(`[AudioSession:${this.id}] processTtsQueue - generation mismatch during synth, stopping queue drain`);
+          break;
+        }
+        if (this.ttsQueue.length > 0 && !this.destroyed) {
+          prefetchText = this.ttsQueue.shift();
+          prefetchPromise = this.synthesizeSentence(prefetchText);
+        }
+        await this.speakText(text, audio);
       }
-      let text;
-      let audio;
-      if (prefetchPromise) {
-        text = prefetchText;
-        audio = await prefetchPromise;
-        prefetchPromise = null;
-        prefetchText = null;
-      } else {
-        text = this.ttsQueue.shift();
-        audio = useStreaming ? null : await this.synthesizeSentence(text);
-      }
-      if (this.ttsGeneration !== drainGeneration) {
-        this.ttsQueue.length = 0;
-        break;
-      }
+    } catch (err) {
+      console.error(`[AudioSession:${this.id}] processTtsQueue error:`, err.message);
+    } finally {
+      this.isProcessingTtsQueue = false;
+      console.log(`[AudioSession:${this.id}] processTtsQueue - DONE (remaining items: ${this.ttsQueue.length})`);
       if (this.ttsQueue.length > 0 && !this.destroyed) {
-        prefetchText = this.ttsQueue.shift();
-        prefetchPromise = this.synthesizeSentence(prefetchText);
+        this.processTtsQueue();
+      } else {
+        this.resetIdleTimeout();
+        this.emit("playback_finished");
       }
-      await this.speakText(text, audio);
     }
-    this.isProcessingTtsQueue = false;
-    console.log(`[AudioSession:${this.id}] processTtsQueue - DONE`);
-    this.resetIdleTimeout();
   }
   /**
    * Synthesize a full sentence into a single PCM buffer. Runs independently of
@@ -595,18 +731,27 @@ class AudioSession extends EventEmitter {
   async processNextUtterance() {
     if (this.destroyed || this.isProcessingLlm || this.pendingUtterances.length === 0) return;
     const text = this.pendingUtterances.shift();
+    const cleanText = text.trim().toLowerCase().replace(/[.,!]/g, "");
+    const isSingleFiller = ["ji", "haan", "haan ji", "hmm", "hmmm", "okay", "ok", "sahi hai", "han"].includes(cleanText);
+    if (isSingleFiller) {
+      console.log(`[AudioSession:${this.id}] Dropping trailing filler from pending utterances: "${text}"`);
+      if (this.pendingUtterances.length > 0) {
+        return this.processNextUtterance();
+      }
+      return;
+    }
     await this.processUserUtterance(text);
   }
   async processUserUtterance(text) {
     if (this.destroyed) return;
-    if (this.isProcessingLlm) {
-      console.log(`[AudioSession:${this.id}] processUserUtterance - LLM busy, queueing: "${text}"`);
-      this.pendingUtterances.push(text);
-      return;
-    }
+    this.ttsQueue.length = 0;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    if (this.destroyed) return;
     this.isProcessingLlm = true;
+    this.turnGeneration++;
+    const currentTurnGeneration = this.turnGeneration;
     this.turnStartTime = Date.now();
-    console.log(`[AudioSession:${this.id}] processUserUtterance - START: "${text}"`);
+    console.log(`[AudioSession:${this.id}] processUserUtterance - START: "${text}" (turn=${currentTurnGeneration})`);
     this.clearIdleTimeout();
     this.conversationMessages.push({ role: "user", content: text });
     this.addTranscriptEntry("user", text);
@@ -627,7 +772,7 @@ class AudioSession extends EventEmitter {
       );
       let firstTokenLogged = false;
       for await (const chunk of stream) {
-        if (this.destroyed) break;
+        if (this.destroyed || this.turnGeneration !== currentTurnGeneration) break;
         if (chunk.content) {
           if (!firstTokenLogged) {
             firstTokenLogged = true;
@@ -694,11 +839,29 @@ class AudioSession extends EventEmitter {
             timestamp: (/* @__PURE__ */ new Date()).toISOString()
           });
         }
+        if (sentenceBuffer && sentenceBuffer.trim().length > 0) {
+          const sentence = sentenceBuffer.trim();
+          console.log(`[AudioSession:${this.id}] Flushing remaining sentence buffer before tool execution: "${sentence}"`);
+          this.queueTts(sentence);
+          sentenceBuffer = "";
+        }
         if (hasEndCall || this.destroyed) {
           this.session.llmPromptTokens += Math.round(fullResponse.length / 4);
           this.session.llmCompletionTokens += Math.round(fullResponse.length / 4);
+          console.log(`[AudioSession:${this.id}] end_call detected \u2014 waiting for TTS queue to drain completely before hangup...`);
+          const checkDrain = setInterval(() => {
+            if (this.ttsQueue.length === 0 && !this.isSpeaking) {
+              clearInterval(checkDrain);
+              console.log(`[AudioSession:${this.id}] TTS queue drained \u2014 hanging up in 2.5s grace period.`);
+              setTimeout(() => {
+                this.session.end("hangup").catch(() => {
+                });
+              }, 2500);
+            }
+          }, 300);
           return;
         }
+        if (this.turnGeneration !== currentTurnGeneration) return;
         console.log(`[AudioSession:${this.id}] Streaming follow-up LLM response for tool confirmation...`);
         this.clearIdleTimeout();
         const followUpStartTime = Date.now();
@@ -709,7 +872,7 @@ class AudioSession extends EventEmitter {
           this.llmConfig
         );
         for await (const chunk of followUpStream) {
-          if (this.destroyed) break;
+          if (this.destroyed || this.turnGeneration !== currentTurnGeneration) break;
           if (chunk.content) {
             followUpFull += chunk.content;
             followUpSentenceBuffer += chunk.content;
@@ -723,9 +886,10 @@ class AudioSession extends EventEmitter {
             }
           }
         }
-        if (followUpSentenceBuffer.trim() && !this.destroyed) {
+        if (followUpSentenceBuffer.trim() && !this.destroyed && this.turnGeneration === currentTurnGeneration) {
           this.queueTts(followUpSentenceBuffer.trim());
         }
+        if (this.turnGeneration !== currentTurnGeneration) return;
         if (followUpFull && !this.destroyed) {
           this.conversationMessages.push({ role: "assistant", content: followUpFull });
           this.session.llmPromptTokens += Math.round(followUpFull.length / 4);
@@ -742,9 +906,10 @@ class AudioSession extends EventEmitter {
         this.trimConversationHistory();
         return;
       }
-      if (sentenceBuffer.trim() && !this.destroyed) {
+      if (sentenceBuffer.trim() && !this.destroyed && this.turnGeneration === currentTurnGeneration) {
         this.queueTts(sentenceBuffer.trim());
       }
+      if (this.turnGeneration !== currentTurnGeneration) return;
       const latencyMs = Date.now() - startTime;
       console.log(`[AudioSession:${this.id}] processUserUtterance - LLM done in ${latencyMs}ms, response length: ${fullResponse.length} chars`);
       this.session.llmPromptTokens += Math.round(fullResponse.length / 4);
@@ -759,6 +924,7 @@ class AudioSession extends EventEmitter {
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
       });
     } catch (err) {
+      if (this.turnGeneration !== currentTurnGeneration) return;
       console.error(`[AudioSession:${this.id}] LLM error:`, err.message, err.stack);
       this.emitPipelineEvent({
         type: "error",
@@ -772,7 +938,9 @@ class AudioSession extends EventEmitter {
         this.queueTts(fallbackMsg);
       }
     } finally {
-      this.isProcessingLlm = false;
+      if (this.turnGeneration === currentTurnGeneration) {
+        this.isProcessingLlm = false;
+      }
       console.log(`[AudioSession:${this.id}] processUserUtterance - DONE, checking for queued utterances (${this.pendingUtterances.length} pending)`);
       this.processNextUtterance();
     }
@@ -820,6 +988,8 @@ class AudioSession extends EventEmitter {
       }
       if (audio && audio.length > 0 && !this.destroyed && this.ttsGeneration === drainGeneration) {
         this.isPlayingTts = true;
+        this.ttsPlayStartTime = Date.now();
+        this.setSpeechState("speaking");
         const totalBytes = audio.length;
         const ttsPlayStartMs = Math.max(0, Date.now() - this.callAnsweredTime);
         let agentWriteOffset = Math.round(ttsPlayStartMs * 8) * 2;
@@ -830,7 +1000,14 @@ class AudioSession extends EventEmitter {
         this.lastOutgoingWriteEnd = agentWriteOffset + totalBytes;
         this.audioOutCallback(audio);
         const playbackDurationMs = Math.round(totalBytes / 16);
-        await new Promise((resolve) => setTimeout(resolve, playbackDurationMs));
+        await new Promise((resolve) => {
+          this.playbackResolve = resolve;
+          this.playbackTimeout = setTimeout(() => {
+            this.playbackResolve = null;
+            this.playbackTimeout = null;
+            resolve();
+          }, playbackDurationMs);
+        });
         this.addTranscriptEntry("assistant", text);
         console.log(`[AudioSession:${this.id}] speakText - FINISHED playback (${playbackDurationMs}ms), added to transcript`);
         this.session.ttsCharacters += text.length;
@@ -850,6 +1027,8 @@ class AudioSession extends EventEmitter {
       this.isPlayingTts = false;
       this.lastTtsEndTime = Date.now();
       this.vadDetector.reset();
+      this.setSpeechState("listening");
+      this.resetIdleTimeout();
     }
   }
   /**
@@ -870,6 +1049,7 @@ class AudioSession extends EventEmitter {
     }
     this.clearIdleTimeout();
     const drainGeneration = this.ttsGeneration;
+    this.ttsPlayStartTime = Date.now();
     console.log(`[AudioSession:${this.id}] speakTextStreaming - START "${text.substring(0, 60)}..."`);
     this.emitPipelineEvent({
       type: "tts_start",
@@ -898,7 +1078,7 @@ class AudioSession extends EventEmitter {
         type: "playAudio",
         data: {
           audioContentType: "raw",
-          sampleRate: "8000",
+          sampleRate: 8e3,
           audioContent: out.toString("base64")
         }
       });
@@ -992,13 +1172,50 @@ class AudioSession extends EventEmitter {
    * caller always hears correct-speed audio. No-op for the normal 8kHz case.
    */
   ensureTelephonySampleRate(audio) {
-    const configured = this.ttsConfig.outputFormat?.sampleRate;
-    if (!configured || configured === 8e3) return audio;
-    if (!this.sampleRateWarned) {
-      this.sampleRateWarned = true;
-      console.warn(`[AudioSession:${this.id}] TTS sample rate ${configured}Hz != 8000Hz playback rate \u2014 resampling to 8kHz to avoid distorted audio`);
+    let actualSampleRate = this.ttsConfig.outputFormat?.sampleRate || 8e3;
+    if (audio.length >= 44 && audio.readUInt32BE(0) === 1380533830) {
+      const headerRate = audio.readUInt32LE(24);
+      if (headerRate >= 8e3 && headerRate <= 48e3) {
+        actualSampleRate = headerRate;
+      }
+      const dataIdx = audio.subarray(0, 100).indexOf("data");
+      if (dataIdx !== -1 && dataIdx + 8 <= audio.length) {
+        audio = audio.subarray(dataIdx + 8);
+      } else {
+        audio = audio.subarray(44);
+      }
     }
-    return this.resamplePcm16(audio, configured, 8e3);
+    let resampled = audio;
+    if (actualSampleRate !== 8e3) {
+      if (!this.sampleRateWarned) {
+        this.sampleRateWarned = true;
+        console.warn(`[AudioSession:${this.id}] TTS actual sample rate ${actualSampleRate}Hz != 8000Hz playback rate \u2014 resampling to 8kHz`);
+      }
+      resampled = this.resamplePcm16(audio, actualSampleRate, 8e3);
+    }
+    return this.normalizeAudioVolume(resampled, 0.92);
+  }
+  normalizeAudioVolume(audio, targetPeakRatio = 0.92) {
+    if (audio.length < 2) return audio;
+    let maxAbs = 0;
+    for (let i = 0; i < audio.length - 1; i += 2) {
+      const val = Math.abs(audio.readInt16LE(i));
+      if (val > maxAbs) maxAbs = val;
+    }
+    if (maxAbs === 0) return audio;
+    const maxTarget = Math.floor(32767 * targetPeakRatio);
+    if (maxAbs < 100) return audio;
+    const gain = maxTarget / maxAbs;
+    if (gain === 1) return audio;
+    const out = Buffer.alloc(audio.length);
+    for (let i = 0; i < audio.length - 1; i += 2) {
+      const val = audio.readInt16LE(i);
+      let boosted = Math.round(val * gain);
+      if (boosted > 32767) boosted = 32767;
+      else if (boosted < -32768) boosted = -32768;
+      out.writeInt16LE(boosted, i);
+    }
+    return out;
   }
   resamplePcm16(audio, fromRate, toRate) {
     if (fromRate === toRate || audio.length < 2) return audio;
@@ -1035,11 +1252,35 @@ class AudioSession extends EventEmitter {
   }
   // ── Private: Interruption Handling ─────────────────────
   handleInterruption() {
-    if (!this.isPlayingTts) return;
+    if (this.isPlayingTts) {
+      const ttsElapsed = Date.now() - this.ttsPlayStartTime;
+      if (ttsElapsed < 300) {
+        console.log(`[AudioSession:${this.id}] Ignored interruption within initial 300ms TTS playback (elapsed=${ttsElapsed}ms)`);
+        return;
+      }
+    }
+    this.ttsQueue.length = 0;
     this.isPlayingTts = false;
+    this.ttsPlayStartTime = 0;
     this.isProcessingLlm = false;
     this.ttsGeneration++;
+    this.turnGeneration++;
     this.vadDetector.reset();
+    if (this.endCallTimeoutId) {
+      clearTimeout(this.endCallTimeoutId);
+      this.endCallTimeoutId = null;
+      console.log(`[AudioSession:${this.id}] Cancelled pending end-call timeout due to user interruption`);
+    }
+    if (this.playbackTimeout) {
+      clearTimeout(this.playbackTimeout);
+      this.playbackTimeout = null;
+    }
+    if (this.playbackResolve) {
+      const resolve = this.playbackResolve;
+      this.playbackResolve = null;
+      resolve();
+    }
+    this.setSpeechState("listening");
     if (this.bargeInPreBuffer.length > 0 && this.sttProvider?.isConnected()) {
       console.log(`[AudioSession:${this.id}] Sending ${this.bargeInPreBuffer.length} bytes of pre-buffered barge-in audio to STT`);
       this.sttProvider.sendAudio(this.bargeInPreBuffer);
@@ -1054,17 +1295,66 @@ class AudioSession extends EventEmitter {
   }
   // ── Private: Helpers ───────────────────────────────────
   findSentenceEnd(text) {
-    const endings = [". ", "! ", "? ", ".\n", "!\n", "?\n", "\u0964 ", "\u0964\n", "| ", "|\n"];
-    let lastEnd = -1;
+    const endings = [
+      ". ",
+      "! ",
+      "? ",
+      ".\n",
+      "!\n",
+      "?\n",
+      "?",
+      "!",
+      "\u0964 ",
+      "\u0964\n",
+      "| ",
+      "|\n",
+      "\u0964",
+      "|"
+      // Split immediately on Hindi full stops without requiring trailing characters
+    ];
+    let earliestIdx = -1;
     for (const ending of endings) {
-      const idx = text.lastIndexOf(ending);
-      if (idx > lastEnd) {
-        lastEnd = idx;
+      const idx = text.indexOf(ending);
+      if (idx !== -1) {
+        if (idx >= 20 || text.length <= idx + 5) {
+          if (earliestIdx === -1 || idx < earliestIdx) {
+            earliestIdx = idx + ending.length - 1;
+          }
+        }
       }
     }
-    return lastEnd;
+    return earliestIdx;
   }
   splitIntoSentences(text) {
+    const sentences = [];
+    let remaining = text;
+    while (remaining.length > 0) {
+      const endings = [". ", "! ", "? ", ".\n", "!\n", "?\n", "\u0964 ", "\u0964\n", "| ", "|\n", ".", "!", "?", "\u0964", "|"];
+      let earliestIdx = -1;
+      let matchedEnding = "";
+      for (const ending of endings) {
+        const idx = remaining.indexOf(ending);
+        if (idx !== -1 && (earliestIdx === -1 || idx < earliestIdx)) {
+          earliestIdx = idx;
+          matchedEnding = ending;
+        }
+      }
+      if (earliestIdx !== -1) {
+        const sentence = remaining.substring(0, earliestIdx + matchedEnding.trim().length).trim();
+        if (sentence) {
+          sentences.push(sentence);
+        }
+        remaining = remaining.substring(earliestIdx + matchedEnding.length).trim();
+      } else {
+        if (remaining.trim()) {
+          sentences.push(remaining.trim());
+        }
+        break;
+      }
+    }
+    return sentences;
+  }
+  splitGreetingIntoSentences(text) {
     const sentences = [];
     let remaining = text;
     while (remaining.length > 0) {

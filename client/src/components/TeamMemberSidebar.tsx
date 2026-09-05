@@ -3,7 +3,7 @@
  * Shows navigation based on granted permissions for team members
  * Supports both user team members and admin sub-admins
  */
-import { Users, BookOpen, Mic, Link as LinkIcon, Phone, Settings, ChevronsUpDown, Plus, BarChart3, Home, Target, LogOut, Coins, Shield, CreditCard, TrendingUp, UserCheck, Workflow, Webhook, ClipboardList, Calendar, Layout, FileText, Wrench, Globe, Building2, Key, Puzzle, MessageSquare, Headphones, ListOrdered, ContactRound, Package, DollarSign, Brain, Bot } from "lucide-react";
+import { Users, BookOpen, Mic, Link as LinkIcon, Phone, PhoneCall, Settings, ChevronsUpDown, Plus, BarChart3, Home, Target, LogOut, Coins, Shield, CreditCard, TrendingUp, UserCheck, Workflow, Webhook, ClipboardList, Calendar, Layout, FileText, Wrench, Globe, Building2, Key, Puzzle, MessageSquare, Headphones, ListOrdered, ContactRound, Package, DollarSign, Brain, Bot } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -272,6 +272,14 @@ export function TeamMemberSidebar() {
       });
       groups.tools = [];
     }
+
+    // Add Demo unconditionally under monitor group
+    groups.monitor.push({
+      url: "/app/demo",
+      icon: PhoneCall,
+      label: t('nav.demo', 'Demo'),
+      iconColor: "text-amber-500",
+    });
 
     return groups;
   };

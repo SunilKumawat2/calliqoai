@@ -121,6 +121,7 @@ export interface FlowAgentUpdateParams {
   messagingEmailTemplate?: string;
   messagingWhatsappTemplate?: string;
   messagingWhatsappVariables?: string;
+  endConversationEnabled?: boolean;
 }
 
 interface CompiledWorkflow {
@@ -771,6 +772,7 @@ export class FlowAgentService {
     const effectiveMaxDuration = params.maxDurationSeconds ?? currentAgent.maxDurationSeconds ?? 600;
     const effectiveDetectLanguage = params.detectLanguageEnabled ?? currentAgent.detectLanguageEnabled ?? false;
     const effectiveExpressiveMode = params.expressiveMode ?? currentAgent.expressiveMode ?? false;
+    const effectiveEndConversation = params.endConversationEnabled ?? currentAgent.endConversationEnabled ?? false;
     const effectiveLanguage = params.language || currentAgent.language;
     const isNonEnglish = effectiveLanguage && effectiveLanguage !== 'en';
 
@@ -960,6 +962,7 @@ export class FlowAgentService {
       voiceSimilarityBoost?: number;
       voiceSpeed?: number;
       suggestedAudioTags?: boolean;
+      endConversationEnabled?: boolean;
     } = {};
 
     if (knowledgeBases.length > 0) {
@@ -1022,7 +1025,10 @@ When using a tool:
     if (effectiveExpressiveMode) {
       additionalOptions.suggestedAudioTags = true;
     }
-    console.log(`🎙️ [Flow] Voice settings: stability=${voiceStability}, similarity=${voiceSimilarityBoost}, speed=${voiceSpeed}, expressiveMode=${effectiveExpressiveMode}`);
+    if (effectiveEndConversation) {
+      additionalOptions.endConversationEnabled = true;
+    }
+    console.log(`🎙️ [Flow] Voice settings: stability=${voiceStability}, similarity=${voiceSimilarityBoost}, speed=${voiceSpeed}, expressiveMode=${effectiveExpressiveMode}, endConversation=${effectiveEndConversation}`);
 
     // Update workflow using SINGLE consolidated API call
     // This prevents ElevenLabs PATCH from overwriting settings between multiple calls

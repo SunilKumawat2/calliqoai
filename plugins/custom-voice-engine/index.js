@@ -45,8 +45,12 @@ function registerAiVoiceEngineRoutes(app, options) {
   }
   (async () => {
     try {
+      if (process.env.DISABLE_FREESWITCH_ESL === "true" || process.env.DISABLE_FREESWITCH_ESL === "1") {
+        console.log("[AI Voice Engine] FreeSWITCH ESL connection initialization disabled via DISABLE_FREESWITCH_ESL environment variable.");
+        return;
+      }
       const os = await import("os");
-      const getContainerIp = () => {
+      const getServerIp = () => {
         const interfaces = os.networkInterfaces();
         for (const name of Object.keys(interfaces)) {
           for (const net of interfaces[name] || []) {
@@ -57,15 +61,38 @@ function registerAiVoiceEngineRoutes(app, options) {
             }
           }
         }
-        return "127.0.0.1";
+        return process.env.FREESWITCH_WS_HOST || "127.0.0.1";
       };
-      const containerIp = getContainerIp();
-      if (containerIp === "127.0.0.1") return;
-      if (process.env.DISABLE_FREESWITCH_ESL === "true" || process.env.DISABLE_FREESWITCH_ESL === "1") {
-        console.log("[AI Voice Engine] FreeSWITCH ESL connection initialization disabled via DISABLE_FREESWITCH_ESL environment variable.");
-        return;
+      const serverIp = getServerIp();
+      const wsUrl = `ws://${serverIp}:${process.env.PORT || "5000"}/voice-engine/ws/audio`;
+      console.log(`[AI Voice Engine] Audio WebSocket URL: ${wsUrl}`);
+      try {
+        const { db } = await import("../../server/db.js");
+        const { sql } = await import("drizzle-orm");
+        const eslHost = process.env.FREESWITCH_ESL_HOST || "127.0.0.1";
+        const eslPort = parseInt(process.env.FREESWITCH_ESL_PORT || "8021", 10);
+        const eslPassword = process.env.FREESWITCH_ESL_PASSWORD || "ClueCon";
+        const sipHost = process.env.FREESWITCH_SIP_HOST || eslHost;
+        const sipPort = parseInt(process.env.FREESWITCH_SIP_PORT || "5060", 10);
+        const existingNodes = await db.execute(
+          sql`SELECT id FROM ve_freeswitch_nodes LIMIT 1`
+        );
+        if (existingNodes.rows.length === 0) {
+          console.log("[AI Voice Engine] No FreeSWITCH nodes found \u2014 auto-registering local node...");
+          await db.execute(sql`
+            INSERT INTO ve_freeswitch_nodes
+              (name, esl_host, esl_port, esl_password, sip_host, sip_port, ws_port, max_calls, status)
+            VALUES
+              ('local', ${eslHost}, ${eslPort}, ${eslPassword}, ${sipHost}, ${sipPort}, 8089, 100, 'online')
+            ON CONFLICT DO NOTHING
+          `);
+          console.log(`[AI Voice Engine] \u2705 Local FreeSWITCH node registered (ESL: ${eslHost}:${eslPort})`);
+        } else {
+          console.log("[AI Voice Engine] FreeSWITCH node(s) already exist in DB, skipping auto-register.");
+        }
+      } catch (dbErr) {
+        console.warn("[AI Voice Engine] Could not auto-register local FreeSWITCH node:", dbErr.message);
       }
-      const wsUrl = `ws://${containerIp}:${process.env.PORT || "5000"}/voice-engine/ws/audio`;
       if (audioWsServer) {
         await audioWsServer.initializeEslConnections(wsUrl);
       }

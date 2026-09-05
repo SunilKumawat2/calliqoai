@@ -62,7 +62,8 @@ function isNonElevenLabsBatchJob(batchJobId: string): boolean {
     batchJobId.startsWith('plivo-') ||
     batchJobId.startsWith('twilio_openai-') ||
     batchJobId.startsWith('twilio-openai-') ||
-    batchJobId.startsWith('custom_voice_engine-')
+    batchJobId.startsWith('custom_voice_engine-') ||
+    batchJobId.startsWith('cve-')
   );
 }
 
@@ -335,8 +336,8 @@ export class CampaignExecutor {
         throw new Error('Agent not found');
       }
 
-      // Block Flow Builder standard (non-Plivo/Twilio/CVE) agents from multi-contact campaigns
-      if (agent.type === 'flow' && !['plivo', 'twilio_openai', 'custom-voice-engine'].includes(agent.telephonyProvider || '')) {
+      // Block Flow Builder standard (non-Plivo/Twilio/CVE/ElevenLabs) agents from multi-contact campaigns
+      if (agent.type === 'flow' && !['plivo', 'twilio_openai', 'custom-voice-engine', 'twilio', 'elevenlabs-sip'].includes(agent.telephonyProvider || '')) {
         throw new Error('This flow agent does not support multi-contact campaigns yet.');
       }
 
@@ -350,6 +351,20 @@ export class CampaignExecutor {
           .where(eq(contacts.campaignId, campaignId));
 
         if (campaignContacts.length === 0) throw new Error('Campaign has no contacts');
+
+        const cveBatchJobId = `cve-${campaignId}`;
+
+        // Update campaign status to 'running' and set startedAt BEFORE execution
+        await db
+          .update(campaigns)
+          .set({
+            status: 'running',
+            startedAt: new Date(),
+            batchJobId: cveBatchJobId,
+            batchJobStatus: 'running',
+            totalContacts: campaignContacts.length,
+          })
+          .where(eq(campaigns.id, campaignId));
 
         const { CveBatchCallingService } = await import('../../plugins/custom-voice-engine/services/cve-batch-calling.service');
         const cveBatchService = CveBatchCallingService.getInstance(campaignId);
@@ -1393,6 +1408,8 @@ export class CampaignExecutor {
         campaignCalls = await db.select().from(plivoCalls).where(eq(plivoCalls.campaignId, campaignId));
       } else if (campaign.batchJobId.startsWith('twilio_openai-') || campaign.batchJobId.startsWith('twilio-openai-')) {
         campaignCalls = await db.select().from(twilioOpenaiCalls).where(eq(twilioOpenaiCalls.campaignId, campaignId));
+      } else if (campaign.batchJobId.startsWith('cve-') || campaign.batchJobId.startsWith('custom_voice_engine-')) {
+        campaignCalls = await db.select().from(calls).where(eq(calls.campaignId, campaignId));
       } else {
         const rawSip = await db.select().from(sipCalls).where(eq(sipCalls.campaignId, campaignId));
         campaignCalls = rawSip.map(c => ({
@@ -2215,6 +2232,7 @@ export class CampaignExecutor {
         .set({ 
           status: 'running',
           batchJobStatus: 'running',
+          batchJobId: `cve-${campaignId}`,
           completedAt: null,
         })
         .where(eq(campaigns.id, campaignId));

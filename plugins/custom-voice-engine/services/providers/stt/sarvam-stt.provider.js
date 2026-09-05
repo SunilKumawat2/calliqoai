@@ -2,9 +2,11 @@ import axios from "axios";
 import { BaseSttProvider } from "./stt-provider.interface.js";
 import { keepAliveAxiosConfig } from "../http-agent.js";
 const SARVAM_API_BASE = "https://api.sarvam.ai";
-const BUFFER_FLUSH_INTERVAL_MS = 3e3;
+const BUFFER_FLUSH_INTERVAL_MS = 1500;
 const MIN_BUFFER_SIZE = 64e3;
-const MIN_API_CALL_INTERVAL_MS = 1200;
+const MIN_API_CALL_INTERVAL_MS = 300;
+const RATE_LIMIT_MAX_RETRIES = 3;
+const RATE_LIMIT_RETRY_BASE_MS = 2e3;
 class SarvamSttProvider extends BaseSttProvider {
   name = "sarvam";
   audioBuffer = [];
@@ -24,19 +26,7 @@ class SarvamSttProvider extends BaseSttProvider {
     this.totalBufferSize = 0;
     this.retryFlushPending = false;
     console.log(`[STT:Sarvam] Connecting with format:`, format);
-    try {
-      await axios.get(`${SARVAM_API_BASE}/v1/models`, {
-        ...keepAliveAxiosConfig,
-        headers: { "api-subscription-key": config.apiKey },
-        timeout: 5e3
-      });
-      console.log("[STT:Sarvam] API key validated successfully");
-    } catch (err) {
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        throw new Error("Sarvam API key is invalid");
-      }
-      console.warn("[STT:Sarvam] API key validation warning (non-auth error):", err.message);
-    }
+    console.log("[STT:Sarvam] Connecting...");
     this.flushInterval = setInterval(() => {
       this.flushBuffer(false).catch((err) => {
         this.emitError(new Error(`Sarvam flush error: ${err.message}`));
@@ -103,8 +93,8 @@ class SarvamSttProvider extends BaseSttProvider {
       return;
     }
     const { sampleRate: flushSampleRate = 8e3, channels: flushChannels = 1 } = this.format || {};
-    const minBufferSize = flushSampleRate * flushChannels * 2 * 2;
-    if (!force && this.totalBufferSize < minBufferSize) {
+    const minBufferSize = force && this.closed ? 320 : Math.round(flushSampleRate * flushChannels * 2 * 0.5);
+    if (this.totalBufferSize < minBufferSize) {
       console.log(`[STT:Sarvam] flushBuffer skipped: buffer ${this.totalBufferSize}B < min ${minBufferSize}B (force=${force})`);
       return;
     }
@@ -119,8 +109,8 @@ class SarvamSttProvider extends BaseSttProvider {
     const rawAudio = Buffer.concat(chunks);
     console.log(`[STT:Sarvam] flushBuffer: force=${force}, draining ${chunks.length} chunks, ${(rawAudio.length / 1024).toFixed(1)}KB`);
     try {
-      const languageCode = this.config.detectLanguage ? "unknown" : this.config.sarvamLanguageCode || this.mapLanguage(this.config.language);
-      const { sampleRate = 16e3, channels = 1 } = this.format;
+      const languageCode = this.config.sarvamLanguageCode || this.mapLanguage(this.config.language || "hi-IN");
+      const { sampleRate = 8e3, channels = 1 } = this.format || {};
       const MAX_SEGMENT_SECONDS = 25;
       const bytesPerSecond = sampleRate * channels * 2;
       const maxSegmentBytes = MAX_SEGMENT_SECONDS * bytesPerSecond;
@@ -153,42 +143,59 @@ class SarvamSttProvider extends BaseSttProvider {
           formData.append("language_code", languageCode);
         }
         this.lastApiCallTime = Date.now();
-        try {
-          console.log(`[STT:Sarvam] POST segment ${seg + 1} starting...`);
-          const response = await axios.post(
-            `${SARVAM_API_BASE}/speech-to-text`,
-            formData,
-            {
-              ...keepAliveAxiosConfig,
-              headers: { "api-subscription-key": this.config.apiKey },
-              timeout: 3e4
+        let retryCount = 0;
+        let segmentDone = false;
+        while (!segmentDone && retryCount <= RATE_LIMIT_MAX_RETRIES) {
+          try {
+            if (retryCount > 0) {
+              const backoffMs = RATE_LIMIT_RETRY_BASE_MS * Math.pow(2, retryCount - 1);
+              console.log(`[STT:Sarvam] Retry ${retryCount}/${RATE_LIMIT_MAX_RETRIES} for segment ${seg + 1} after ${backoffMs}ms backoff...`);
+              await new Promise((resolve) => setTimeout(resolve, backoffMs));
+              this.lastApiCallTime = Date.now();
+            } else {
+              console.log(`[STT:Sarvam] POST segment ${seg + 1} starting...`);
             }
-          );
-          console.log(`[STT:Sarvam] Segment ${seg + 1} response status: ${response.status}, has transcript: ${!!response.data?.transcript}`);
-          if (response.data?.transcript) {
-            const transcript = {
-              text: response.data.transcript,
-              isFinal: true,
-              confidence: response.data.confidence || 0.85,
-              language: response.data.language_code || languageCode,
-              duration: segmentDurationS * 1e3
-            };
-            console.log(`[STT:Sarvam] EMITTING transcript: "${response.data.transcript.substring(0, 100)}"`);
-            this.emitTranscript(transcript);
-          } else {
-            console.warn(`[STT:Sarvam] Segment ${seg + 1} returned no transcript. Full response:`, JSON.stringify(response.data));
-          }
-        } catch (segErr) {
-          let errorMsg = segErr.message;
-          if (segErr.response?.data) {
-            console.error(
-              `[STT:Sarvam] Segment ${seg + 1} API Error:`,
-              JSON.stringify(segErr.response.data, null, 2)
+            const response = await axios.post(
+              `${SARVAM_API_BASE}/speech-to-text`,
+              formData,
+              {
+                ...keepAliveAxiosConfig,
+                headers: { "api-subscription-key": this.config.apiKey },
+                timeout: 3e4
+              }
             );
-            errorMsg = segErr.response.data.message || JSON.stringify(segErr.response.data);
+            console.log(`[STT:Sarvam] Segment ${seg + 1} response status: ${response.status}, has transcript: ${!!response.data?.transcript}`);
+            if (response.data?.transcript) {
+              const transcript = {
+                text: response.data.transcript,
+                isFinal: true,
+                confidence: response.data.confidence || 0.85,
+                language: response.data.language_code || languageCode,
+                duration: segmentDurationS * 1e3
+              };
+              console.log(`[STT:Sarvam] EMITTING transcript: "${response.data.transcript.substring(0, 100)}"`);
+              this.emitTranscript(transcript);
+            } else {
+              console.warn(`[STT:Sarvam] Segment ${seg + 1} returned no transcript. Full response:`, JSON.stringify(response.data));
+            }
+            segmentDone = true;
+          } catch (segErr) {
+            const isRateLimit = segErr.response?.status === 429 || segErr.response?.data?.error?.code === "rate_limit_exceeded_error" || (segErr.response?.data?.error?.message || "").toLowerCase().includes("rate limit");
+            if (segErr.response?.data) {
+              console.error(
+                `[STT:Sarvam] Segment ${seg + 1} API Error (attempt ${retryCount + 1}):`,
+                JSON.stringify(segErr.response.data, null, 2)
+              );
+            }
+            if (isRateLimit && retryCount < RATE_LIMIT_MAX_RETRIES) {
+              retryCount++;
+              continue;
+            }
+            const errorMsg = segErr.response?.data?.error?.message || segErr.response?.data?.message || segErr.message;
+            console.error(`[STT:Sarvam] Segment ${seg + 1} failed after ${retryCount + 1} attempt(s): ${errorMsg}`);
+            this.emitError(new Error(`Sarvam STT error (segment ${seg + 1}): ${errorMsg}`));
+            segmentDone = true;
           }
-          console.error(`[STT:Sarvam] Segment ${seg + 1} error: ${errorMsg}`);
-          this.emitError(new Error(`Sarvam STT error (segment ${seg + 1}): ${errorMsg}`));
         }
       }
     } catch (outerErr) {

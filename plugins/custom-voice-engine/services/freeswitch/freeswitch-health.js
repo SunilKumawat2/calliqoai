@@ -36,15 +36,12 @@ class FreeSwitchHealthMonitor {
         console.error("[ESL] Client error during health check:", err.message);
       });
       await esl.connect();
-      const containerIp = getContainerIp();
-      if (containerIp !== "127.0.0.1") {
-        const wsUrl = `ws://${containerIp}:${process.env.PORT || "5000"}/voice-engine/ws/audio`;
-        try {
-          await esl.api(`global_setvar ve_audio_ws_url ${wsUrl}`);
-          console.log(`[FreeSWITCH Health] Updated global ve_audio_ws_url to ${wsUrl} on node ${node.name}`);
-        } catch (setvarErr) {
-          console.warn(`[FreeSWITCH Health] Failed to set ve_audio_ws_url on node ${node.name}:`, setvarErr.message);
-        }
+      const wsUrl = `wss://calliqoai.com/voice-engine/ws/audio`;
+      try {
+        await esl.api(`global_setvar ve_audio_ws_url ${wsUrl}`);
+        console.log(`[FreeSWITCH Health] Updated global ve_audio_ws_url to ${wsUrl} on node ${node.name}`);
+      } catch (setvarErr) {
+        console.warn(`[FreeSWITCH Health] Failed to set ve_audio_ws_url on node ${node.name}:`, setvarErr.message);
       }
       const activeCalls = await esl.getActiveChannelCount();
       let uptime;

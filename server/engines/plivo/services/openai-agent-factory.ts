@@ -1567,7 +1567,11 @@ LANGUAGE DETECTION: You have automatic language detection enabled. Listen carefu
     const data = node.data || {};
     const config = (data.config as any) || {};
     // Check config first (more specific), then data directly
-    return config[field] || (data as any)[field] || '';
+    let val = config[field] || (data as any)[field];
+    if (!val && (field === 'message' || field === 'endMessage')) {
+      val = config['endMessage'] || (data as any)['endMessage'] || config['end_message'] || (data as any)['end_message'];
+    }
+    return val || '';
   }
 
   /**
@@ -2009,6 +2013,7 @@ LANGUAGE DETECTION: You have automatic language detection enabled. Listen carefu
         return `When appropriate, use the ${webhookToolName} tool to send data externally.`;
       }
       
+      case 'end':
       case 'end_call': {
         const endMessage = this.getNodeContent(node, 'message') || 'Thank you for calling. Goodbye!';
         return `End the conversation by saying: "${endMessage}" Then use the end_call tool.`;

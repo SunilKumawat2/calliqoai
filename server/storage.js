@@ -42,6 +42,15 @@ import {
 } from "../shared/schema.js";
 import { eq, sql, and, gte, lte, desc, asc, isNull, isNotNull, or, inArray, ilike } from "drizzle-orm";
 import { calculateGlobalAnalytics, calculateUserAnalytics, calculateDashboardData } from "./storage/analytics-helpers.js";
+const parseDbTimestamp = (ts) => {
+  if (!ts) return null;
+  if (ts instanceof Date) return ts;
+  if (typeof ts === "string") {
+    const hasTimezone = ts.includes("Z") || ts.includes("+") || ts.includes("-") && ts.indexOf("-") !== ts.lastIndexOf("-") && ts.slice(10).includes("-");
+    return new Date(hasTimezone ? ts : ts.replace(" ", "T") + "Z");
+  }
+  return new Date(ts);
+};
 class DbStorage {
   // Users
   async getUser(id) {
@@ -131,6 +140,24 @@ class DbStorage {
     return db.select().from(agents).where(eq(agents.userId, userId));
   }
   async createAgent(insertAgent) {
+    if (!insertAgent.openaiCredentialId) {
+      try {
+        const [defaultOai] = await db.select({ id: openaiCredentials.id }).from(openaiCredentials).where(eq(openaiCredentials.isActive, true)).limit(1);
+        if (defaultOai) {
+          insertAgent.openaiCredentialId = defaultOai.id;
+        }
+      } catch (e) {
+      }
+    }
+    if (!insertAgent.elevenLabsCredentialId) {
+      try {
+        const [defaultEl] = await db.select({ id: elevenLabsCredentials.id }).from(elevenLabsCredentials).where(eq(elevenLabsCredentials.isActive, true)).limit(1);
+        if (defaultEl) {
+          insertAgent.elevenLabsCredentialId = defaultEl.id;
+        }
+      } catch (e) {
+      }
+    }
     const [agent] = await db.insert(agents).values(insertAgent).returning();
     return agent;
   }
@@ -543,7 +570,55 @@ class DbStorage {
     }).from(calls).leftJoin(campaigns, eq(calls.campaignId, campaigns.id)).leftJoin(contacts, eq(calls.contactId, contacts.id)).leftJoin(incomingConnections, eq(calls.incomingConnectionId, incomingConnections.id)).leftJoin(websiteWidgets, eq(calls.widgetId, websiteWidgets.id)).where(eq(calls.id, id));
     if (elevenLabsResults.length > 0) {
       const r = elevenLabsResults[0];
-      const metadataEngine = r.call.metadata?.engine;
+      const callMeta = r.call.metadata || {};
+      const telephonyProvider = callMeta.telephonyProvider || callMeta.engine || r.call.engineType;
+      if (telephonyProvider === "custom-voice-engine" && callMeta.sessionUuid) {
+        try {
+          const veResults = await db.execute(sql`
+            SELECT s.*, a.name as agent_name, rec.storage_url as recording_url
+            FROM ve_sessions s
+            LEFT JOIN ve_voice_agents a ON s.agent_id = a.id
+            LEFT JOIN ve_call_recordings rec ON s.id = rec.session_id AND rec.status = 'available'
+            WHERE s.id = ${callMeta.sessionUuid}
+            LIMIT 1
+          `);
+          if (veResults.rows.length > 0) {
+            const s = veResults.rows[0];
+            return {
+              id: r.call.id,
+              userId: s.user_id,
+              campaignId: r.call.campaignId || callMeta.campaignId || null,
+              contactId: r.call.contactId || null,
+              agentId: s.agent_id,
+              phoneNumber: s.direction === "inbound" ? s.from_number : s.to_number,
+              fromNumber: s.from_number,
+              toNumber: s.to_number,
+              status: s.status,
+              callDirection: s.direction === "inbound" ? "incoming" : "outgoing",
+              duration: s.duration_seconds,
+              recordingUrl: s.recording_url || null,
+              transcript: typeof s.transcript === "string" ? s.transcript : JSON.stringify(s.transcript || []),
+              aiSummary: s.ai_summary,
+              sentiment: s.sentiment,
+              classification: s.classification || callMeta.classification || null,
+              startedAt: s.started_at,
+              answeredAt: s.answered_at,
+              endedAt: s.ended_at,
+              createdAt: r.call.createdAt,
+              metadata: { ...callMeta, veSessionId: s.id },
+              engine: "custom-voice-engine",
+              campaign: r.campaign ? { id: r.campaign.id, name: r.campaign.name } : null,
+              contact: r.contact ? { id: r.contact.id, firstName: r.contact.firstName, lastName: r.contact.lastName, phone: r.contact.phone } : null,
+              incomingConnection: null,
+              agent: s.agent_id ? { id: s.agent_id, name: s.agent_name || "Custom Voice Agent" } : null,
+              widget: r.widget ? { id: r.widget.id, name: r.widget.name } : null
+            };
+          }
+        } catch (veErr) {
+          console.error("[getCallWithDetails] Failed to fetch ve_sessions for custom-voice-engine call:", veErr.message);
+        }
+      }
+      const metadataEngine = callMeta.engine;
       const engine = metadataEngine || "elevenlabs";
       return {
         ...r.call,
@@ -981,11 +1056,60 @@ class DbStorage {
     const sipByCampaignContact = new Set(
       sipCallsFormatted.filter((c) => c.campaignId && c.contactId).map((c) => `${c.campaignId}:${c.contactId}`)
     );
+    let veSessionsFormatted = [];
+    try {
+      const veSessionsResult = await db.execute(sql`
+        SELECT s.*, a.name as agent_name, rec.storage_url as recording_url,
+               con.first_name, con.last_name, cmp.name as campaign_name
+        FROM ve_sessions s
+        LEFT JOIN ve_voice_agents a ON s.agent_id = a.id
+        LEFT JOIN ve_call_recordings rec ON s.id = rec.session_id AND rec.status = 'available'
+        LEFT JOIN contacts con ON s.metadata->>'contactId' = con.id::text
+        LEFT JOIN campaigns cmp ON s.metadata->>'campaignId' = cmp.id::text
+        WHERE s.user_id = ${userId}
+        ORDER BY s.created_at DESC
+      `);
+      veSessionsFormatted = veSessionsResult.rows.map((r) => ({
+        id: r.id,
+        userId: r.user_id,
+        campaignId: r.metadata?.campaignId || null,
+        contactId: r.metadata?.contactId || null,
+        agentId: r.agent_id,
+        phoneNumber: r.direction === "inbound" ? r.from_number : r.to_number,
+        fromNumber: r.from_number,
+        toNumber: r.to_number,
+        status: r.status,
+        callDirection: r.direction === "inbound" ? "incoming" : "outgoing",
+        duration: r.duration_seconds,
+        recordingUrl: r.recording_url || null,
+        transcript: typeof r.transcript === "string" ? r.transcript : JSON.stringify(r.transcript || []),
+        aiSummary: r.ai_summary,
+        sentiment: r.sentiment,
+        classification: r.metadata?.classification || null,
+        startedAt: parseDbTimestamp(r.started_at),
+        endedAt: parseDbTimestamp(r.ended_at),
+        createdAt: parseDbTimestamp(r.created_at),
+        metadata: r.metadata,
+        engine: "custom-voice-engine",
+        campaign: r.campaign_name ? { id: r.metadata?.campaignId, name: r.campaign_name } : null,
+        contact: r.first_name ? { id: r.metadata?.contactId, firstName: r.first_name, lastName: r.last_name || "", phone: r.to_number || r.from_number } : null,
+        incomingConnection: null,
+        agent: r.agent_id ? { id: r.agent_id, name: r.agent_name || "Custom Voice Agent" } : null
+      }));
+    } catch (err) {
+      console.error("Error fetching ve_sessions in getUserCallsWithDetails:", err);
+    }
+    const veByCampaignContact = new Set(
+      veSessionsFormatted.filter((c) => c.campaignId && c.contactId).map((c) => `${c.campaignId}:${c.contactId}`)
+    );
     const filteredElevenLabsCalls = elevenLabsCalls.filter((c) => {
       if (!c.campaignId || !c.contactId) return true;
       const md = c.metadata || {};
-      if (md.batchCall !== true) return true;
       const key = `${c.campaignId}:${c.contactId}`;
+      if (md.telephonyProvider === "custom-voice-engine" && veByCampaignContact.has(key)) {
+        return false;
+      }
+      if (md.batchCall !== true) return true;
       if (md.telephonyProvider === "twilio_openai" && twilioOpenAIByCampaignContact.has(key)) {
         return false;
       }
@@ -1020,46 +1144,6 @@ class DbStorage {
       }
     }
     const deduplicatedSipCalls = Array.from(uniqueSipCallsMap.values());
-    let veSessionsFormatted = [];
-    try {
-      const veSessionsResult = await db.execute(sql`
-        SELECT s.*, a.name as agent_name, rec.storage_url as recording_url
-        FROM ve_sessions s
-        LEFT JOIN ve_voice_agents a ON s.agent_id = a.id
-        LEFT JOIN ve_call_recordings rec ON s.id = rec.session_id AND rec.status = 'available'
-        WHERE s.user_id = ${userId}
-        ORDER BY s.created_at DESC
-      `);
-      veSessionsFormatted = veSessionsResult.rows.map((r) => ({
-        id: r.id,
-        userId: r.user_id,
-        campaignId: null,
-        contactId: null,
-        agentId: r.agent_id,
-        phoneNumber: r.direction === "inbound" ? r.from_number : r.to_number,
-        fromNumber: r.from_number,
-        toNumber: r.to_number,
-        status: r.status,
-        callDirection: r.direction === "inbound" ? "incoming" : "outgoing",
-        duration: r.duration_seconds,
-        recordingUrl: r.recording_url || null,
-        transcript: typeof r.transcript === "string" ? r.transcript : JSON.stringify(r.transcript || []),
-        aiSummary: r.ai_summary,
-        sentiment: r.sentiment,
-        classification: r.metadata?.classification || null,
-        startedAt: r.started_at,
-        endedAt: r.ended_at,
-        createdAt: r.created_at,
-        metadata: r.metadata,
-        engine: "custom-voice-engine",
-        campaign: null,
-        contact: null,
-        incomingConnection: null,
-        agent: r.agent_id ? { id: r.agent_id, name: r.agent_name || "Custom Voice Agent" } : null
-      }));
-    } catch (err) {
-      console.error("Error fetching ve_sessions in getUserCallsWithDetails:", err);
-    }
     const allCalls = [
       ...filteredElevenLabsCalls,
       ...twilioOpenAICalls,
@@ -1293,15 +1377,15 @@ class DbStorage {
                  SELECT 1 FROM ve_call_recordings rec 
                  WHERE rec.session_id = s.id AND rec.status = 'available'
                ) as has_recording,
-               null as campaign_id,
-               null as contact_id
+               s.metadata->>'campaignId' as campaign_id,
+               s.metadata->>'contactId' as contact_id
         FROM ve_sessions s
         WHERE ${sql.join(veConditions, sql` AND `)}
       `;
       const veMetaResult = await db.execute(veQuery);
       veMeta = veMetaResult.rows.map((r) => ({
         id: r.id,
-        createdAt: r.created_at,
+        createdAt: parseDbTimestamp(r.created_at),
         source: "ve_sessions",
         status: r.status,
         direction: r.direction,
@@ -1322,11 +1406,17 @@ class DbStorage {
     const sipByCampaignContact = new Set(
       deduplicatedSipMeta.filter((c) => c.campaignId && c.contactId).map((c) => `${c.campaignId}:${c.contactId}`)
     );
+    const veByCampaignContact = new Set(
+      veMeta.filter((c) => c.campaignId && c.contactId).map((c) => `${c.campaignId}:${c.contactId}`)
+    );
     const filteredCallsMeta = callsMeta.filter((c) => {
       if (!c.campaignId || !c.contactId) return true;
       const md = c.metadata || {};
-      if (md.batchCall !== true) return true;
       const key = `${c.campaignId}:${c.contactId}`;
+      if (md.telephonyProvider === "custom-voice-engine" && veByCampaignContact.has(key)) {
+        return false;
+      }
+      if (md.batchCall !== true) return true;
       if (md.telephonyProvider === "twilio_openai" && twilioOpenAIByCampaignContact.has(key)) {
         return false;
       }
@@ -1517,16 +1607,22 @@ class DbStorage {
     if (idsBySource["ve_sessions"] && idsBySource["ve_sessions"].length > 0) {
       detailPromises.push(
         db.execute(sql`
-          SELECT s.*, a.name as agent_name, rec.storage_url as recording_url
+          SELECT s.*, a.name as agent_name, rec.storage_url as recording_url,
+                 s.metadata->>'campaignId' as campaign_id,
+                 s.metadata->>'contactId' as contact_id,
+                 c.first_name as contact_first_name, c.last_name as contact_last_name, c.phone as contact_phone,
+                 camp.name as campaign_name
           FROM ve_sessions s
           LEFT JOIN ve_voice_agents a ON s.agent_id = a.id
           LEFT JOIN ve_call_recordings rec ON s.id = rec.session_id AND rec.status = 'available'
+          LEFT JOIN contacts c ON (s.metadata->>'contactId') = c.id::text
+          LEFT JOIN campaigns camp ON (s.metadata->>'campaignId') = camp.id::text
           WHERE s.id IN (${sql.join(idsBySource["ve_sessions"], sql`, `)})
         `).then((result) => result.rows.map((r) => ({
           id: r.id,
           userId: r.user_id,
-          campaignId: null,
-          contactId: null,
+          campaignId: r.campaign_id || null,
+          contactId: r.contact_id || null,
           agentId: r.agent_id,
           phoneNumber: r.direction === "inbound" ? r.from_number : r.to_number,
           fromNumber: r.from_number,
@@ -1539,13 +1635,13 @@ class DbStorage {
           aiSummary: r.ai_summary,
           sentiment: r.sentiment,
           classification: r.metadata?.classification || null,
-          startedAt: r.started_at,
-          endedAt: r.ended_at,
-          createdAt: r.created_at,
+          startedAt: parseDbTimestamp(r.started_at),
+          endedAt: parseDbTimestamp(r.ended_at),
+          createdAt: parseDbTimestamp(r.created_at),
           metadata: r.metadata,
           engine: "custom-voice-engine",
-          campaign: null,
-          contact: null,
+          campaign: r.campaign_id ? { id: r.campaign_id, name: r.campaign_name || "Custom Campaign" } : null,
+          contact: r.contact_id ? { id: r.contact_id, firstName: r.contact_first_name || "", lastName: r.contact_last_name || "", phone: r.contact_phone || r.to_number || "" } : null,
           incomingConnection: null,
           agent: r.agent_id ? { id: r.agent_id, name: r.agent_name || "Custom Voice Agent" } : null
         })))

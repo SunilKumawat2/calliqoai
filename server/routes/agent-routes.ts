@@ -68,6 +68,114 @@ export function createAgentRoutes(ctx: RouteContext): Router {
   const router = Router();
   const { db, storage, authenticateToken, authenticateHybrid, elevenLabsService, upload } = ctx;
 
+  async function syncCustomVoiceAgent(agentId: string, userId: string, updateData: any) {
+    try {
+      const formatPgArray = (arr: string[] | null | undefined): string | null => {
+        if (!arr || !arr.length) return null;
+        return `{${arr.map(val => `"${val.replace(/"/g, '\\"')}"`).join(',')}}`;
+      };
+
+      const {
+        name,
+        systemPrompt,
+        firstMessage,
+        language,
+        llmModel,
+        temperature,
+        openaiVoice,
+        ttsProvider,
+        sttProvider,
+        ttsModel,
+        sttModel,
+        knowledgeBaseIds,
+        transferEnabled,
+        transferPhoneNumber,
+        detectLanguageEnabled,
+        endConversationEnabled,
+        appointmentBookingEnabled,
+        messagingEmailEnabled,
+        messagingWorkspaceEnabled,
+        messagingWhatsappEnabled,
+        messagingEmailTemplate,
+        messagingWhatsappTemplate,
+        isActive,
+        config,
+      } = updateData;
+
+      const configObj = config || {};
+      const finalTtsProvider = ttsProvider || configObj.ttsProvider;
+      const finalSttProvider = sttProvider || configObj.sttProvider;
+      const finalTtsModel = ttsModel || configObj.ttsModel;
+      const finalSttModel = sttModel || configObj.sttModel;
+      const finalInterruptible = configObj.interruptible;
+      const finalSilenceTimeoutMs = configObj.silenceTimeoutMs;
+      const finalEndCallOnSilence = configObj.endCallOnSilence;
+      const finalBusinessRules = configObj.businessRules;
+      const finalEnableMemory = configObj.enableMemory;
+      const finalMemoryRetentionDays = configObj.memoryRetentionDays;
+
+      const updateFields: any = {};
+      if (name !== undefined) updateFields.name = name;
+      if (systemPrompt !== undefined) updateFields.system_prompt = systemPrompt;
+      if (firstMessage !== undefined) updateFields.first_message = firstMessage;
+      if (language !== undefined) updateFields.language = language;
+      if (llmModel !== undefined) updateFields.llm_model = llmModel;
+      if (temperature !== undefined) updateFields.temperature = temperature;
+      if (openaiVoice !== undefined) updateFields.tts_voice = openaiVoice;
+      if (finalTtsProvider !== undefined) updateFields.tts_provider = finalTtsProvider;
+      if (finalSttProvider !== undefined) updateFields.stt_provider = finalSttProvider;
+      if (finalTtsModel !== undefined) updateFields.tts_model = finalTtsModel;
+      if (finalSttModel !== undefined) updateFields.stt_model = finalSttModel;
+      if (finalInterruptible !== undefined) updateFields.interruptible = finalInterruptible;
+      if (finalSilenceTimeoutMs !== undefined) updateFields.silence_timeout_ms = finalSilenceTimeoutMs;
+      if (finalEndCallOnSilence !== undefined) updateFields.end_call_on_silence = finalEndCallOnSilence;
+      if (finalBusinessRules !== undefined) updateFields.business_rules = JSON.stringify(finalBusinessRules);
+      if (finalEnableMemory !== undefined) updateFields.enable_memory = finalEnableMemory;
+      if (finalMemoryRetentionDays !== undefined) updateFields.memory_retention_days = finalMemoryRetentionDays;
+      if (detectLanguageEnabled !== undefined) updateFields.detect_language_enabled = detectLanguageEnabled;
+      if (appointmentBookingEnabled !== undefined) updateFields.appointment_booking_enabled = appointmentBookingEnabled;
+      if (endConversationEnabled !== undefined) updateFields.end_conversation_enabled = endConversationEnabled;
+      if (transferEnabled !== undefined) updateFields.transfer_enabled = transferEnabled;
+      if (transferPhoneNumber !== undefined) updateFields.transfer_phone_number = transferPhoneNumber;
+      if (messagingEmailEnabled !== undefined) updateFields.messaging_email_enabled = messagingEmailEnabled;
+      if (messagingWhatsappEnabled !== undefined) updateFields.messaging_whatsapp_enabled = messagingWhatsappEnabled;
+      if (messagingEmailTemplate !== undefined) updateFields.messaging_email_template = messagingEmailTemplate;
+      if (messagingWhatsappTemplate !== undefined) updateFields.messaging_whatsapp_template = messagingWhatsappTemplate;
+      if (isActive !== undefined) updateFields.is_active = isActive;
+
+      if (knowledgeBaseIds !== undefined) {
+        updateFields.knowledge_base_ids = knowledgeBaseIds;
+      }
+
+      if (Object.keys(updateFields).length > 0) {
+        const setClauses: string[] = [];
+        const values: any[] = [];
+        let paramIdx = 1;
+        for (const [key, val] of Object.entries(updateFields)) {
+          if (key === 'knowledge_base_ids') {
+            const formattedArr = formatPgArray(val as string[]);
+            setClauses.push(`${key} = $${paramIdx}`);
+            values.push(formattedArr);
+          } else {
+            setClauses.push(`${key} = $${paramIdx}`);
+            values.push(val);
+          }
+          paramIdx++;
+        }
+        values.push(agentId);
+        values.push(userId);
+        await db.execute(sql.raw(`
+          UPDATE ve_voice_agents 
+          SET ${setClauses.join(', ')}, updated_at = NOW() 
+          WHERE id = $${paramIdx} AND user_id = $${paramIdx + 1}
+        `), values);
+        console.log(`✅ Synced update for custom voice agent ${agentId} in ve_voice_agents`);
+      }
+    } catch (e: any) {
+      console.error(`❌ Failed to sync update to ve_voice_agents:`, e.message);
+    }
+  }
+
   // ========================================
   // Agent CRUD Routes
   // ========================================
@@ -85,66 +193,73 @@ export function createAgentRoutes(ctx: RouteContext): Router {
       let veAgents: any[] = [];
       try {
         const veAgentsResult = await db.execute(sql`
-          SELECT * FROM ve_voice_agents WHERE user_id = ${req.userId!} ORDER BY created_at DESC
+          SELECT ve.*, f.id as resolved_flow_id 
+          FROM ve_voice_agents ve
+          LEFT JOIN flows f ON f.agent_id = ve.id AND f.is_active = true
+          WHERE ve.user_id = ${req.userId!} 
+          ORDER BY ve.created_at DESC
         `);
-        veAgents = (veAgentsResult.rows as any[]).map(veAgent => ({
-          id: veAgent.id,
-          userId: veAgent.user_id,
-          name: veAgent.name,
-          // Set type dynamically to match filters, enabling use as both incoming and flow
-          type: typeFilter || 'incoming',
-          telephonyProvider: 'custom-voice-engine',
-          systemPrompt: veAgent.system_prompt,
-          firstMessage: veAgent.first_message,
-          language: veAgent.language,
-          llmModel: veAgent.llm_model,
-          temperature: veAgent.temperature,
-          openaiVoice: veAgent.tts_voice,
-          ttsProvider: veAgent.tts_provider,
-          sttProvider: veAgent.stt_provider,
-          ttsModel: veAgent.tts_model,
-          sttModel: veAgent.stt_model,
-          maxDurationSeconds: veAgent.max_duration_seconds,
-          isActive: veAgent.is_active,
-          createdAt: veAgent.created_at,
-          updatedAt: veAgent.updated_at,
-          elevenLabsCredentialId: null,
-          sipTrunkId: null,
-          sipPhoneNumberId: null,
-          openaiCredentialId: null,
-          transferPhoneNumber: veAgent.transfer_phone_number || null,
-          transferEnabled: veAgent.transfer_enabled || false,
-          detectLanguageEnabled: veAgent.detect_language_enabled || false,
-          endConversationEnabled: veAgent.end_conversation_enabled || false,
-          appointmentBookingEnabled: veAgent.appointment_booking_enabled || false,
-          messagingEmailEnabled: veAgent.messaging_email_enabled || false,
-          messagingWhatsappEnabled: veAgent.messaging_whatsapp_enabled || false,
-          messagingEmailTemplate: veAgent.messaging_email_template || null,
-          messagingWhatsappTemplate: veAgent.messaging_whatsapp_template || null,
-          messagingWhatsappVariables: null,
-          expressiveMode: false,
-          knowledgeBaseIds: veAgent.knowledge_base_ids || null,
-          elevenLabsVoiceId: null,
-          voiceStability: 0.65,
-          voiceSimilarityBoost: 0.85,
-          voiceSpeed: 0.92,
-          turnTimeout: 1.5,
-          flowId: null,
-          agentLink: null,
-          config: {
+        veAgents = (veAgentsResult.rows as any[]).map(veAgent => {
+          const flowId = veAgent.resolved_flow_id || null;
+          return {
+            id: veAgent.id,
+            userId: veAgent.user_id,
+            name: veAgent.name,
+            // Set type dynamically: if it has an associated flowId, it is a flow agent
+            type: flowId ? 'flow' : (typeFilter || 'incoming'),
+            telephonyProvider: 'custom-voice-engine',
+            systemPrompt: veAgent.system_prompt,
+            firstMessage: veAgent.first_message,
+            language: veAgent.language,
+            llmModel: veAgent.llm_model,
+            temperature: veAgent.temperature,
+            openaiVoice: veAgent.tts_voice,
             ttsProvider: veAgent.tts_provider,
             sttProvider: veAgent.stt_provider,
             ttsModel: veAgent.tts_model,
             sttModel: veAgent.stt_model,
-            interruptible: veAgent.interruptible,
-            silenceTimeoutMs: veAgent.silence_timeout_ms,
-            endCallOnSilence: veAgent.end_call_on_silence,
-            businessRules: veAgent.business_rules,
-            enabledTools: veAgent.enabled_tools,
-            enableMemory: veAgent.enable_memory,
-            memoryRetentionDays: veAgent.memory_retention_days,
-          },
-        }));
+            maxDurationSeconds: veAgent.max_duration_seconds,
+            isActive: veAgent.is_active,
+            createdAt: veAgent.created_at,
+            updatedAt: veAgent.updated_at,
+            elevenLabsCredentialId: null,
+            sipTrunkId: null,
+            sipPhoneNumberId: null,
+            openaiCredentialId: null,
+            transferPhoneNumber: veAgent.transfer_phone_number || null,
+            transferEnabled: veAgent.transfer_enabled || false,
+            detectLanguageEnabled: veAgent.detect_language_enabled || false,
+            endConversationEnabled: veAgent.end_conversation_enabled || false,
+            appointmentBookingEnabled: veAgent.appointment_booking_enabled || false,
+            messagingEmailEnabled: veAgent.messaging_email_enabled || false,
+            messagingWhatsappEnabled: veAgent.messaging_whatsapp_enabled || false,
+            messagingEmailTemplate: veAgent.messaging_email_template || null,
+            messagingWhatsappTemplate: veAgent.messaging_whatsapp_template || null,
+            messagingWhatsappVariables: null,
+            expressiveMode: false,
+            knowledgeBaseIds: veAgent.knowledge_base_ids || null,
+            elevenLabsVoiceId: null,
+            voiceStability: 0.65,
+            voiceSimilarityBoost: 0.85,
+            voiceSpeed: 0.92,
+            turnTimeout: 1.5,
+            flowId: flowId,
+            agentLink: null,
+            config: {
+              ttsProvider: veAgent.tts_provider,
+              sttProvider: veAgent.stt_provider,
+              ttsModel: veAgent.tts_model,
+              sttModel: veAgent.stt_model,
+              interruptible: veAgent.interruptible,
+              silenceTimeoutMs: veAgent.silence_timeout_ms,
+              endCallOnSilence: veAgent.end_call_on_silence,
+              businessRules: veAgent.business_rules,
+              enabledTools: veAgent.enabled_tools,
+              enableMemory: veAgent.enable_memory,
+              memoryRetentionDays: veAgent.memory_retention_days,
+            },
+          };
+        });
       } catch (err) {
         console.error("Error querying ve_voice_agents for user:", err);
       }
@@ -503,7 +618,7 @@ export function createAgentRoutes(ctx: RouteContext): Router {
         transferEnabled: type === 'incoming' ? (transferEnabled || false) : false,
         transferPhoneNumber: type === 'incoming' ? (transferPhoneNumber || null) : null,
         detectLanguageEnabled: (type === 'incoming' || type === 'flow') ? (detectLanguageEnabled || false) : false,
-        endConversationEnabled: type === 'incoming' ? (endConversationEnabled || false) : false,
+        endConversationEnabled: (type === 'incoming' || type === 'flow') ? (endConversationEnabled || false) : false,
         appointmentBookingEnabled: type === 'incoming' ? (appointmentBookingEnabled || false) : false,
         messagingEmailEnabled: (type === 'incoming' || type === 'flow') ? (messagingEmailEnabled || false) : false,
         messagingWhatsappEnabled: (type === 'incoming' || type === 'flow') ? (messagingWhatsappEnabled || false) : false,
@@ -679,6 +794,14 @@ export function createAgentRoutes(ctx: RouteContext): Router {
                 type: "system",
                 name: "language_detection",
                 description: "Automatically detect and switch to the user's preferred language"
+              });
+            }
+            // Allow flow agents to end calls via ElevenLabs end_call system tool
+            if (endConversationEnabled) {
+              systemTools.push({
+                type: "system",
+                name: "end_call",
+                description: "End the call when the conversation is complete or when the user asks to disconnect"
               });
             }
           }
@@ -932,6 +1055,7 @@ export function createAgentRoutes(ctx: RouteContext): Router {
                 temperature: req.body.temperature,
                 maxDurationSeconds: newMaxDuration,
                 detectLanguageEnabled,
+                endConversationEnabled,
                 knowledgeBaseIds,
                 voiceStability,
                 voiceSimilarityBoost,
@@ -985,6 +1109,9 @@ export function createAgentRoutes(ctx: RouteContext): Router {
         };
         await storage.updateAgent(req.params.id, flowAgentUpdateBody);
         const updatedAgent = await storage.getAgent(req.params.id);
+        if (agent.telephonyProvider === 'custom-voice-engine') {
+          await syncCustomVoiceAgent(agent.id, req.userId!, flowAgentUpdateBody);
+        }
         return res.json(updatedAgent);
       }
 
@@ -1043,6 +1170,10 @@ export function createAgentRoutes(ctx: RouteContext): Router {
           }
         }
 
+        if (agent.telephonyProvider === 'custom-voice-engine') {
+          await syncCustomVoiceAgent(agent.id, req.userId!, req.body);
+        }
+
         return res.json(updatedAgent);
       }
 
@@ -1050,6 +1181,10 @@ export function createAgentRoutes(ctx: RouteContext): Router {
       const updatedAgent = await storage.getAgent(req.params.id);
       if (!updatedAgent) {
         return res.status(500).json({ error: "Failed to retrieve updated agent" });
+      }
+
+      if (agent.telephonyProvider === 'custom-voice-engine') {
+        await syncCustomVoiceAgent(agent.id, req.userId!, req.body);
       }
 
       res.json(updatedAgent);
@@ -1064,6 +1199,15 @@ export function createAgentRoutes(ctx: RouteContext): Router {
       const agent = await storage.getAgent(req.params.id);
       if (!agent || agent.userId !== req.userId) {
         return res.status(404).json({ error: "Agent not found" });
+      }
+
+      if (agent.telephonyProvider === 'custom-voice-engine') {
+        try {
+          await db.execute(sql`DELETE FROM ve_voice_agents WHERE id = ${agent.id} AND user_id = ${req.userId!}`);
+          console.log(`✅ Deleted custom voice agent ${agent.id} from ve_voice_agents`);
+        } catch (veDelError) {
+          console.error("Failed to delete custom voice agent from ve_voice_agents:", veDelError);
+        }
       }
 
       if (agent.elevenLabsAgentId) {

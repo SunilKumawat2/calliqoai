@@ -58,6 +58,7 @@ import {
   Plus,
   ArrowLeft,
   X,
+  Sparkles,
   Trash2,
   Info,
   Volume2,
@@ -467,6 +468,58 @@ export default function FlowBuilderPage() {
     [setEdges, toast, t]
   );
 
+  const createDemoFlow = () => {
+    const messageNodeId = `node-message-${Date.now()}`;
+    const endNodeId = `node-end-${Date.now()}`;
+    
+    const demoNodes = [
+      {
+        id: messageNodeId,
+        type: "message",
+        position: { x: 250, y: 150 },
+        data: {
+          label: "Message",
+          config: {
+            type: "message",
+            message: "Hello, welcome to MieRide! How can I help you today?",
+            waitForResponse: false
+          }
+        }
+      },
+      {
+        id: endNodeId,
+        type: "end",
+        position: { x: 250, y: 300 },
+        data: {
+          label: "End",
+          config: {
+            type: "end",
+            endMessage: "Thank you for calling."
+          }
+        }
+      }
+    ];
+
+    const demoEdges = [
+      {
+        id: `edge-${messageNodeId}-${endNodeId}`,
+        source: messageNodeId,
+        target: endNodeId,
+        animated: true
+      }
+    ];
+
+    // @ts-expect-error - nodes mapping
+    setNodes(demoNodes);
+    // @ts-expect-error - edges mapping
+    setEdges(demoEdges);
+
+    toast({
+      title: "Demo Flow Created",
+      description: "A pre-connected Welcome Message and End Call flow has been added. You can now edit the text and click Save!",
+    });
+  };
+
   // Handle node click (single click to select)
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node as FlowNode);
@@ -801,6 +854,16 @@ export default function FlowBuilderPage() {
                 </PopoverContent>
               </Popover>
             </TooltipProvider>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={createDemoFlow}
+              className="border-brand/20 dark:border-brand/20 hover:bg-brand/5 dark:hover:bg-brand/10 text-brand"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Create Demo Flow (डेमो फ्लो)
+            </Button>
 
             <Button
               variant="outline"

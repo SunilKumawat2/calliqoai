@@ -335,27 +335,28 @@ async function initializeSession(
       tools: [] as AgentTool[],
     };
 
-    // Check if call metadata has a compiled flow (from flow agent or flow test)
-    // This takes priority over agent table data
+    // Fetch agent details early to determine if it's a flow or natural agent
     const callMetadata = call.metadata as Record<string, unknown> | null;
-    const hasCompiledFlow = callMetadata?.systemPrompt || callMetadata?.firstMessage;
+    let flowAgent: typeof agents.$inferSelect | undefined;
+    let agent: typeof agents.$inferSelect | undefined;
+    if (call.agentId) {
+      const [fetchedAgent] = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.id, call.agentId))
+        .limit(1);
+      flowAgent = fetchedAgent;
+      agent = fetchedAgent;
+    }
+
+    const isFlow = flowAgent?.type === 'flow';
     
-    if (hasCompiledFlow) {
+    if (isFlow) {
       // Use compiled flow config from metadata (flow agents)
       // The flow's systemPrompt contains all the conversation logic
       // The flow's tools contain webhooks, API calls, end_call, transfer, etc.
       logger.info(`Using compiled flow config from metadata for ${callUuid}`, undefined, 'PlivoStream');
       
-      // Fetch agent early to get language setting for all createAgentConfig calls
-      let flowAgent: typeof agents.$inferSelect | undefined;
-      if (call.agentId) {
-        const [fetchedAgent] = await db
-          .select()
-          .from(agents)
-          .where(eq(agents.id, call.agentId))
-          .limit(1);
-        flowAgent = fetchedAgent;
-      }
       const flowAgentLanguage = flowAgent?.language || 'en';
       
       // Store the compiled flow's systemPrompt and firstMessage
@@ -606,22 +607,16 @@ async function initializeSession(
           agentConfig.tools = config.tools || [];
         }
       }
-    } else if (call.agentId) {
+    } else if (agent) {
       // No compiled flow - use agent table data (natural agents)
-      const [agent] = await db
-        .select()
-        .from(agents)
-        .where(eq(agents.id, call.agentId))
-        .limit(1);
-
-      if (agent) {
-        agentConfig = {
-          voice: call.openaiVoice || 'alloy',
-          model: call.openaiModel || 'gpt-realtime-1.5',
-          systemPrompt: agent.systemPrompt || 'You are a helpful voice assistant.',
-          firstMessage: agent.firstMessage || undefined,
-          tools: [],
-        };
+      logger.info(`[PlivoStream] Agent type: "${agent.type}", endConversationEnabled: ${agent.endConversationEnabled}, agentId: ${agent.id}`, undefined, 'PlivoStream');
+      agentConfig = {
+        voice: call.openaiVoice || 'alloy',
+        model: call.openaiModel || 'gpt-realtime-1.5',
+        systemPrompt: callMetadata?.systemPrompt as string || agent.systemPrompt || 'You are a helpful voice assistant.',
+        firstMessage: callMetadata?.firstMessage as string || agent.firstMessage || undefined,
+        tools: [],
+      };
 
         // Build tools using OpenAI Agent Factory if user has context
         if (call.userId && agent.userId) {
@@ -670,8 +665,12 @@ async function initializeSession(
           }
 
           // Add end call tool if enabled
+          logger.info(`[PlivoStream] endConversationEnabled check: ${agent.endConversationEnabled} for agent ${agent.id}`, undefined, 'PlivoStream');
           if (agent.endConversationEnabled) {
             config = OpenAIAgentFactory.addEndCallTool(config);
+            logger.info(`[PlivoStream] ✅ end_call tool added to agent ${agent.id}`, undefined, 'PlivoStream');
+          } else {
+            logger.warn(`[PlivoStream] ⚠️ end_call tool NOT added - endConversationEnabled is false for agent ${agent.id}`, undefined, 'PlivoStream');
           }
 
           // Enable language detection if enabled
@@ -712,7 +711,6 @@ async function initializeSession(
           agentConfig.model = config.model; // Use tier-validated model
           agentConfig.systemPrompt = config.systemPrompt; // Include language detection modifications
         }
-      }
     }
 
     // Get Plivo credential ID from metadata for transfer functionality

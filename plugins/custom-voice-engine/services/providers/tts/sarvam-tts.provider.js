@@ -5,10 +5,59 @@ const SARVAM_API_BASE = "https://api.sarvam.ai";
 class SarvamTtsProvider extends BaseTtsProvider {
   name = "sarvam";
   async synthesize(text, config) {
-    const language = config.language || "en-IN";
-    const speaker = config.sarvamSpeaker || config.voice || "meera";
-    const model = config.sarvamModel || "bulbul:v3";
-    console.log(`[TTS:Sarvam] Synthesizing: speaker="${speaker}" model="${model}" lang="${language}" sampleRate=${config.outputFormat?.sampleRate || 8e3}`);
+    const language = config.language || "hi-IN";
+    let speaker = (config.sarvamSpeaker || config.voice || "kavya").toLowerCase();
+    let model = config.sarvamModel || "bulbul:v3";
+    const bulbulV3Speakers = [
+      "aditya",
+      "ritu",
+      "ashutosh",
+      "priya",
+      "neha",
+      "rohan",
+      "simran",
+      "kavya",
+      "amit",
+      "dev",
+      "ishita",
+      "shreya",
+      "ratan",
+      "varun",
+      "manan",
+      "sumit",
+      "roopa",
+      "kabir",
+      "aayan",
+      "shubh",
+      "advait",
+      "anand",
+      "tanya",
+      "tarun",
+      "sunny",
+      "mani",
+      "gokul",
+      "vijay",
+      "shruti",
+      "suhani",
+      "mohit",
+      "kavitha",
+      "rehan",
+      "soham",
+      "rupali",
+      "niharika"
+    ];
+    if (!speaker || !bulbulV3Speakers.includes(speaker)) {
+      speaker = "kavya";
+    }
+    if (!model || model !== "bulbul:v3") {
+      model = "bulbul:v3";
+    }
+    const cleaned = text.replace(/[\s.,!?;:\-–—'"`()\[\]{}]+/g, "").trim();
+    if (!cleaned) {
+      console.warn(`[TTS:Sarvam] Skipping TTS \u2014 text has no speakable content: "${text.substring(0, 40)}"`);
+      return Buffer.alloc(320, 0);
+    }
+    console.log(`[TTS:Sarvam] Synthesizing: speaker="${speaker}" model="${model}" lang="${language}" sampleRate=${config.outputFormat?.sampleRate || 8e3} text_len=${text.length}`);
     try {
       const response = await axios.post(
         `${SARVAM_API_BASE}/text-to-speech`,
@@ -17,9 +66,10 @@ class SarvamTtsProvider extends BaseTtsProvider {
           target_language_code: this.mapLanguage(language),
           speaker,
           model,
-          pace: config.speed || 1.15,
-          // Increased from 1.0 to 1.15 for a more natural speed
-          speech_sample_rate: config.outputFormat?.sampleRate || 8e3,
+          pace: config.speed || 1.05,
+          // Natural human speech pace for clear Hindi pronunciation
+          speech_sample_rate: 16e3,
+          // Request 16kHz high-fidelity audio from Sarvam
           enable_preprocessing: true
         },
         {
@@ -32,7 +82,16 @@ class SarvamTtsProvider extends BaseTtsProvider {
         }
       );
       if (response.data?.audios?.[0]) {
-        return Buffer.from(response.data.audios[0], "base64");
+        let audioBuf = Buffer.from(response.data.audios[0], "base64");
+        if (audioBuf.length >= 44 && audioBuf.readUInt32BE(0) === 1380533830) {
+          const dataIdx = audioBuf.subarray(0, 100).indexOf("data");
+          if (dataIdx !== -1 && dataIdx + 8 <= audioBuf.length) {
+            audioBuf = audioBuf.subarray(dataIdx + 8);
+          } else {
+            audioBuf = audioBuf.subarray(44);
+          }
+        }
+        return audioBuf;
       }
       console.error(`[TTS:Sarvam] No audio in response:`, JSON.stringify(response.data));
       throw new Error(`Sarvam TTS returned no audio data (speaker="${speaker}", model="${model}")`);
@@ -46,7 +105,7 @@ class SarvamTtsProvider extends BaseTtsProvider {
         speaker,
         model,
         pitch: config.pitch || 0,
-        pace: config.speed || 1.15,
+        pace: config.speed || 1.3,
         loudness: 1.5,
         speech_sample_rate: config.outputFormat?.sampleRate || 8e3,
         enable_preprocessing: true

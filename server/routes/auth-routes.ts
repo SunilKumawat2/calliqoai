@@ -195,9 +195,13 @@ export function createAuthRoutes(ctx: RouteContext): Router {
         expiresAt,
       });
 
-      await emailService.sendPasswordResetEmail(email, otpCode, existingUser.name, expiryMinutes);
-
-      logger.info(`Password reset: Sent verification code to ${email} (expires in ${expiryMinutes} min)`, undefined, 'Auth');
+      logger.info(`Password reset OTP for ${email}: [ ${otpCode} ] (expires in ${expiryMinutes} min)`, undefined, 'Auth');
+      
+      try {
+        await emailService.sendPasswordResetEmail(email, otpCode, existingUser.name, expiryMinutes);
+      } catch (mailErr: any) {
+        logger.error(`Failed to deliver OTP email to ${email}: ${mailErr.message}`, mailErr, 'Auth');
+      }
       
       res.json({ success: true, message: "If an account exists with this email, a verification code has been sent." });
     } catch (error: any) {

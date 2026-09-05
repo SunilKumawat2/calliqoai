@@ -41,8 +41,9 @@ export class VadDetector {
     const smoothedEnergy =
       this.lastEnergyValues.reduce((a, b) => a + b, 0) / this.lastEnergyValues.length;
 
-    // During TTS playback, we require higher energy to trigger speech start to prevent echo/leakage from triggering it.
-    const threshold = isPlayingTts ? 0.06 : this.config.energyThreshold;
+    // During TTS playback, require higher threshold (0.15) so speaker echo does not cause self-interruption
+    const threshold = isPlayingTts ? 0.15 : this.config.energyThreshold;
+    const requiredSpeechMs = isPlayingTts ? 350 : this.config.speechThresholdMs;
     const isSpeech = smoothedEnergy > threshold;
     const now = Date.now();
 
@@ -55,7 +56,7 @@ export class VadDetector {
           this.speechStartTime = now;
         }
         // Check if speech has persisted long enough
-        if (now - this.speechStartTime >= this.config.speechThresholdMs) {
+        if (now - this.speechStartTime >= requiredSpeechMs) {
           if (this.state !== 'speech') {
             isSpeechStart = true;
             this.state = 'speech';

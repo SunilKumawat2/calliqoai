@@ -86,6 +86,11 @@ function VoiceItem({
 }) {
   const tags: string[] = [];
   
+  // Extract gender label explicitly
+  const genderKey = Object.keys(voice.labels || {}).find(k => k.toLowerCase() === 'gender');
+  const rawGender = genderKey ? voice.labels?.[genderKey] : (voice.name.toLowerCase().includes('female') ? 'female' : voice.name.toLowerCase().includes('male') ? 'male' : undefined);
+  const genderLabel = rawGender ? (rawGender.toLowerCase().includes('fem') ? 'Female' : rawGender.toLowerCase().includes('male') ? 'Male' : rawGender) : undefined;
+
   if (voice.labels?.language) {
     const langDisplay = voice.labels.accent 
       ? `${voice.labels.language} (${voice.labels.accent})`
@@ -93,7 +98,6 @@ function VoiceItem({
     tags.push(langDisplay);
   }
   
-  if (voice.labels?.gender) tags.push(voice.labels.gender);
   if (voice.labels?.age) tags.push(voice.labels.age);
   if (voice.category) tags.push(voice.category);
   
@@ -111,9 +115,23 @@ function VoiceItem({
       <VoiceAvatar name={voice.name} />
       
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm truncate">{voice.name}</span>
-          {isSelected && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
+          {genderLabel && (
+            <Badge 
+              variant="outline"
+              className={`text-[10px] px-1.5 py-0 h-4.5 font-semibold flex-shrink-0 ${
+                genderLabel.toLowerCase() === 'female' 
+                  ? 'bg-pink-500/10 text-pink-600 border-pink-300 dark:bg-pink-500/20 dark:text-pink-300 dark:border-pink-800'
+                  : genderLabel.toLowerCase() === 'male'
+                  ? 'bg-blue-500/10 text-blue-600 border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-800'
+                  : 'bg-amber-500/10 text-amber-600 border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-800'
+              }`}
+            >
+              {genderLabel.toLowerCase() === 'female' ? '♀ Female' : genderLabel.toLowerCase() === 'male' ? '♂ Male' : '⚡ Neutral'}
+            </Badge>
+          )}
+          {isSelected && <Check className="w-4 h-4 text-primary flex-shrink-0 ml-auto" />}
         </div>
         
         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">

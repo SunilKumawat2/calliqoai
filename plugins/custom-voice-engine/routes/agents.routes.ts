@@ -39,7 +39,7 @@ export function createAgentsRouter(): Router {
   router.post('/', async (req: Request, res: Response) => {
     try {
       const userId = (req as any).userId;
-      const { name, description, systemPrompt, firstMessage, language, llmModel, temperature, maxTokens, ttsVoice, ttsProvider, sttProvider, sttModel, ttsModel, interruptible, silenceTimeoutMs, maxDurationSeconds, endCallOnSilence, businessRules, knowledgeBaseIds, enabledTools, enableMemory, memoryRetentionDays, detectLanguageEnabled, appointmentBookingEnabled, endConversationEnabled, transferEnabled, transferPhoneNumber, messagingEmailEnabled, messagingWhatsappEnabled, messagingEmailTemplate, messagingWhatsappTemplate } = req.body;
+      const { type, flowId, name, description, systemPrompt, firstMessage, language, llmModel, temperature, maxTokens, ttsVoice, ttsProvider, sttProvider, sttModel, ttsModel, interruptible, silenceTimeoutMs, maxDurationSeconds, endCallOnSilence, businessRules, knowledgeBaseIds, enabledTools, enableMemory, memoryRetentionDays, detectLanguageEnabled, appointmentBookingEnabled, endConversationEnabled, transferEnabled, transferPhoneNumber, messagingEmailEnabled, messagingWhatsappEnabled, messagingEmailTemplate, messagingWhatsappTemplate } = req.body;
 
       if (!name || !systemPrompt) return res.status(400).json({ success: false, error: 'name and systemPrompt are required' });
 
@@ -67,6 +67,12 @@ export function createAgentsRouter(): Router {
         )
         RETURNING *
       `);
+      
+      const agentId = result.rows[0].id;
+      if (flowId) {
+        await db.execute(sql`UPDATE flows SET agent_id = ${agentId} WHERE id = ${flowId}`);
+      }
+
       res.json({ success: true, data: result.rows[0] });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -76,7 +82,7 @@ export function createAgentsRouter(): Router {
   router.put('/:id', async (req: Request, res: Response) => {
     try {
       const userId = (req as any).userId;
-      const { name, description, systemPrompt, firstMessage, language, llmModel, temperature, maxTokens, ttsVoice, ttsProvider, sttProvider, sttModel, ttsModel, interruptible, silenceTimeoutMs, maxDurationSeconds, endCallOnSilence, businessRules, knowledgeBaseIds, enableMemory, isActive, detectLanguageEnabled, appointmentBookingEnabled, endConversationEnabled, transferEnabled, transferPhoneNumber, messagingEmailEnabled, messagingWhatsappEnabled, messagingEmailTemplate, messagingWhatsappTemplate } = req.body;
+      const { type, flowId, name, description, systemPrompt, firstMessage, language, llmModel, temperature, maxTokens, ttsVoice, ttsProvider, sttProvider, sttModel, ttsModel, interruptible, silenceTimeoutMs, maxDurationSeconds, endCallOnSilence, businessRules, knowledgeBaseIds, enableMemory, isActive, detectLanguageEnabled, appointmentBookingEnabled, endConversationEnabled, transferEnabled, transferPhoneNumber, messagingEmailEnabled, messagingWhatsappEnabled, messagingEmailTemplate, messagingWhatsappTemplate } = req.body;
 
       // Default Sarvam models when empty string is sent
       const effectiveSttModel = sttModel !== undefined ? (sttModel || (sttProvider === 'sarvam' ? 'saaras:v3' : sttModel)) : undefined;
@@ -111,6 +117,18 @@ export function createAgentsRouter(): Router {
       `);
       if ((result.rows as any[]).length === 0) return res.status(404).json({ success: false, error: 'Not found' });
       
+      const agentId = req.params.id;
+
+      // Update flows association
+      if (flowId !== undefined) {
+        // Clear old flows linking to this agent
+        await db.execute(sql`UPDATE flows SET agent_id = null WHERE agent_id = ${agentId}`);
+        // Link the new flow if provided
+        if (flowId) {
+          await db.execute(sql`UPDATE flows SET agent_id = ${agentId} WHERE id = ${flowId}`);
+        }
+      }
+
       // Sync to the main agents table if a placeholder exists
       try {
         await db.execute(sql`
@@ -120,7 +138,9 @@ export function createAgentsRouter(): Router {
               system_prompt = COALESCE(${systemPrompt}, system_prompt),
               first_message = COALESCE(${firstMessage}, first_message),
               llm_model = COALESCE(${llmModel}, llm_model),
-              temperature = COALESCE(${temperature}, temperature)
+              temperature = COALESCE(${temperature}, temperature),
+              type = COALESCE(${type}, type),
+              flow_id = ${flowId !== undefined ? (flowId || null) : sql`flow_id`}
           WHERE id = ${req.params.id} AND user_id = ${userId}
         `);
       } catch (syncErr) {
@@ -142,6 +162,30 @@ export function createAgentsRouter(): Router {
       res.status(500).json({ success: false, error: err.message });
     }
   });
+
+  function createWavHeaderBuffer(pcm: Buffer, sampleRate = 8000, numChannels = 1): Buffer {
+    const header = Buffer.alloc(44);
+    const dataSize = pcm.length;
+    const fileSize = 36 + dataSize;
+    const byteRate = sampleRate * numChannels * 2;
+    const blockAlign = numChannels * 2;
+
+    header.write('RIFF', 0);
+    header.writeUInt32LE(fileSize, 4);
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20);
+    header.writeUInt16LE(numChannels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(16, 34);
+    header.write('data', 36);
+    header.writeUInt32LE(dataSize, 40);
+
+    return Buffer.concat([header, pcm]);
+  }
 
   router.post('/preview', async (req: Request, res: Response) => {
     try {
@@ -183,7 +227,7 @@ export function createAgentsRouter(): Router {
             language: language || 'en-IN',
             outputFormat: {
               encoding: 'linear16',
-              sampleRate: 8000,
+              sampleRate: 16000,
             },
             speed: 1.0,
           }
@@ -197,7 +241,14 @@ export function createAgentsRouter(): Router {
             },
           };
 
-      const audioBuffer = await ttsProvider.synthesize(previewText, config);
+      let audioBuffer = await ttsProvider.synthesize(previewText, config);
+
+      if (isSarvam) {
+        // If raw PCM (no RIFF header), wrap with a 44-byte WAV header matching Sarvam 16kHz output rate so browser plays at normal speed
+        if (audioBuffer.length >= 44 && audioBuffer.readUInt32BE(0) !== 0x52494646) {
+          audioBuffer = createWavHeaderBuffer(audioBuffer, 16000);
+        }
+      }
 
       res.setHeader('Content-Type', isSarvam ? 'audio/wav' : 'audio/mpeg');
       res.setHeader('Content-Length', audioBuffer.length);

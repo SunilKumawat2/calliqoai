@@ -100,32 +100,73 @@ export function registerAiVoiceEngineRoutes(
   // ── Set Dynamic WebSocket IP and initialize persistent ESL connections ──
   (async () => {
     try {
-      const os = await import('os');
-
-      const getContainerIp = () => {
-        const interfaces = os.networkInterfaces();
-        for (const name of Object.keys(interfaces)) {
-          for (const net of interfaces[name] || []) {
-            if (net.family === 'IPv4' && !net.internal) {
-              if (net.address.startsWith('10.') || net.address.startsWith('172.') || net.address.startsWith('192.168.')) {
-                return net.address;
-              }
-            }
-          }
-        }
-        return '127.0.0.1';
-      };
-
-      const containerIp = getContainerIp();
-      if (containerIp === '127.0.0.1') return;
-
       if (process.env.DISABLE_FREESWITCH_ESL === 'true' || process.env.DISABLE_FREESWITCH_ESL === '1') {
         console.log('[AI Voice Engine] FreeSWITCH ESL connection initialization disabled via DISABLE_FREESWITCH_ESL environment variable.');
         return;
       }
 
-      const wsUrl = `ws://${containerIp}:${process.env.PORT || '5000'}/voice-engine/ws/audio`;
+      const os = await import('os');
 
+      // Determine the best available IP for WebSocket URL:
+      // - Prefer a private LAN IP (Docker/VM/LAN)
+      // - Fall back to 127.0.0.1 for pure local (non-Docker) installs
+      const getServerIp = () => {
+        const interfaces = os.networkInterfaces();
+        for (const name of Object.keys(interfaces)) {
+          for (const net of interfaces[name] || []) {
+            if (net.family === 'IPv4' && !net.internal) {
+              if (
+                net.address.startsWith('10.') ||
+                net.address.startsWith('172.') ||
+                net.address.startsWith('192.168.')
+              ) {
+                return net.address;
+              }
+            }
+          }
+        }
+        // For local (non-Docker) installs, FreeSWITCH and app are on same machine
+        return process.env.FREESWITCH_WS_HOST || '127.0.0.1';
+      };
+
+      const serverIp = getServerIp();
+      const wsUrl = `ws://${serverIp}:${process.env.PORT || '5000'}/voice-engine/ws/audio`;
+      console.log(`[AI Voice Engine] Audio WebSocket URL: ${wsUrl}`);
+
+      // ── Auto-register local FreeSWITCH node if none exists ────────────────
+      // This allows non-Docker local installs to work without manual DB setup
+      try {
+        const { db } = await import('../../server/db.js');
+        const { sql } = await import('drizzle-orm');
+
+        const eslHost = process.env.FREESWITCH_ESL_HOST || '127.0.0.1';
+        const eslPort = parseInt(process.env.FREESWITCH_ESL_PORT || '8021', 10);
+        const eslPassword = process.env.FREESWITCH_ESL_PASSWORD || 'ClueCon';
+        const sipHost = process.env.FREESWITCH_SIP_HOST || eslHost;
+        const sipPort = parseInt(process.env.FREESWITCH_SIP_PORT || '5060', 10);
+
+        const existingNodes = await db.execute(
+          sql`SELECT id FROM ve_freeswitch_nodes LIMIT 1`
+        );
+
+        if (existingNodes.rows.length === 0) {
+          console.log('[AI Voice Engine] No FreeSWITCH nodes found — auto-registering local node...');
+          await db.execute(sql`
+            INSERT INTO ve_freeswitch_nodes
+              (name, esl_host, esl_port, esl_password, sip_host, sip_port, ws_port, max_calls, status)
+            VALUES
+              ('local', ${eslHost}, ${eslPort}, ${eslPassword}, ${sipHost}, ${sipPort}, 8089, 100, 'online')
+            ON CONFLICT DO NOTHING
+          `);
+          console.log(`[AI Voice Engine] ✅ Local FreeSWITCH node registered (ESL: ${eslHost}:${eslPort})`)
+        } else {
+          console.log('[AI Voice Engine] FreeSWITCH node(s) already exist in DB, skipping auto-register.');
+        }
+      } catch (dbErr: any) {
+        console.warn('[AI Voice Engine] Could not auto-register local FreeSWITCH node:', dbErr.message);
+      }
+
+      // ── Initialize ESL connections for audio streaming ────────────────────
       if (audioWsServer) {
         await audioWsServer.initializeEslConnections(wsUrl);
       }

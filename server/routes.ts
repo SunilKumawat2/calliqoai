@@ -342,6 +342,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log('[REST API Plugin] Not installed - skipping direct registration');
   }
 
+  // Register Custom Voice Engine Plugin dynamically
+  try {
+    const { importPlugin: importCvePlugin } = await import('./utils/plugin-import');
+    const cvePlugin = await importCvePlugin('plugins/custom-voice-engine/index.ts');
+    if (cvePlugin && typeof cvePlugin.registerAiVoiceEngineRoutes === 'function') {
+      cvePlugin.registerAiVoiceEngineRoutes(app, {
+        sessionAuthMiddleware: authenticateToken as unknown as import('express').RequestHandler,
+        adminAuthMiddleware: checkAdminOrTeamMember as unknown as import('express').RequestHandler,
+        httpServer,
+      });
+      markPluginAsRegistered('custom-voice-engine');
+      console.log('✅ Custom Voice Engine Plugin initialized');
+    }
+  } catch (err: any) {
+    console.log('[Custom Voice Engine Plugin] Not installed - skipping direct registration:', err.message);
+  }
+
   // Register Plugin Installer Routes FIRST (before general plugin routes to avoid /:name param conflict)
   const pluginInstallerRoutes = await import('./routes/plugin-installer');
   app.use('/api/admin/plugins/installer', checkAdminOrTeamMember, pluginInstallerRoutes.default);

@@ -18,8 +18,9 @@
 
 import { Router, Request, Response } from 'express';
 import { RouteContext, AuthRequest } from './common';
-import { sql, eq } from 'drizzle-orm';
-import { users, calls, campaigns, twilioCountries } from '@shared/schema';
+import { sql, eq, and } from 'drizzle-orm';
+import { users, calls, campaigns, twilioCountries, agents, phoneNumbers, plivoPhoneNumbers } from '@shared/schema';
+import { ElevenLabsPoolService } from '../services/elevenlabs-pool';
 import bcrypt from 'bcrypt';
 import fs from 'fs';
 import path from 'path';
@@ -1079,6 +1080,621 @@ ${allUrls.map(u => {
     } catch (error) {
       console.error('Error fetching Twilio countries:', error);
       res.status(500).json({ error: 'Failed to fetch countries' });
+    }
+  });
+
+  // ============================================
+  // PUBLIC DEMO AGENTS
+  // ============================================
+  router.get("/api/public/demo-agents", async (_req: Request, res: Response) => {
+    try {
+      // 1. Fetch regular agents
+      const regularAgents = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.isActive, true));
+
+      const list = [];
+      for (const agent of regularAgents) {
+        list.push({
+          id: agent.id,
+          name: agent.name,
+          telephonyProvider: agent.telephonyProvider || 'twilio',
+          type: agent.type,
+          engine: 'native',
+        });
+      }
+
+      // 2. Fetch custom voice engine agents (using try-catch for robustness)
+      try {
+        const veAgentsResult = await db.execute(sql`
+          SELECT id, name, is_active FROM ve_voice_agents WHERE is_active = true
+        `);
+        for (const veAgent of veAgentsResult.rows as any[]) {
+          list.push({
+            id: veAgent.id,
+            name: veAgent.name,
+            telephonyProvider: 'custom-voice-engine',
+            type: 'flow',
+            engine: 'custom-voice-engine',
+          });
+        }
+      } catch (veError: any) {
+        console.warn('Voice Engine agents table not found or not initialized:', veError.message);
+      }
+
+      res.json({ success: true, agents: list });
+    } catch (error: any) {
+      console.error('Error fetching demo agents:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch demo agents' });
+    }
+  });
+
+  // ============================================
+  // PUBLIC DEMO PROVIDERS
+  // ============================================
+  router.get("/api/public/demo-providers", async (_req: Request, res: Response) => {
+    try {
+      // Resolve a user context who owns active phone numbers
+      let userId = null;
+      const twilioOwnerResult = await db.select({ userId: phoneNumbers.userId }).from(phoneNumbers).where(and(eq(phoneNumbers.status, 'active'))).limit(1);
+      if (twilioOwnerResult.length > 0 && twilioOwnerResult[0].userId) {
+        userId = twilioOwnerResult[0].userId;
+      } else {
+        const plivoOwnerResult = await db.select({ userId: plivoPhoneNumbers.userId }).from(plivoPhoneNumbers).where(eq(plivoPhoneNumbers.status, 'active')).limit(1);
+        if (plivoOwnerResult.length > 0 && plivoOwnerResult[0].userId) {
+          userId = plivoOwnerResult[0].userId;
+        }
+      }
+
+      if (!userId) {
+        const defaultUserResult = await db.select().from(users).limit(1);
+        if (defaultUserResult.length > 0) {
+          userId = defaultUserResult[0].id;
+        }
+      }
+
+      if (!userId) {
+        return res.json({ success: true, twilio: null, plivo: null });
+      }
+
+      // 1. Get Twilio number
+      const twilioPhoneResult = await db.select().from(phoneNumbers).where(and(eq(phoneNumbers.userId, userId), eq(phoneNumbers.status, 'active'))).limit(1);
+      let twilioNumber = twilioPhoneResult[0]?.phoneNumber || null;
+      if (!twilioNumber) {
+        // Fallback: Check system pool
+        const systemPhoneResult = await db.select().from(phoneNumbers).where(and(eq(phoneNumbers.isSystemPool, true), eq(phoneNumbers.status, 'available'))).limit(1);
+        twilioNumber = systemPhoneResult[0]?.phoneNumber || null;
+      }
+
+      // 2. Get Plivo number
+      const plivoPhoneResult = await db.select().from(plivoPhoneNumbers).where(and(eq(plivoPhoneNumbers.userId, userId), eq(plivoPhoneNumbers.status, 'active'))).limit(1);
+      const plivoNumber = plivoPhoneResult[0]?.phoneNumber || null;
+
+      res.json({
+        success: true,
+        twilio: twilioNumber,
+        plivo: plivoNumber,
+      });
+    } catch (error: any) {
+      console.error('Error fetching demo providers:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch demo providers' });
+    }
+  });
+
+  // ============================================
+  // PUBLIC DEMO CALL INITIATOR
+  // ============================================
+  router.post("/api/public/demo-call", async (req: Request, res: Response) => {
+    const { agentId, telephonyProvider, toNumber } = req.body;
+
+    if (!agentId || !toNumber) {
+      return res.status(400).json({ success: false, error: "agentId and toNumber are required" });
+    }
+
+    let formattedToNumber = toNumber.trim();
+    if (!formattedToNumber.startsWith("+")) {
+      formattedToNumber = `+${formattedToNumber}`;
+    }
+
+    try {
+      // Resolve a user context who owns active phone numbers
+      let userId = null;
+      const twilioOwnerResult = await db.select({ userId: phoneNumbers.userId }).from(phoneNumbers).where(and(eq(phoneNumbers.status, 'active'))).limit(1);
+      if (twilioOwnerResult.length > 0 && twilioOwnerResult[0].userId) {
+        userId = twilioOwnerResult[0].userId;
+      } else {
+        const plivoOwnerResult = await db.select({ userId: plivoPhoneNumbers.userId }).from(plivoPhoneNumbers).where(eq(plivoPhoneNumbers.status, 'active')).limit(1);
+        if (plivoOwnerResult.length > 0 && plivoOwnerResult[0].userId) {
+          userId = plivoOwnerResult[0].userId;
+        }
+      }
+
+      if (!userId) {
+        const defaultUserResult = await db.select().from(users).limit(1);
+        if (defaultUserResult.length > 0) {
+          userId = defaultUserResult[0].id;
+        }
+      }
+
+      if (!userId) {
+        return res.status(500).json({ success: false, error: "No users exist in the platform to execute the call." });
+      }
+
+      // 1. Check regular agents table
+      let agent = (await db.select().from(agents).where(eq(agents.id, agentId)))[0];
+      let isVeAgent = false;
+
+      if (!agent) {
+        // 2. Check Custom Voice Engine agents table
+        try {
+          const veAgentResult = await db.execute(sql`
+            SELECT * FROM ve_voice_agents WHERE id = ${agentId} LIMIT 1
+          `);
+          if (veAgentResult.rows.length > 0) {
+            isVeAgent = true;
+            const veAgent = veAgentResult.rows[0] as any;
+            agent = {
+              id: veAgent.id,
+              userId: veAgent.user_id,
+              name: veAgent.name,
+              type: 'flow',
+              telephonyProvider: 'custom-voice-engine',
+              systemPrompt: veAgent.system_prompt,
+              firstMessage: veAgent.first_message,
+              language: veAgent.language,
+              llmModel: veAgent.llm_model,
+              temperature: veAgent.temperature,
+              openaiVoice: veAgent.tts_voice,
+              maxDurationSeconds: veAgent.max_duration_seconds,
+              isActive: veAgent.is_active,
+              openaiModel: 'gpt-realtime-1.5',
+              knowledgeBaseIds: veAgent.knowledge_base_ids || [],
+              transferPhoneNumber: null,
+              transferEnabled: false,
+              endConversationEnabled: true,
+            } as any;
+          }
+        } catch (veErr: any) {
+          console.warn('Error reading voice engine agent details:', veErr.message);
+        }
+      }
+
+      if (!agent) {
+        return res.status(404).json({ success: false, error: "Agent not found" });
+      }
+
+      // Determine provider override
+      const resolvedProvider = telephonyProvider || agent.telephonyProvider || 'twilio';
+
+      console.log(`📞 [Demo API] Initiating call to ${formattedToNumber} using provider ${resolvedProvider} and agent ${agent.name}`);
+
+      // Case A: Custom Voice Engine (FreeSWITCH SIP Call)
+      if (resolvedProvider === 'custom-voice-engine' || isVeAgent) {
+        // Find an online FreeSWITCH node
+        const nodesResult = await db.execute(sql`
+          SELECT * FROM ve_freeswitch_nodes WHERE status = 'online' ORDER BY created_at ASC LIMIT 1
+        `);
+        const nodes = nodesResult.rows as any[];
+        if (nodes.length === 0) {
+          return res.status(503).json({ success: false, error: "Voice Engine is offline. Please make sure FreeSWITCH is running." });
+        }
+        const node = nodes[0];
+
+        const { randomUUID } = await import('crypto');
+        const sessionUuid = randomUUID();
+
+        // Find active gateway or fallback
+        const userGatewayResult = await db.execute(sql`
+          SELECT name, proxy FROM user_sip_gateways WHERE user_id = ${userId} AND is_active = true LIMIT 1
+        `);
+        const activeGateway = (userGatewayResult.rows as any[])[0];
+        // If they chose twilio/plivo specifically, use that as the gateway name
+        const gatewayName = telephonyProvider === 'plivo' ? 'plivo' : (activeGateway ? activeGateway.name.trim().toLowerCase() : 'twilio');
+        const gatewayProxy = activeGateway ? activeGateway.proxy : (gatewayName === 'plivo' ? (process.env.PLIVO_SIP_PROXY || '14760240167242712.zt.plivo.com') : (process.env.TWILIO_SIP_PROXY || 'pstn.twilio.com'));
+
+        // Let's resolve standard caller ID number for FreeSWITCH
+        let callerId = 'FreeSWITCH';
+        if (gatewayName === 'plivo') {
+          const plivoPhoneResult = await db.execute(sql`
+            SELECT phone_number FROM plivo_phone_numbers WHERE user_id = ${userId} AND status = 'active' LIMIT 1
+          `);
+          if (plivoPhoneResult.rows.length > 0) {
+            callerId = (plivoPhoneResult.rows[0] as any).phone_number;
+          }
+        } else {
+          const twilioPhoneResult = await db.select().from(phoneNumbers).where(and(eq(phoneNumbers.userId, userId), eq(phoneNumbers.status, 'active'))).limit(1);
+          if (twilioPhoneResult.length > 0) {
+            callerId = twilioPhoneResult[0].phoneNumber;
+          }
+        }
+
+        const formattedCallerId = (callerId !== 'FreeSWITCH' && !callerId.startsWith('+')) ? `+${callerId}` : callerId;
+
+        // Insert Session
+        await db.execute(sql`
+          INSERT INTO ve_sessions (
+            id, user_id, agent_id, from_number, to_number, direction, status, channel_uuid, metadata
+          ) VALUES (
+            ${sessionUuid}, ${userId}, ${isVeAgent ? agent.id : null}, ${formattedCallerId}, ${formattedToNumber}, 'outbound', 'initializing', ${sessionUuid}, ${JSON.stringify({ source: 'demo_page', testCall: true })}
+          )
+        `);
+
+        // Insert tracking call record for monitoring
+        await db.execute(sql`
+          INSERT INTO calls (
+            id, user_id, phone_number, from_number, to_number, status, call_direction, engine_type, metadata, agent_id
+          ) VALUES (
+            ${sessionUuid}, ${userId}, ${formattedToNumber}, ${formattedCallerId}, ${formattedToNumber}, 'initiated', 'outgoing', 'custom-voice-engine', ${JSON.stringify({
+              source: 'demo_page',
+              testCall: true,
+              sessionUuid: sessionUuid,
+              telephonyProvider: 'custom-voice-engine'
+            })}, ${isVeAgent ? agent.id : null}
+          )
+        `);
+
+        // Load ESL and originate
+        const { importPlugin } = await import('../utils/plugin-import');
+        const { EslConnection } = await importPlugin('plugins/custom-voice-engine/services/freeswitch/esl-connection');
+
+        const eslHost = node.esl_host || node.eslHost;
+        const eslPort = node.esl_port || node.eslPort;
+        const eslPassword = node.esl_password || node.eslPassword || 'ClueCon';
+
+        const esl = new EslConnection({ host: eslHost, port: eslPort, password: eslPassword, reconnect: false });
+        esl.on('error', (err: any) => console.error('[ESL Demo Error]', err.message));
+        await esl.connect();
+
+        const os = await import('os');
+        const getContainerIp = () => {
+          const interfaces = os.networkInterfaces();
+          for (const name of Object.keys(interfaces)) {
+            for (const net of interfaces[name] || []) {
+              if (net.family === 'IPv4' && !net.internal) {
+                if (net.address.startsWith('10.') || net.address.startsWith('172.') || net.address.startsWith('192.168.')) {
+                  return net.address;
+                }
+              }
+            }
+          }
+          return '127.0.0.1';
+        };
+        const containerIp = getContainerIp();
+
+        const isPlivo = gatewayName.toLowerCase() === 'plivo';
+        const callerIdVal = isPlivo ? callerId.replace(/^\+/, '') : callerId;
+
+        const options: any = {
+          origination_uuid: sessionUuid,
+          origination_caller_id_number: callerIdVal,
+          origination_caller_id_name: callerIdVal,
+          effective_caller_id_number: callerIdVal,
+          effective_caller_id_name: callerIdVal,
+          sip_from_uri: `sip:${callerIdVal}@${gatewayProxy}`,
+          ve_audio_ws_url: `ws://${containerIp}:${process.env.PORT || '5000'}/voice-engine/ws/audio/${sessionUuid}`,
+          absolute_codec_string: 'PCMU,PCMA,telephone-event',
+        };
+
+        if (isPlivo) {
+          options.sip_from_user = callerIdVal;
+          options.sip_from_host = gatewayProxy;
+          options['sip_h_P-Asserted-Identity'] = `<sip:${callerIdVal}@${gatewayProxy}>`;
+        }
+
+        await esl.originate(`sofia/gateway/${gatewayName}/${formattedToNumber}`, `${formattedToNumber} XML public`, options);
+        await esl.disconnect();
+
+        return res.json({
+          success: true,
+          message: "Demo call initiated successfully via Custom Voice Engine.",
+          sessionId: sessionUuid,
+          provider: 'custom-voice-engine',
+        });
+      }
+
+      // Case B: Plivo + OpenAI Realtime
+      if (resolvedProvider === 'plivo') {
+        const { PlivoCallService } = await import('../engines/plivo/services/plivo-call.service');
+        const { OpenAIAgentFactory } = await import('../engines/plivo/services/openai-agent-factory');
+
+        const plivoPhoneResult = await db.select().from(plivoPhoneNumbers).where(and(eq(plivoPhoneNumbers.userId, userId), eq(plivoPhoneNumbers.status, 'active'))).limit(1);
+        if (plivoPhoneResult.length === 0) {
+          return res.status(400).json({ success: false, error: "No active Plivo phone number configured on your account. Please purchase a Plivo number." });
+        }
+        const plivoPhone = plivoPhoneResult[0];
+
+        const validatedVoice = OpenAIAgentFactory.validateVoice(agent.openaiVoice || 'sage');
+        const validatedModel = OpenAIAgentFactory.validateModel(
+          (agent.config as any)?.openaiModel || agent.openaiModel || 'gpt-realtime-1.5',
+          'pro'
+        );
+
+        const { callUuid, plivoCall } = await PlivoCallService.initiateCall({
+          fromNumber: plivoPhone.phoneNumber,
+          toNumber: formattedToNumber,
+          userId,
+          agentId: agent.id,
+          plivoPhoneNumberId: plivoPhone.id,
+          agentConfig: {
+            voice: validatedVoice,
+            model: validatedModel,
+            systemPrompt: agent.systemPrompt || '',
+            firstMessage: agent.firstMessage || '',
+            tools: [],
+          },
+        });
+
+        return res.json({
+          success: true,
+          message: "Demo call initiated successfully via Plivo.",
+          callId: plivoCall.id,
+          uuid: callUuid,
+          provider: 'plivo',
+        });
+      }
+
+      // Case C: Twilio (Native ElevenLabs or OpenAI)
+      if (resolvedProvider === 'twilio') {
+        const twilioPhoneResult = await db.select().from(phoneNumbers).where(and(eq(phoneNumbers.userId, userId), eq(phoneNumbers.status, 'active'))).limit(1);
+        let fromPhone = twilioPhoneResult[0];
+        if (!fromPhone) {
+          // Check system pool
+          const systemPhoneResult = await db.select().from(phoneNumbers).where(and(eq(phoneNumbers.isSystemPool, true), eq(phoneNumbers.status, 'available'))).limit(1);
+          fromPhone = systemPhoneResult[0];
+        }
+
+        if (!fromPhone) {
+          return res.status(400).json({ success: false, error: "No active Twilio phone number available to make the call." });
+        }
+
+        // Sub-case: OpenAI Twilio
+        if (agent.telephonyProvider === 'twilio_openai' || agent.telephonyProvider === 'plivo') {
+          const { TwilioOpenAICallService } = await import('../engines/twilio-openai/services/twilio-openai-call.service');
+          const result = await TwilioOpenAICallService.initiateCall({
+            userId,
+            agentId: agent.id,
+            toNumber: formattedToNumber,
+            fromNumberId: fromPhone.id,
+          });
+
+          if (!result.success) {
+            return res.status(400).json({ success: false, error: result.error || "Failed to initiate call via Twilio + OpenAI" });
+          }
+
+          return res.json({
+            success: true,
+            message: "Demo call initiated successfully via Twilio + OpenAI Realtime.",
+            callId: result.callId,
+            twilioSid: result.twilioCallSid,
+            provider: 'twilio_openai',
+          });
+        }
+
+        // Sub-case: ElevenLabs Native
+        if (!agent.elevenLabsAgentId) {
+          return res.status(400).json({ success: false, error: "Agent is not configured with an ElevenLabs Agent ID" });
+        }
+        if (!fromPhone.elevenLabsPhoneNumberId) {
+          return res.status(400).json({ success: false, error: "Selected Twilio phone number is not synced with ElevenLabs" });
+        }
+
+        const credential = await ElevenLabsPoolService.getCredentialForAgent(agent.id);
+        if (!credential) {
+          return res.status(400).json({ success: false, error: "No ElevenLabs credentials configured for the agent" });
+        }
+
+        const { OutboundCallService } = await import('../services/outbound-call-service');
+        const outboundService = new OutboundCallService(credential.apiKey);
+
+        const result = await outboundService.initiateCall({
+          agentId: agent.elevenLabsAgentId,
+          agentPhoneNumberId: fromPhone.elevenLabsPhoneNumberId,
+          toNumber: formattedToNumber,
+          firstMessage: agent.firstMessage || undefined,
+        });
+
+        // Insert into calls table
+        const { nanoid } = await import('nanoid');
+        const callId = nanoid();
+        await db.insert(calls).values({
+          id: callId,
+          userId: userId,
+          agentId: agent.id,
+          phoneNumber: formattedToNumber,
+          fromNumber: fromPhone.phoneNumber,
+          toNumber: formattedToNumber,
+          status: "initiated",
+          callDirection: "outgoing",
+          elevenLabsConversationId: result.conversationId || null,
+          twilioSid: result.callSid || null,
+          startedAt: new Date(),
+          metadata: { source: 'demo_page', testCall: true }
+        });
+
+        return res.json({
+          success: true,
+          message: "Demo call initiated successfully via ElevenLabs native API.",
+          callId,
+          conversationId: result.conversationId,
+          twilioSid: result.callSid,
+          provider: 'twilio_elevenlabs',
+        });
+      }
+
+      return res.status(400).json({ success: false, error: `Unsupported provider combination: ${resolvedProvider}` });
+    } catch (error: any) {
+      console.error('Error in demo-call API:', error);
+      res.status(500).json({ success: false, error: error.message || 'Failed to initiate demo call.' });
+    }
+  });
+
+  /**
+   * POST /api/public/demo-hangup - End an active demo call on carrier network (Plivo / Twilio / CVE)
+   */
+  router.post("/api/public/demo-hangup", async (req: Request, res: Response) => {
+    const { callId, uuid, provider, twilioSid } = req.body;
+    console.log(`[DemoCall] Hangup request received: callId=${callId}, uuid=${uuid}, provider=${provider}, twilioSid=${twilioSid}`);
+
+    try {
+      // 1. Plivo Hangup
+      if (uuid || provider === 'plivo' || provider === 'plivo_openai') {
+        if (uuid) {
+          try {
+            const { AudioBridgeService } = await import('../engines/plivo/services/audio-bridge.service');
+            await AudioBridgeService.hangupCallByUuid(uuid);
+            console.log(`[DemoCall] AudioBridge hangup executed for UUID: ${uuid}`);
+          } catch (e: any) {
+            console.warn(`[DemoCall] AudioBridge hangup warning: ${e.message}`);
+          }
+        }
+        if (callId) {
+          try {
+            const { PlivoCallService } = await import('../engines/plivo/services/plivo-call.service');
+            await PlivoCallService.hangupCall(callId);
+            console.log(`[DemoCall] PlivoCallService hangup executed for call ID: ${callId}`);
+          } catch (e: any) {
+            console.warn(`[DemoCall] PlivoCallService hangup warning: ${e.message}`);
+          }
+        }
+      }
+
+      // 2. Twilio Hangup
+      if (twilioSid || provider === 'twilio' || provider === 'twilio_openai') {
+        if (twilioSid) {
+          try {
+            const { TwilioOpenAICallService } = await import('../engines/twilio-openai/services/twilio-openai-call.service');
+            await TwilioOpenAICallService.hangupCall(twilioSid);
+            console.log(`[DemoCall] Twilio hangup executed for SID: ${twilioSid}`);
+          } catch (e: any) {
+            console.warn(`[DemoCall] Twilio hangup warning: ${e.message}`);
+          }
+          // Direct Twilio Client call cancel fallback
+          try {
+            const { getTwilioClient } = await import('../engines/twilio-openai/config/twilio-openai-config');
+            const twilioClient = await getTwilioClient();
+            await twilioClient.calls(twilioSid).update({ status: 'completed' });
+            console.log(`[DemoCall] Direct Twilio REST API status updated to completed for SID: ${twilioSid}`);
+          } catch (e: any) {
+            console.warn(`[DemoCall] Direct Twilio REST API hangup warning: ${e.message}`);
+          }
+        }
+      }
+
+      // 3. Custom Voice Engine Hangup
+      if (provider === 'custom-voice-engine') {
+        try {
+          const { audioSessionManager } = await import('../plugins/custom-voice-engine/services/audio-pipeline/audio-session');
+          if (callId) {
+            audioSessionManager.terminateSession(callId);
+            console.log(`[DemoCall] CVE session terminated for call ID: ${callId}`);
+          }
+        } catch (e: any) {
+          console.warn(`[DemoCall] CVE hangup warning: ${e.message}`);
+        }
+      }
+
+      return res.json({ success: true, message: "Demo call hangup signal sent successfully." });
+    } catch (error: any) {
+      console.error('Error in demo-hangup endpoint:', error);
+      return res.status(500).json({ success: false, error: error.message || 'Failed to hang up demo call' });
+    }
+  });
+
+  /**
+   * GET /api/public/demo-call-status - Poll status of an active demo call to check if user answered
+   */
+  router.get("/api/public/demo-call-status", async (req: Request, res: Response) => {
+    const uuid = req.query.uuid as string;
+    const callId = req.query.callId as string;
+    const provider = req.query.provider as string;
+    const twilioSid = req.query.twilioSid as string;
+
+    try {
+      let isAnswered = false;
+      let isEnded = false;
+
+      // 1. Check Plivo Calls DB Record
+      if (uuid || callId || provider === 'plivo' || provider === 'plivo_openai') {
+        const { plivoCalls } = await import('@shared/schema');
+        const { eq, or } = await import('drizzle-orm');
+        const conditions = [];
+        if (callId) conditions.push(eq(plivoCalls.id, callId));
+        if (uuid) conditions.push(eq(plivoCalls.plivoCallUuid, uuid));
+
+        if (conditions.length > 0) {
+          const [callRecord] = await db
+            .select({ status: plivoCalls.status })
+            .from(plivoCalls)
+            .where(or(...conditions))
+            .limit(1);
+
+          if (callRecord) {
+            if (['in-progress', 'answered'].includes(callRecord.status)) {
+              isAnswered = true;
+            }
+            if (['completed', 'failed', 'busy', 'no-answer', 'canceled', 'cancelled'].includes(callRecord.status)) {
+              isEnded = true;
+            }
+          }
+        }
+
+        // Check active WebSocket session
+        const { AudioBridgeService } = await import('../engines/plivo/services/audio-bridge.service');
+        if (uuid) {
+          const session = AudioBridgeService.getSession(uuid);
+          if (session && session.status === 'connected') {
+            isAnswered = true;
+          } else if (session && session.status === 'disconnected') {
+            isEnded = true;
+          }
+        }
+      }
+
+      // 2. Check Twilio Calls DB Record
+      if (twilioSid || callId || provider === 'twilio' || provider === 'twilio_openai') {
+        const { twilioOpenaiCalls } = await import('@shared/schema');
+        const { eq, or } = await import('drizzle-orm');
+        const conditions = [];
+        if (callId) conditions.push(eq(twilioOpenaiCalls.id, callId));
+        if (twilioSid) conditions.push(eq(twilioOpenaiCalls.twilioCallSid, twilioSid));
+
+        if (conditions.length > 0) {
+          const [callRecord] = await db
+            .select({ status: twilioOpenaiCalls.status })
+            .from(twilioOpenaiCalls)
+            .where(or(...conditions))
+            .limit(1);
+
+          if (callRecord) {
+            if (['in-progress', 'answered'].includes(callRecord.status)) {
+              isAnswered = true;
+            }
+            if (['completed', 'failed', 'busy', 'no-answer', 'canceled', 'cancelled'].includes(callRecord.status)) {
+              isEnded = true;
+            }
+          }
+        }
+
+        // Check active WebSocket session
+        const { AudioBridgeService: TwilioAudioBridge } = await import('../engines/twilio-openai/services/audio-bridge.service');
+        if (twilioSid) {
+          const session = (TwilioAudioBridge as any).getSession ? (TwilioAudioBridge as any).getSession(twilioSid) : null;
+          if (session && session.status === 'connected') {
+            isAnswered = true;
+          } else if (session && session.status === 'disconnected') {
+            isEnded = true;
+          }
+        }
+      }
+
+      return res.json({
+        success: true,
+        isAnswered,
+        isEnded
+      });
+    } catch (err: any) {
+      return res.json({ success: false, isAnswered: false, isEnded: false });
     }
   });
 

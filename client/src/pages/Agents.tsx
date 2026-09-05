@@ -120,16 +120,16 @@ interface Agent {
 
 // OpenAI Realtime API voice options (for Plivo+OpenAI and Twilio+OpenAI engines)
 const openaiVoices = [
-  { value: "alloy", label: "Alloy", description: "Versatile and balanced" },
-  { value: "echo", label: "Echo", description: "Warm and confident" },
-  { value: "shimmer", label: "Shimmer", description: "Clear and expressive" },
-  { value: "ash", label: "Ash", description: "Soft and gentle" },
-  { value: "ballad", label: "Ballad", description: "Melodic and soothing" },
-  { value: "coral", label: "Coral", description: "Bright and friendly" },
-  { value: "sage", label: "Sage", description: "Calm and wise" },
-  { value: "verse", label: "Verse", description: "Poetic and articulate" },
-  { value: "cedar", label: "Cedar", description: "Deep and grounded" },
-  { value: "marin", label: "Marin", description: "Fresh and lively" },
+  { value: "alloy", label: "Alloy", gender: "neutral", description: "Versatile and balanced" },
+  { value: "echo", label: "Echo", gender: "male", description: "Warm and confident" },
+  { value: "shimmer", label: "Shimmer", gender: "female", description: "Clear and expressive" },
+  { value: "ash", label: "Ash", gender: "male", description: "Soft and gentle" },
+  { value: "ballad", label: "Ballad", gender: "male", description: "Melodic and soothing" },
+  { value: "coral", label: "Coral", gender: "female", description: "Bright and friendly" },
+  { value: "sage", label: "Sage", gender: "male", description: "Calm and wise" },
+  { value: "verse", label: "Verse", gender: "male", description: "Poetic and articulate" },
+  { value: "cedar", label: "Cedar", gender: "male", description: "Deep and grounded" },
+  { value: "marin", label: "Marin", gender: "female", description: "Fresh and lively" },
 ];
 
 export const customVoiceEngineVoices = [
@@ -172,41 +172,41 @@ export const customVoiceEngineVoices = [
   { value: "aura-2-miguel-es", label: "Miguel (Deepgram)", description: "Spanish - Male", provider: "deepgram" as const },
   // Sarvam — Bulbul v3 (30+ speakers, model: "bulbul:v3")
   // Per-language recommended speakers from Sarvam API docs
-  { value: "shubh", label: "Shubh (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["en", "hi", "te", "kn", "od", "ml"] },
+  { value: "shubh", label: "Shubh (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "aditya", label: "Aditya (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "rahul", label: "Rahul (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
-  { value: "rohan", label: "Rohan (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["ta"] },
+  { value: "rohan", label: "Rohan (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "amit", label: "Amit (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "dev", label: "Dev (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
-  { value: "ratan", label: "Ratan (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["en", "te", "kn", "ta", "mr", "gu"] },
+  { value: "ratan", label: "Ratan (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "varun", label: "Varun (Sarvam)", description: "Male — dramatic/suspense", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "manan", label: "Manan (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "sumit", label: "Sumit (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "kabir", label: "Kabir (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "aayan", label: "Aayan (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
-  { value: "ashutosh", label: "Ashutosh (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["hi"] },
+  { value: "ashutosh", label: "Ashutosh (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "advait", label: "Advait (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "anand", label: "Anand (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "tarun", label: "Tarun (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "sunny", label: "Sunny (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
-  { value: "mani", label: "Mani (Sarvam)", description: "Male — best overall CER", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["pa"] },
+  { value: "mani", label: "Mani (Sarvam)", description: "Male — best overall CER", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "gokul", label: "Gokul (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "vijay", label: "Vijay (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "mohit", label: "Mohit (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
-  { value: "rehan", label: "Rehan (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["bn"] },
+  { value: "rehan", label: "Rehan (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "soham", label: "Soham (Sarvam)", description: "Male", provider: "sarvam" as const, model: "bulbul:v3" as const },
-  { value: "priya", label: "Priya (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["hi", "te", "mr", "gu"] },
-  { value: "neha", label: "Neha (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["te", "kn"] },
-  { value: "ritu", label: "Ritu (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["ta", "od", "mr", "gu"] },
-  { value: "pooja", label: "Pooja (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["od", "ml"] },
+  { value: "priya", label: "Priya (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
+  { value: "neha", label: "Neha (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
+  { value: "ritu", label: "Ritu (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
+  { value: "pooja", label: "Pooja (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "simran", label: "Simran (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "kavya", label: "Kavya (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
-  { value: "ishita", label: "Ishita (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["en", "kn", "ta"] },
+  { value: "ishita", label: "Ishita (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "shreya", label: "Shreya (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
-  { value: "roopa", label: "Roopa (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["bn", "pa"] },
+  { value: "roopa", label: "Roopa (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "tanya", label: "Tanya (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "shruti", label: "Shruti (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
-  { value: "suhani", label: "Suhani (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const, languages: ["hi", "bn", "pa"] },
+  { value: "suhani", label: "Suhani (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "kavitha", label: "Kavitha (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
   { value: "rupali", label: "Rupali (Sarvam)", description: "Female", provider: "sarvam" as const, model: "bulbul:v3" as const },
   // Sarvam — Bulbul v2 (7 speakers, model: "bulbul:v2")
@@ -439,8 +439,8 @@ export default function Agents() {
   });
   const activeTtsProvider = cveSettings?.data?.tts?.activeProvider || "deepgram";
   const activeSttProvider = cveSettings?.data?.stt?.activeProvider || "deepgram";
-  const allowedTtsProviders = cveSettings?.data?.tts?.allowedProviders || [activeTtsProvider];
-  const allowedSttProviders = cveSettings?.data?.stt?.allowedProviders || [activeSttProvider];
+  const allowedTtsProviders = ['deepgram', 'sarvam'];
+  const allowedSttProviders = ['deepgram', 'sarvam'];
 
   const currentSttAllowedModels = formData.sttProvider === 'deepgram'
     ? (cveSettings?.data?.stt?.deepgramAllowedModels || ['nova-2', 'nova-2-phonecall'])
@@ -654,6 +654,8 @@ export default function Agents() {
           messagingWhatsappEnabled: data.messagingWhatsappEnabled || false,
           messagingEmailTemplate: data.messagingEmailTemplate || "",
           messagingWhatsappTemplate: data.messagingWhatsappTemplate || "",
+          type: data.type,
+          flowId: data.flowId || null,
         };
         const res = await apiRequest("POST", "/api/voice-engine/agents", payload);
         return res.json();
@@ -721,6 +723,8 @@ export default function Agents() {
           messagingWhatsappEnabled: data.messagingWhatsappEnabled || false,
           messagingEmailTemplate: data.messagingEmailTemplate || "",
           messagingWhatsappTemplate: data.messagingWhatsappTemplate || "",
+          type: data.type,
+          flowId: data.flowId || null,
         };
         const res = await apiRequest("PUT", `/api/voice-engine/agents/${id}`, payload);
         return res.json();
@@ -939,7 +943,7 @@ export default function Agents() {
   const handleEdit = (agent: Agent) => {
     setEditingAgent(agent);
     setFormData({
-      type: agent.telephonyProvider === 'custom-voice-engine' ? 'custom_engine' : (agent.type || "incoming"),
+      type: agent.telephonyProvider === 'custom-voice-engine' ? (agent.type === 'flow' ? 'flow' : 'custom_engine') : (agent.type || "incoming"),
       name: agent.name,
       voiceTone: agent.voiceTone || "professional",
       personality: agent.personality || "helpful",
@@ -1506,7 +1510,7 @@ export default function Agents() {
                         onClick={() => setFormData({ 
                           ...formData, 
                           type: 'flow', 
-                          telephonyProvider: formData.telephonyProvider === "custom-voice-engine" ? "twilio" : formData.telephonyProvider 
+                          telephonyProvider: formData.telephonyProvider 
                         })}
                         data-testid="card-type-flow"
                       >
@@ -1837,7 +1841,7 @@ export default function Agents() {
                       )}
 
                       {/* Telephony Provider Selection for Flow Agents */}
-                      {(hasAlternateEngines || formData.telephonyProvider === "plivo" || formData.telephonyProvider === "twilio_openai") && (
+                      {formData.type !== 'custom_engine' && (hasAlternateEngines || formData.telephonyProvider === "plivo" || formData.telephonyProvider === "twilio_openai") && (
                         <div className="space-y-2 border-t pt-4">
                           <div className="flex items-center gap-2">
                             <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
@@ -2006,8 +2010,13 @@ export default function Agents() {
                                 onClick={() => setFormData({
                                   ...formData,
                                   telephonyProvider: "custom-voice-engine",
-                                  type: "custom_engine",
-                                  llmModel: "openai/gpt-4o-mini"
+                                  type: "flow",
+                                  llmModel: "openai/gpt-4o-mini",
+                                  sttProvider: "sarvam",
+                                  sttModel: "saaras:v3",
+                                  ttsProvider: "sarvam",
+                                  ttsModel: "bulbul:v3",
+                                  openaiVoice: "neha"
                                 })}
                                 data-testid="flow-provider-custom-voice-engine"
                               >
@@ -2051,7 +2060,7 @@ export default function Agents() {
                                   <Select
                                     value={formData.sttProvider || allowedSttProviders[0]}
                                     onValueChange={(value) => {
-                                      const defaultModel = value === 'sarvam' ? (currentSttAllowedModels[0] || 'saaras:v3') : '';
+                                      const defaultModel = value === 'sarvam' ? 'saaras:v3' : 'nova-2';
                                       setFormData({ ...formData, sttProvider: value, sttModel: defaultModel });
                                     }}
                                     disabled={allowedSttProviders.length <= 1}
@@ -2077,7 +2086,7 @@ export default function Agents() {
                                     value={formData.ttsProvider || allowedTtsProviders[0]}
                                     onValueChange={(value) => {
                                       const firstVoice = customVoiceEngineVoices.find(v => v.provider === value);
-                                      const defaultModel = value === 'sarvam' ? (currentTtsAllowedModels[0] || 'bulbul:v3') : '';
+                                      const defaultModel = value === 'sarvam' ? 'bulbul:v3' : (mappedDeepgramAllowed[0] || 'aura-asteria-en');
                                       setFormData({
                                         ...formData,
                                         ttsProvider: value,
@@ -2192,14 +2201,32 @@ export default function Agents() {
                                           }
                                           return true;
                                         })
-                                        .map((voice) => (
-                                          <SelectItem key={voice.value} value={voice.value}>
-                                            <div className="flex flex-col">
-                                              <span>{voice.label}</span>
-                                              <span className="text-xs text-muted-foreground">{voice.description}</span>
-                                            </div>
-                                          </SelectItem>
-                                        ))
+                                        .map((voice) => {
+                                          const isFemale = voice.description.toLowerCase().includes('female');
+                                          const isMale = voice.description.toLowerCase().includes('male');
+                                          return (
+                                            <SelectItem key={voice.value} value={voice.value}>
+                                              <div className="flex flex-col">
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="font-medium">{voice.label}</span>
+                                                  <Badge
+                                                    variant="outline"
+                                                    className={`text-[10px] px-1.5 py-0 h-4 font-semibold ${
+                                                      isFemale
+                                                        ? 'bg-pink-500/10 text-pink-600 border-pink-300 dark:bg-pink-500/20 dark:text-pink-300 dark:border-pink-800'
+                                                        : isMale
+                                                        ? 'bg-blue-500/10 text-blue-600 border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-800'
+                                                        : 'bg-amber-500/10 text-amber-600 border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-800'
+                                                    }`}
+                                                  >
+                                                    {isFemale ? '♀ Female' : isMale ? '♂ Male' : '⚡ Neutral'}
+                                                  </Badge>
+                                                </div>
+                                                <span className="text-xs text-muted-foreground">{voice.description}</span>
+                                              </div>
+                                            </SelectItem>
+                                          );
+                                        })
                                     ) : (
                                       <SelectItem value="none" disabled>
                                         No voices available for {formData.language?.toUpperCase() || 'this language'}
@@ -2594,7 +2621,7 @@ export default function Agents() {
                   </div>
 
                   {/* Telephony Provider Selection - Show only for INCOMING agents if alternate engines are enabled */}
-                  {(formData.type === 'incoming' || formData.type === 'custom_engine') && (hasAlternateEngines || formData.telephonyProvider === "plivo" || formData.telephonyProvider === "twilio_openai") && (
+                  {(formData.type === 'incoming') && (hasAlternateEngines || formData.telephonyProvider === "plivo" || formData.telephonyProvider === "twilio_openai") && (
                     <div className="space-y-2">
                       <Label>Telephony Provider</Label>
                       <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
@@ -2759,7 +2786,12 @@ export default function Agents() {
                               ...formData,
                               telephonyProvider: "custom-voice-engine",
                               type: "custom_engine",
-                              llmModel: "openai/gpt-4o-mini"
+                              llmModel: "openai/gpt-4o-mini",
+                              sttProvider: "sarvam",
+                              sttModel: "saaras:v3",
+                              ttsProvider: "sarvam",
+                              ttsModel: "bulbul:v3",
+                              openaiVoice: "neha"
                             })}
                             data-testid="provider-custom-voice-engine"
                           >
@@ -2803,7 +2835,7 @@ export default function Agents() {
                                 <Select
                                   value={formData.sttProvider || allowedSttProviders[0]}
                                   onValueChange={(value) => {
-                                    const defaultModel = value === 'sarvam' ? (currentSttAllowedModels[0] || 'saaras:v3') : '';
+                                    const defaultModel = value === 'sarvam' ? 'saaras:v3' : 'nova-2';
                                     setFormData({ ...formData, sttProvider: value, sttModel: defaultModel });
                                   }}
                                   disabled={allowedSttProviders.length <= 1}
@@ -2829,7 +2861,7 @@ export default function Agents() {
                                   value={formData.ttsProvider || allowedTtsProviders[0]}
                                   onValueChange={(value) => {
                                     const firstVoice = customVoiceEngineVoices.find(v => v.provider === value);
-                                    const defaultModel = value === 'sarvam' ? (currentTtsAllowedModels[0] || 'bulbul:v3') : '';
+                                    const defaultModel = value === 'sarvam' ? 'bulbul:v3' : (mappedDeepgramAllowed[0] || 'aura-asteria-en');
                                     setFormData({
                                       ...formData,
                                       ttsProvider: value,
@@ -3052,7 +3084,7 @@ export default function Agents() {
                               if (formData.telephonyProvider === "custom-voice-engine") {
                                 const sarvamLangs = ["en", "hi", "bn", "kn", "ml", "mr", "or", "pa", "ta", "te", "gu"];
                                 // Deepgram STT supports many, Deepgram TTS supports only English
-                                const deepgramSttLangs = ["en", "fr", "de", "hi", "pt", "es", "it", "ja", "ko", "nl", "pl", "ru", "sv", "tr", "uk", "zh", "ta", "te", "th"];
+                                const deepgramSttLangs = ["en", "fr", "de", "hi", "pt", "es", "it", "ja", "ko", "nl", "pl", "ru", "sv", "tr", "uk", "zh", "ta", "te", "th", "pa"];
                                 const deepgramTtsLangs = ["en", "es", "de", "fr", "nl", "it", "ja"];
 
                                 // Determine STT languages
@@ -3530,9 +3562,11 @@ export default function Agents() {
                           {t('agents.create.selectKnowledgeHint')}
                         </p>
                       </div>
+                    </>
+                  )}
 
-                      {/* System Tools Section - Now for ALL Agent types (Incoming and Flow) */}
-                      {(formData.type === 'incoming' || formData.type === 'flow' || formData.type === 'custom_engine') && (
+                  {/* System Tools Section - Now for ALL Agent types (Incoming and Flow) */}
+                  {(formData.type === 'incoming' || formData.type === 'flow' || formData.type === 'custom_engine') && (
                         <div className="space-y-4 pt-4">
                           {/* System Tools Section Header */}
                           <div className="flex items-center gap-2">
@@ -3864,8 +3898,6 @@ export default function Agents() {
                           )}
                         </div>
                       )}
-                    </>
-                  )}
                 </div>
               </div>
 

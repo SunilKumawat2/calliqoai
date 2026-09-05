@@ -185,18 +185,18 @@ const personalityOptions = [
 ];
 
 
-// OpenAI Realtime API voices
+// OpenAI Realtime API voices with explicit gender metadata
 const openaiVoices = [
-  { value: "alloy", label: "Alloy", description: "Neutral and balanced" },
-  { value: "echo", label: "Echo", description: "Warm and conversational" },
-  { value: "shimmer", label: "Shimmer", description: "Clear and expressive" },
-  { value: "ash", label: "Ash", description: "Soft and gentle" },
-  { value: "ballad", label: "Ballad", description: "Melodic and soothing" },
-  { value: "coral", label: "Coral", description: "Bright and friendly" },
-  { value: "sage", label: "Sage", description: "Calm and wise" },
-  { value: "verse", label: "Verse", description: "Poetic and articulate" },
-  { value: "cedar", label: "Cedar", description: "Deep and grounded" },
-  { value: "marin", label: "Marin", description: "Fresh and lively" },
+  { value: "alloy", label: "Alloy", gender: "neutral", description: "Versatile and balanced" },
+  { value: "echo", label: "Echo", gender: "male", description: "Warm and confident" },
+  { value: "shimmer", label: "Shimmer", gender: "female", description: "Clear and expressive" },
+  { value: "ash", label: "Ash", gender: "male", description: "Soft and gentle" },
+  { value: "ballad", label: "Ballad", gender: "male", description: "Melodic and soothing" },
+  { value: "coral", label: "Coral", gender: "female", description: "Bright and friendly" },
+  { value: "sage", label: "Sage", gender: "male", description: "Calm and wise" },
+  { value: "verse", label: "Verse", gender: "male", description: "Poetic and articulate" },
+  { value: "cedar", label: "Cedar", gender: "male", description: "Deep and grounded" },
+  { value: "marin", label: "Marin", gender: "female", description: "Fresh and lively" },
 ];
 
 export const customVoiceEngineVoices = [
@@ -360,7 +360,7 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
     sipPhoneNumberId: "",
   });
 
-  const selectedUseCase = useMemo(() => 
+  const selectedUseCase = useMemo(() =>
     useCases.find(uc => uc.id === formData.useCase),
     [formData.useCase]
   );
@@ -376,7 +376,7 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
         // Voice validation depends on telephony provider
         const isOpenAIOrCve = formData.telephonyProvider === "plivo" || formData.telephonyProvider === "twilio_openai" || formData.telephonyProvider === "openai-sip" || formData.telephonyProvider === "custom-voice-engine";
         const hasValidVoice = isOpenAIOrCve
-          ? !!formData.openaiVoice 
+          ? !!formData.openaiVoice
           : !!formData.elevenLabsVoiceId;
         // SIP engines require a phone number selection
         const isSipEngine = formData.telephonyProvider === "elevenlabs-sip" || formData.telephonyProvider === "openai-sip";
@@ -410,7 +410,7 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
       missing.push(t('wizard.hint.selectSipNumber', { defaultValue: 'select a SIP phone number' }));
     }
     if (missing.length === 0) return null;
-    return t('wizard.hint.toContinue', { 
+    return t('wizard.hint.toContinue', {
       defaultValue: 'Please {{items}} to continue',
       items: missing.join(` ${t('wizard.hint.and', { defaultValue: 'and' })} `)
     });
@@ -495,7 +495,7 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
       const isSipEngine = formData.telephonyProvider === "elevenlabs-sip" || formData.telephonyProvider === "openai-sip";
       const isOpenAIVoice = formData.telephonyProvider === "plivo" || formData.telephonyProvider === "twilio_openai" || formData.telephonyProvider === "openai-sip";
       const isElevenLabsVoice = formData.telephonyProvider === "twilio" || formData.telephonyProvider === "elevenlabs-sip";
-      
+
       const payload = {
         type: "incoming",
         name: formData.name,
@@ -654,11 +654,10 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                   <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                     {/* ElevenLabs + Twilio - Purple theme */}
                     <div
-                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                        formData.telephonyProvider === "twilio"
+                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "twilio"
                           ? "border-violet-500 bg-violet-500/10 dark:bg-violet-500/20"
                           : "border-border hover:border-violet-400/50 hover:bg-violet-500/5"
-                      }`}
+                        }`}
                       onClick={() => setFormData(prev => ({ ...prev, telephonyProvider: "twilio", sipPhoneNumberId: "" }))}
                       data-testid="provider-twilio"
                     >
@@ -679,11 +678,10 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                     {/* OpenAI + Twilio - Teal/Blue theme */}
                     {isTwilioOpenaiEnabled && (
                       <div
-                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                          formData.telephonyProvider === "twilio_openai"
+                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "twilio_openai"
                             ? "border-brand bg-brand/10 dark:bg-brand/20"
                             : "border-border hover:border-brand/50 hover:bg-brand/5"
-                        }`}
+                          }`}
                         onClick={() => setFormData(prev => ({ ...prev, telephonyProvider: "twilio_openai", sipPhoneNumberId: "" }))}
                         data-testid="provider-twilio-openai"
                       >
@@ -705,11 +703,10 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                     {/* OpenAI + Plivo - Green theme */}
                     {isPlivoEnabled && (
                       <div
-                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                          formData.telephonyProvider === "plivo"
+                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "plivo"
                             ? "border-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20"
                             : "border-border hover:border-emerald-400/50 hover:bg-emerald-500/5"
-                        }`}
+                          }`}
                         onClick={() => setFormData(prev => ({ ...prev, telephonyProvider: "plivo", sipPhoneNumberId: "" }))}
                         data-testid="provider-plivo"
                       >
@@ -731,11 +728,10 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                     {/* ElevenLabs SIP - Orange theme */}
                     {isElevenLabsSipAllowed && (
                       <div
-                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                          formData.telephonyProvider === "elevenlabs-sip"
+                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "elevenlabs-sip"
                             ? "border-orange-500 bg-orange-500/10 dark:bg-orange-500/20"
                             : "border-border hover:border-orange-400/50 hover:bg-orange-500/5"
-                        }`}
+                          }`}
                         onClick={() => setFormData(prev => ({ ...prev, telephonyProvider: "elevenlabs-sip", sipPhoneNumberId: "" }))}
                         data-testid="provider-elevenlabs-sip"
                       >
@@ -758,11 +754,10 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                     {/* OpenAI SIP - Pink theme */}
                     {isOpenAISipAllowed && (
                       <div
-                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                          formData.telephonyProvider === "openai-sip"
+                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "openai-sip"
                             ? "border-pink-500 bg-pink-500/10 dark:bg-pink-500/20"
                             : "border-border hover:border-pink-400/50 hover:bg-pink-500/5"
-                        }`}
+                          }`}
                         onClick={() => setFormData(prev => ({ ...prev, telephonyProvider: "openai-sip", sipPhoneNumberId: "" }))}
                         data-testid="provider-openai-sip"
                       >
@@ -785,11 +780,10 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                     {/* Custom Voice Engine - Indigo/Indigo theme */}
                     {isCustomVoiceEngineEnabled && (
                       <div
-                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                          formData.telephonyProvider === "custom-voice-engine"
+                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "custom-voice-engine"
                             ? "border-indigo-500 bg-indigo-500/10 dark:bg-indigo-500/20"
                             : "border-border hover:border-indigo-400/50 hover:bg-indigo-500/5"
-                        }`}
+                          }`}
                         onClick={() => setFormData(prev => ({ ...prev, telephonyProvider: "custom-voice-engine", sipPhoneNumberId: "" }))}
                         data-testid="provider-custom-voice-engine"
                       >
@@ -825,7 +819,7 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                         </div>
                       );
                     }
-                    const filtered = sipPhoneNumbers.filter(p => 
+                    const filtered = sipPhoneNumbers.filter(p =>
                       p.engine === formData.telephonyProvider
                     );
                     if (filtered.length === 0) {
@@ -884,14 +878,32 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                           <SelectContent>
                             {customVoiceEngineVoices
                               .filter(v => v.provider === activeTtsProvider)
-                              .map((voice) => (
-                              <SelectItem key={voice.value} value={voice.value}>
-                                <div className="flex flex-col">
-                                  <span>{voice.label}</span>
-                                  <span className="text-xs text-muted-foreground">{voice.description}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
+                              .map((voice) => {
+                                const isFemale = voice.description.toLowerCase().includes('female');
+                                const isMale = voice.description.toLowerCase().includes('male');
+                                return (
+                                  <SelectItem key={voice.value} value={voice.value}>
+                                    <div className="flex flex-col">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-medium">{voice.label}</span>
+                                        <Badge
+                                          variant="outline"
+                                          className={`text-[10px] px-1.5 py-0 h-4 font-semibold ${
+                                            isFemale
+                                              ? 'bg-pink-500/10 text-pink-600 border-pink-300 dark:bg-pink-500/20 dark:text-pink-300 dark:border-pink-800'
+                                              : isMale
+                                              ? 'bg-blue-500/10 text-blue-600 border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-800'
+                                              : 'bg-amber-500/10 text-amber-600 border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-800'
+                                          }`}
+                                        >
+                                          {isFemale ? '♀ Female' : isMale ? '♂ Male' : '⚡ Neutral'}
+                                        </Badge>
+                                      </div>
+                                      <span className="text-xs text-muted-foreground">{voice.description}</span>
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
                           </SelectContent>
                         </Select>
                       </div>
@@ -916,7 +928,21 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                             {openaiVoices.map((voice) => (
                               <SelectItem key={voice.value} value={voice.value}>
                                 <div className="flex flex-col">
-                                  <span>{voice.label}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-medium">{voice.label}</span>
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-[10px] px-1.5 py-0 h-4 font-semibold ${
+                                        voice.gender === 'female'
+                                          ? 'bg-pink-500/10 text-pink-600 border-pink-300 dark:bg-pink-500/20 dark:text-pink-300 dark:border-pink-800'
+                                          : voice.gender === 'male'
+                                          ? 'bg-blue-500/10 text-blue-600 border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-800'
+                                          : 'bg-amber-500/10 text-amber-600 border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-800'
+                                      }`}
+                                    >
+                                      {voice.gender === 'female' ? '♀ Female' : voice.gender === 'male' ? '♂ Male' : '⚡ Neutral'}
+                                    </Badge>
+                                  </div>
                                   <span className="text-xs text-muted-foreground">{voice.description}</span>
                                 </div>
                               </SelectItem>
@@ -974,23 +1000,23 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                     </SelectTrigger>
                     <SelectContent>
                       {SUPPORTED_LANGUAGES
-                      .filter((lang) => {
-                        const isElevenLabs = formData.telephonyProvider === "twilio" || formData.telephonyProvider === "elevenlabs-sip";
-                        const providerType = isElevenLabs ? "elevenlabs" : "openai";
-                        return isProviderSupported(lang.value, providerType);
-                      })
-                      .map((lang) => (
-                          <SelectItem 
-                            key={lang.value} 
+                        .filter((lang) => {
+                          const isElevenLabs = formData.telephonyProvider === "twilio" || formData.telephonyProvider === "elevenlabs-sip";
+                          const providerType = isElevenLabs ? "elevenlabs" : "openai";
+                          return isProviderSupported(lang.value, providerType);
+                        })
+                        .map((lang) => (
+                          <SelectItem
+                            key={lang.value}
                             value={lang.value}
                           >
-                            <LanguageOptionLabel 
-                              label={t(`agents.languages.${lang.value}`, { defaultValue: lang.label })} 
-                              providers={lang.providers} 
-                              compact 
+                            <LanguageOptionLabel
+                              label={t(`agents.languages.${lang.value}`, { defaultValue: lang.label })}
+                              providers={lang.providers}
+                              compact
                             />
                           </SelectItem>
-                      ))}
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1016,11 +1042,10 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                   {voiceToneOptions.map((option) => (
                     <div
                       key={option.value}
-                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                        formData.voiceTone === option.value
+                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.voiceTone === option.value
                           ? "border-primary bg-primary/5"
                           : "border-border hover:border-primary/50 hover:bg-muted/50"
-                      }`}
+                        }`}
                       onClick={() => setFormData(prev => ({ ...prev, voiceTone: option.value }))}
                       data-testid={`tone-${option.value}`}
                     >
@@ -1048,11 +1073,10 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                   {personalityOptions.map((option) => (
                     <div
                       key={option.value}
-                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                        formData.personality === option.value
+                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.personality === option.value
                           ? "border-primary bg-primary/5"
                           : "border-border hover:border-primary/50 hover:bg-muted/50"
-                      }`}
+                        }`}
                       onClick={() => setFormData(prev => ({ ...prev, personality: option.value }))}
                       data-testid={`personality-${option.value}`}
                     >
@@ -1126,15 +1150,15 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                 <p className="text-xs text-muted-foreground">
                   Best practices: Start warm and natural. Example: "Hi {'{{first_name}}'}, this is Sarah from ABC Corp, how's your day going?"
                 </p>
-                
+
                 {/* Dynamic Variables Helper */}
                 <div className="mt-2 p-3 bg-muted/50 rounded-md border border-muted">
                   <p className="text-xs font-medium text-foreground mb-2">Available Dynamic Variables</p>
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {['{{first_name}}', '{{last_name}}', '{{contact_name}}', '{{email}}', '{{phone}}', '{{city}}', '{{company}}'].map((variable) => (
-                      <Badge 
-                        key={variable} 
-                        variant="secondary" 
+                      <Badge
+                        key={variable}
+                        variant="secondary"
                         className="text-xs font-mono cursor-pointer hover-elevate"
                         onClick={() => {
                           setFormData(prev => ({ ...prev, firstMessage: prev.firstMessage + variable }));
@@ -1375,8 +1399,8 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                       <div>
                         <Label className="text-xs text-muted-foreground">Telephony Provider</Label>
                         <p className="font-medium">
-                          {formData.telephonyProvider === "plivo" 
-                            ? "OpenAI + Plivo" 
+                          {formData.telephonyProvider === "plivo"
+                            ? "OpenAI + Plivo"
                             : formData.telephonyProvider === "twilio_openai"
                               ? "OpenAI + Twilio"
                               : formData.telephonyProvider === "custom-voice-engine"
@@ -1465,13 +1489,12 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
               {steps.map((step, index) => (
                 <div
                   key={step.id}
-                  className={`h-2 w-2 rounded-full transition-colors ${
-                    index < currentStepIndex
+                  className={`h-2 w-2 rounded-full transition-colors ${index < currentStepIndex
                       ? "bg-emerald-500"
                       : index === currentStepIndex
-                      ? "bg-primary"
-                      : "bg-muted"
-                  }`}
+                        ? "bg-primary"
+                        : "bg-muted"
+                    }`}
                 />
               ))}
             </div>

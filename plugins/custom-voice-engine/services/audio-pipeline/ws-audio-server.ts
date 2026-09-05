@@ -15,12 +15,13 @@
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
+import * as net from 'net';
 import fs from 'fs';
 import type { Server as HttpServer, IncomingMessage } from 'http';
-import { AudioSession } from './audio-session';
-import { db } from '../../../../server/db';
+import { AudioSession } from './audio-session.js';
+import { db } from '../../../../server/db.js';
 import { sql } from 'drizzle-orm';
-import { EslConnection } from '../freeswitch/esl-connection';
+import { EslConnection } from '../freeswitch/esl-connection.js';
 import type { VoiceSession, VoiceAgentConfig, SttConfig, LlmConfig, TtsConfig, LlmToolDefinition } from '../../types';
 
 // Helper to convert snake_case DB fields to camelCase TS properties
@@ -41,6 +42,10 @@ export class AudioWebSocketServer {
   private wss: WebSocketServer;
   private sessions: Map<string, AudioSession> = new Map();
   private eslConnections: EslConnection[] = [];
+  /** Tracks FreeSWITCH outbound TCP sockets (port 8024) keyed by channel UUID.
+   *  The call stays alive only while this socket stays open, so we hold it
+   *  until CHANNEL_DESTROY fires for that UUID. */
+  private outboundSockets: Map<string, net.Socket> = new Map();
 
   constructor(httpServer: HttpServer) {
     this.wss = new WebSocketServer({
@@ -49,14 +54,89 @@ export class AudioWebSocketServer {
       maxPayload: 64 * 1024, // 64KB max per message
     });
 
+    // ---------------------------------------------------------------------------
+    // TCP Outbound Socket Server (port 8024)
+    //
+    // FreeSWITCH calls are originated with `&socket(127.0.0.1:8024)` as the
+    // dialplan destination. FreeSWITCH connects here and keeps the call alive
+    // FOR AS LONG AS THIS TCP CONNECTION STAYS OPEN. An empty or idle socket
+    // is closed by the OS, causing a "Socket Error!" in FreeSWITCH which
+    // triggers an immediate NORMAL_CLEARING hangup (~18s later).
+    //
+    // Fix: set keepAlive + zero timeout, parse the outbound socket greeting
+    // to extract the channel UUID, then hold the socket open until
+    // CHANNEL_DESTROY fires.
+    // ---------------------------------------------------------------------------
+    try {
+      const tcpServer = net.createServer((socket) => {
+        console.log('[TCP Outbound] FreeSWITCH socket connection accepted');
+
+        // Prevent Node from closing idle sockets and prevent OS-level idle close.
+        socket.setKeepAlive(true, 5000);
+        socket.setTimeout(0);  // disable idle timeout
+        socket.ref();          // keep Node event loop alive while socket is open
+
+        let uuid: string | null = null;
+        let buffer = '';
+
+        // Unblock FreeSWITCH immediately by initiating the outbound socket handshake
+        socket.write('connect\n\n');
+
+        socket.on('data', (data) => {
+          buffer += data.toString();
+          // FreeSWITCH sends the outbound socket greeting which contains the
+          // channel headers including Unique-ID. Parse it once on first data.
+          if (!uuid) {
+            const match = buffer.match(/(?:Unique-ID|Channel-Unique-ID|Channel-Call-UUID):\s*([^\r\n]+)/i);
+            if (match) {
+              uuid = match[1].trim();
+              this.outboundSockets.set(uuid, socket);
+              console.log(`[TCP Outbound] Socket mapped to UUID: ${uuid}`);
+            } else {
+              console.log(`[TCP Outbound] Greeting chunk received:\n${buffer}`);
+            }
+          }
+        });
+
+        socket.on('error', (err) => {
+          console.log('[TCP Outbound] Socket error:', err.message);
+          if (uuid) this.outboundSockets.delete(uuid);
+        });
+
+        socket.on('close', () => {
+          console.log(`[TCP Outbound] Socket closed${uuid ? ` (uuid=${uuid})` : ''}`);
+          if (uuid) this.outboundSockets.delete(uuid);
+        });
+      });
+
+      tcpServer.on('error', (err) => {
+        console.error('[TCP Outbound] Failed to start TCP helper server:', err.message);
+      });
+
+      tcpServer.listen(8024, '0.0.0.0', () => {
+        console.log('[TCP Outbound] TCP helper socket server listening on port 8024');
+      });
+    } catch (err: any) {
+      console.error('[TCP Outbound] Failed to start TCP helper server:', err.message);
+    }
+
     // Handle WebSocket upgrade manually to support dynamic session IDs in the URL path
     httpServer.on('upgrade', (req, socket, head) => {
       const pathname = req.url?.split('?')[0] || '';
+      
+      // Do not intercept Vite HMR WebSockets
+      if (req.headers['sec-websocket-protocol'] === 'vite-hmr') {
+        return;
+      }
+
+      console.log(`[Upgrade] Request for: ${pathname}`);
       if (
         pathname.startsWith('/voice-engine/audio/') ||
         pathname.startsWith('/api/voice-engine/ws/audio/') ||
-        pathname.startsWith('/voice-engine/ws/audio/')
+        pathname.startsWith('/voice-engine/ws/audio/') ||
+        pathname === '/'
       ) {
+        console.log(`[Upgrade] Passing through: ${pathname}`);
         this.wss.handleUpgrade(req, socket, head, (ws) => {
           this.wss.emit('connection', ws, req);
         });
@@ -138,7 +218,7 @@ export class AudioWebSocketServer {
                 const file = payload.file;
                 const channelUuid = evt.headers['Unique-ID'];
                 if (file && channelUuid) {
-                  await esl.api(`uuid_broadcast ${channelUuid} ${file} aleg`);
+                  await esl.api(`uuid_broadcast ${channelUuid} ${file}`);
                 }
               } catch (err: any) {
                 console.error(`[AudioWS] Error handling play_audio event:`, err.message);
@@ -167,7 +247,7 @@ export class AudioWebSocketServer {
             try {
               const channelUuid = evt.headers['Unique-ID'] || evt.headers['Channel-Call-UUID'];
               if (!channelUuid) return;
-              
+
               const hangupCause = evt.headers['Hangup-Cause'] || '';
               console.log(`[AudioWS] CHANNEL_HANGUP event received: uuid=${channelUuid}, cause=${hangupCause}, duration=${evt.headers['variable_duration']}, billsec=${evt.headers['variable_billsec']}`);
               const unansweredCauses = [
@@ -191,6 +271,12 @@ export class AudioWebSocketServer {
                           ended_at = NOW(),
                           updated_at = NOW()
                       WHERE id = ${channelUuid}
+                    `);
+                    await db.execute(sql`
+                      UPDATE calls
+                      SET status = 'failed',
+                          ended_at = NOW()
+                      WHERE id = ${channelUuid} OR (metadata->>'sessionUuid' = ${channelUuid})
                     `);
                   } catch (dbErr: any) {
                     console.error(`[AudioWS] Failed to update unanswered session status:`, dbErr.message);
@@ -217,6 +303,12 @@ export class AudioWebSocketServer {
                           updated_at = NOW()
                       WHERE id = ${channelUuid} AND status IN ('initializing', 'active')
                     `);
+                    await db.execute(sql`
+                      UPDATE calls
+                      SET status = 'failed',
+                          ended_at = NOW()
+                      WHERE (id = ${channelUuid} OR (metadata->>'sessionUuid' = ${channelUuid})) AND status IN ('pending', 'initiated', 'in-progress')
+                    `);
                   } catch (dbErr: any) {
                     console.error(`[AudioWS] Failed to update orphaned session status:`, dbErr.message);
                   }
@@ -235,16 +327,16 @@ export class AudioWebSocketServer {
                       // Compute wall-clock total duration from when the call started
                       const startedAt = sessionData.started_at ? new Date(sessionData.started_at).getTime() : null;
                       const totalDuration = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0;
-                      
+
                       console.log(`[AudioWS] final CHANNEL_HANGUP for transferred session ${channelUuid}. oldDuration=${oldDuration}s, wallClock=${totalDuration}s`);
 
                       if (totalDuration > oldDuration) {
                         const oldMinutes = Math.ceil(oldDuration / 60);
                         const newMinutes = Math.ceil(totalDuration / 60);
                         const additionalMinutes = newMinutes - oldMinutes;
-                        
+
                         let newCreditsUsed = sessionData.credits_used || 0;
-                        
+
                         if (additionalMinutes > 0) {
                           const creditPriceResult = await db.execute(sql`
                             SELECT value FROM global_settings WHERE key = 'credit_price_per_minute' LIMIT 1
@@ -257,7 +349,7 @@ export class AudioWebSocketServer {
                               creditPricePerMinute = parsed;
                             }
                           }
-                          
+
                           const creditsToDeduct = additionalMinutes * creditPricePerMinute;
                           const deductCallCredits = (global as any).deductCallCredits;
                           if (deductCallCredits) {
@@ -270,14 +362,14 @@ export class AudioWebSocketServer {
                               durationSeconds: totalDuration - oldDuration,
                               engine: 'custom-voice-engine',
                             });
-                            
+
                             if (creditResult.success || creditResult.alreadyDeducted) {
                               newCreditsUsed += creditsToDeduct;
                               console.log(`[AudioWS] Charged additional ${creditsToDeduct} credits for transferred session ${channelUuid}. Total duration: ${totalDuration}s, old: ${oldDuration}s`);
                             }
                           }
                         }
-                        
+
                         // Update database record with final duration and credits
                         await db.execute(sql`
                           UPDATE ve_sessions
@@ -285,6 +377,11 @@ export class AudioWebSocketServer {
                               credits_used = ${newCreditsUsed},
                               updated_at = NOW()
                           WHERE id = ${channelUuid}
+                        `);
+                        await db.execute(sql`
+                          UPDATE calls
+                          SET duration = ${totalDuration}
+                          WHERE id = ${channelUuid} OR (metadata->>'sessionUuid' = ${channelUuid})
                         `);
                       }
                     }
@@ -295,6 +392,23 @@ export class AudioWebSocketServer {
               }
             } catch (err: any) {
               console.error(`[AudioWS] Error handling CHANNEL_HANGUP event:`, err.message);
+            }
+          });
+
+          // When a channel is fully destroyed, close the outbound TCP socket that
+          // was keeping the call alive. This prevents socket leaks on the server.
+          esl.on('event:CHANNEL_DESTROY', async (evt) => {
+            try {
+              const channelUuid = evt.headers['Unique-ID'] || evt.headers['Channel-Call-UUID'];
+              if (!channelUuid) return;
+              const sock = this.outboundSockets.get(channelUuid);
+              if (sock) {
+                console.log(`[TCP Outbound] CHANNEL_DESTROY for ${channelUuid} — closing outbound socket.`);
+                sock.destroy();
+                this.outboundSockets.delete(channelUuid);
+              }
+            } catch (err: any) {
+              console.error('[AudioWS] Error handling CHANNEL_DESTROY (outbound socket close):', err.message);
             }
           });
 
@@ -351,14 +465,69 @@ export class AudioWebSocketServer {
       // Extract session ID from URL path
       const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
       const pathParts = url.pathname.split('/');
-      const sessionId = pathParts[pathParts.length - 1];
+      let sessionId = pathParts[pathParts.length - 1];
 
-      if (!sessionId) {
-        console.warn('[AudioWS] Connection without session ID');
-        ws.close(4000, 'Missing session ID');
+      if (!sessionId || sessionId === '') {
+        console.log('[AudioWS] Inbound connection on root path. Waiting for metadata/session ID in first text frame...');
+
+        const initHandler = async (data: WebSocket.Data, isBinary: boolean) => {
+          if (!isBinary) {
+            try {
+              const msgStr = data.toString().trim();
+              console.log(`[AudioWS] Received initial metadata: "${msgStr}"`);
+
+              // Remove this listener
+              ws.removeListener('message', initHandler);
+
+              // The metadata is the sessionId (which might be raw or inside a JSON envelope)
+              let targetSessionId = msgStr;
+              if (msgStr.startsWith('{')) {
+                try {
+                  const parsed = JSON.parse(msgStr);
+                  targetSessionId = parsed.metadata || parsed.uuid || parsed.sessionId || msgStr;
+                } catch (_) { }
+              }
+
+              // Now proceed with normal connection setup!
+              await this.setupSessionConnection(ws, req, targetSessionId);
+            } catch (err: any) {
+              console.error('[AudioWS] Failed to parse initial metadata:', err.message);
+              ws.close(4000, 'Invalid metadata');
+            }
+          }
+        };
+        ws.on('message', initHandler);
+
+        // Timeout if no metadata received in 5 seconds
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+            const listeners = ws.listeners('message');
+            if (listeners.includes(initHandler)) {
+              console.warn('[AudioWS] Timeout waiting for metadata on root path connection');
+              ws.removeListener('message', initHandler);
+              ws.close(4002, 'Metadata timeout');
+            }
+          }
+        }, 5000);
         return;
       }
 
+      await this.setupSessionConnection(ws, req, sessionId);
+    } catch (err: any) {
+      console.error(`[AudioWS] Error handling connection for ${req.url}:`, err.message);
+      ws.close(1011, 'Internal Server Error');
+    }
+  }
+
+  private async setupSessionConnection(ws: WebSocket, req: IncomingMessage, sessionId: string): Promise<void> {
+    // Immediately buffer incoming messages to prevent socket pause and loss of initial frames/metadata
+    const messageBuffer: { data: WebSocket.Data; isBinary: boolean }[] = [];
+    const tempListener = (data: WebSocket.Data, isBinary: boolean) => {
+      messageBuffer.push({ data, isBinary });
+    };
+    ws.on('message', tempListener);
+
+    try {
       console.log(`[AudioWS] Incoming connection for sessionId: ${sessionId}`);
 
       let session = this.sessions.get(sessionId);
@@ -368,6 +537,9 @@ export class AudioWebSocketServer {
         session = await this.resolveSessionDynamically(sessionId);
       }
 
+      // Remove the temporary buffer listener
+      ws.removeListener('message', tempListener);
+
       if (!session) {
         console.warn(`[AudioWS] No session found/resolved: ${sessionId}`);
         ws.close(4001, 'Session not found');
@@ -375,6 +547,17 @@ export class AudioWebSocketServer {
       }
 
       console.log(`[AudioWS] Client connected for session: ${sessionId}`);
+
+      // Close the previous WebSocket if it exists to avoid leak
+      if ((session as any)._activeWs && (session as any)._activeWs !== ws) {
+        console.log(`[AudioWS:${sessionId}] Closing old/stale WebSocket connection`);
+        try {
+          (session as any)._activeWs.close(1000, 'Replaced by new WebSocket');
+        } catch (err: any) {
+          console.warn(`[AudioWS:${sessionId}] Error closing old WebSocket:`, err.message);
+        }
+      }
+      (session as any)._activeWs = ws;
 
       // Set up audio output: save file to disk and play via ESL!
       let audioPlayCount = 0;
@@ -406,24 +589,49 @@ export class AudioWebSocketServer {
           wavHeader.writeUInt32LE(dataSize, 40);
 
           const wavBuffer = Buffer.concat([wavHeader, audio]);
-          const filePath = `/tmp/${sessionId}_tts_${Date.now()}_${audioPlayCount}.wav`;
+          const tempDir = process.platform === 'win32' 
+            ? 'C:\\tmp' 
+            : '/home/calliqoai/htdocs/calliqoai.com/client/public/uploads/recordings';
+          if (!fs.existsSync(tempDir)) {
+            try {
+              fs.mkdirSync(tempDir, { recursive: true });
+            } catch (err: any) {
+              console.warn(`[AudioWS] Failed to create temp directory ${tempDir}:`, err.message);
+            }
+          }
+          const filePath = `${tempDir}/${sessionId}_tts_${Date.now()}_${audioPlayCount}.wav`;
 
           // Async write — a synchronous writeFileSync here blocks the Node event
           // loop for the duration of the disk I/O, stalling every other active
           // call's audio processing. Writing asynchronously keeps the loop free.
           await fs.promises.writeFile(filePath, wavBuffer);
+          try {
+            await fs.promises.chmod(filePath, 0o644); // Make world-readable for FreeSWITCH
+          } catch (chmodErr: any) {
+            console.warn(`[AudioWS] Failed to chmod ${filePath}:`, chmodErr.message);
+          }
           console.log(`[AudioWS] Wrote TTS audio to ${filePath} (${wavBuffer.length} bytes), playing via ESL uuid_broadcast...`);
 
-          // Send uuid_broadcast command over ESL to play the file to the caller
+          // Always use ESL uuid_broadcast for parked channels.
+          // sendmsg via TCP outbound socket does NOT work once the channel is parked
+          // (uuid_park puts the channel in CS_HIBERNATE, losing outbound socket control).
+          const targetUuid = session!.channelUuid || sessionId;
+          let broadcastSent = false;
           for (const esl of this.eslConnections) {
             try {
               if (esl.isConnected()) {
-                const targetUuid = session!.channelUuid || sessionId;
-                await esl.api(`uuid_broadcast ${targetUuid} ${filePath}`);
+                console.log(`[AudioWS] Sending ESL uuid_broadcast for UUID ${targetUuid} (${filePath})...`);
+                const response = await esl.api(`uuid_broadcast ${targetUuid} ${filePath} aleg`);
+                console.log(`[AudioWS] FreeSWITCH uuid_broadcast response: ${response.trim()}`);
+                broadcastSent = true;
+                break; // Only need one successful broadcast
               }
             } catch (err: any) {
               console.error(`[AudioWS] Failed to send uuid_broadcast:`, err.message);
             }
+          }
+          if (!broadcastSent) {
+            console.error(`[AudioWS] No connected ESL connection available to play audio for session ${sessionId}`);
           }
         } catch (err: any) {
           console.error(`[AudioWS] Error in onAudioOut playback handler:`, err.message);
@@ -432,19 +640,28 @@ export class AudioWebSocketServer {
 
       // Streaming playback: forward control frames (playAudio / killAudio) to
       // mod_audio_fork over this session's websocket.
-      session.onControlOut((msg: object) => {
+      session.onControlOut((msg: any) => {
         try {
           if (ws.readyState === WebSocket.OPEN) {
+            const dataLen = msg?.data?.audioContent?.length || 0;
+            console.log(`[AudioWS:${sessionId}] Sending control message: type=${msg?.type}, dataLen=${dataLen}`);
             ws.send(JSON.stringify(msg));
+          } else {
+            console.warn(`[AudioWS:${sessionId}] WebSocket not OPEN (state=${ws.readyState}), cannot send control message`);
           }
         } catch (err: any) {
-          console.error(`[AudioWS] Failed to send control message:`, err.message);
+          console.error(`[AudioWS:${sessionId}] Failed to send control message:`, err.message);
         }
       });
 
       // Listen for interruptions from the VAD/pipeline to issue a uuid_break command
       session.on('pipelineEvent', async (event) => {
         if (event.type === 'interruption') {
+          const ttsElapsed = Date.now() - session!.ttsPlayStartTime;
+          if (session!.isPlayingTts && ttsElapsed < 300) {
+            console.log(`[AudioWS] Suppressed uuid_break within 300ms barge-in guard window (elapsed=${ttsElapsed}ms)`);
+            return;
+          }
           console.log(`[AudioWS] Interruption detected, breaking playback for session ${sessionId}`);
           for (const esl of this.eslConnections) {
             try {
@@ -533,12 +750,16 @@ export class AudioWebSocketServer {
 
       // Listen for play_audio event
       session.on('play_audio', async (audioUrl: string) => {
-        console.log(`[AudioWS] Session ${sessionId} playing audio: ${audioUrl}`);
+        console.log(`[AudioWS] Session ${sessionId} playing audio via ESL uuid_broadcast: ${audioUrl}`);
         const targetUuid = session!.channelUuid || sessionId;
+        // Always use ESL uuid_broadcast — TCP outbound socket loses channel control
+        // once the call is parked (CS_HIBERNATE state).
         for (const esl of this.eslConnections) {
           try {
             if (esl.isConnected()) {
-              await esl.api(`uuid_broadcast ${targetUuid} ${audioUrl}`);
+              const response = await esl.api(`uuid_broadcast ${targetUuid} ${audioUrl} aleg`);
+              console.log(`[AudioWS] play_audio uuid_broadcast response: ${response.trim()}`);
+              break;
             }
           } catch (err: any) {
             console.error(`[AudioWS] Failed to play audio for session ${sessionId}:`, err.message);
@@ -566,40 +787,43 @@ export class AudioWebSocketServer {
           }
         }
         // Close the WebSocket to FreeSWITCH mod_audio_fork as well
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close(1000, 'Session ended');
+        const activeWs = (session as any)._activeWs || ws;
+        if (activeWs.readyState === WebSocket.OPEN) {
+          activeWs.close(1000, 'Session ended');
         }
         this.unregisterSession(sessionId);
       });
 
+
+
       // Handle incoming messages from FreeSWITCH mod_audio_fork.
-      // mod_audio_fork sends two types of messages:
-      //   - Binary frames: raw PCM audio to be processed
-      //   - Text frames: JSON control messages (start, stop, clear, etc.)
+      let binChunkCount = 0;
+      let txtMsgCount = 0;
       ws.on('message', (data: WebSocket.Data, isBinary: boolean) => {
-        if (isBinary || data instanceof Buffer) {
-          // Raw PCM audio chunk
+        // In modern ws versions, even text frames are returned as Buffer.
+        // We must check the isBinary flag explicitly.
+        if (isBinary) {
+          binChunkCount++;
           const buf = data instanceof Buffer ? data : Buffer.from(data as ArrayBuffer);
+          if (binChunkCount % 100 === 1) {
+            console.log(`[AudioWS:${sessionId}] Received binary audio frame #${binChunkCount}, size=${buf.length} bytes`);
+          }
           session!.processAudio(buf);
-        } else if (data instanceof ArrayBuffer) {
-          session!.processAudio(Buffer.from(data));
         } else {
+          txtMsgCount++;
           // Text frame — JSON control message from mod_audio_fork
           try {
-            const msg = JSON.parse(data.toString());
+            const rawString = data.toString();
+            const msg = JSON.parse(rawString);
             const msgType = msg.type || msg.event;
+            console.log(`[AudioWS:${sessionId}] Text frame #${txtMsgCount}: ${JSON.stringify(msg)}`);
             if (msgType === 'stop' || msgType === 'clear') {
               console.log(`[AudioWS] mod_audio_fork ${msgType} event for session ${sessionId}`);
-              // FreeSWITCH stopped forking — the session is still live, audio will resume
-              // when FreeSWITCH resumes sending. No action needed beyond logging.
             } else if (msgType === 'start') {
               console.log(`[AudioWS] mod_audio_fork start event for session ${sessionId}`);
-              // Capture the FreeSWITCH channel UUID from the start message
               if (msg.uuid) {
                 session!.channelUuid = msg.uuid;
               }
-              // If the call was answered before mod_audio_fork started (common with SIP trunks),
-              // we might not get a CHANNEL_ANSWER event. We should mark it answered now.
               session!.markCallAnswered().catch(err => {
                 console.error(`[AudioWS] Error marking call answered on start event:`, err.message);
               });
@@ -607,15 +831,29 @@ export class AudioWebSocketServer {
               console.log(`[AudioWS] mod_audio_fork JSON message type="${msgType}" for ${sessionId}`);
             }
           } catch {
-            // Not valid JSON — ignore silently
+            console.warn(`[AudioWS:${sessionId}] Text frame #${txtMsgCount} is not valid JSON: ${data.toString().substring(0, 100)}`);
           }
         }
       });
 
+      // Replay any buffered messages that were received during DB resolution
+      if (messageBuffer.length > 0) {
+        console.log(`[AudioWS] Replaying ${messageBuffer.length} buffered messages for session ${sessionId}`);
+        for (const msg of messageBuffer) {
+          ws.emit('message', msg.data, msg.isBinary);
+        }
+      }
+
       ws.on('close', (code, reason) => {
         console.log(`[AudioWS] Client disconnected: ${sessionId} (${code})`);
-        session!.end('websocket_closed').catch(() => { });
-        this.unregisterSession(sessionId);
+        
+        // If this WebSocket connection is not the active one, do not end the session.
+        if ((session as any)._activeWs && (session as any)._activeWs !== ws) {
+          console.log(`[AudioWS:${sessionId}] Stale WebSocket closed. Ignoring.`);
+          return;
+        }
+        
+        console.log(`[AudioWS:${sessionId}] Active WebSocket closed (code=${code}). Keeping session alive for self-healing ESL reconnection.`);
       });
 
       ws.on('error', (err) => {
@@ -626,13 +864,9 @@ export class AudioWebSocketServer {
       if (!session.isInitialized()) {
         console.log(`[AudioWS] Initializing pipeline for session: ${sessionId}`);
         await session.initialize();
-        // For inbound calls, the call is already answered — trigger greeting now
-        if (session.direction === 'inbound') {
-          console.log(`[AudioWS] Inbound call, triggering greeting for session ${sessionId}.`);
-          await session.markCallAnswered();
-        } else {
-          console.log(`[AudioWS] Outbound call, waiting for CHANNEL_ANSWER for session ${sessionId}.`);
-        }
+        // Trigger greeting play immediately on WebSocket connection since the call must be active/answered
+        console.log(`[AudioWS] Call active, triggering greeting for session ${sessionId}.`);
+        await session.markCallAnswered();
       }
     } catch (err: any) {
       console.error(`[AudioWS] Error handling connection for ${req.url}:`, err.message);
@@ -982,6 +1216,23 @@ ${agent.systemPrompt || ''}`;
         `);
         sessionData = camelizeKeys(insertResult.rows[0]);
         console.log(`[AudioWS] Created new inbound session in DB for channel ${sessionId}`);
+
+        // Insert tracking call record for call monitoring
+        try {
+          await db.execute(sql`
+            INSERT INTO calls (
+              id, user_id, phone_number, from_number, to_number, status, call_direction, engine_type, metadata, agent_id
+            ) VALUES (
+              ${sessionId}, ${userId}, ${fromNumber || null}, ${fromNumber || null}, ${toNumber || null}, 'initiated', 'incoming', 'custom-voice-engine', ${JSON.stringify({
+                sessionUuid: sessionId,
+                telephonyProvider: 'custom-voice-engine'
+              })}, ${dbAgentId || null}
+            )
+          `);
+          console.log(`[AudioWS] Created tracking call for inbound session ${sessionId}`);
+        } catch (callErr: any) {
+          console.error('[AudioWS] Failed to create tracking call record for inbound call:', callErr.message);
+        }
       }
 
       // Fetch appointment settings
@@ -1041,7 +1292,11 @@ ${agent.systemPrompt || ''}`;
       let sttConfig = {};
 
       let llmProvider = globalSettingsMap['ve_llm_active_provider'] || 'openrouter';
-      let llmApiKey = globalSettingsMap['ve_openrouter_api_key'] || process.env.OPENROUTER_API_KEY || '';
+      let rawLlmKey = globalSettingsMap['ve_openrouter_api_key'] || process.env.OPENROUTER_API_KEY || '';
+      if (!rawLlmKey || rawLlmKey.includes('your_openrouter_api_key') || rawLlmKey.includes('placeholder')) {
+        rawLlmKey = process.env.OPENAI_API_KEY || '';
+      }
+      let llmApiKey = rawLlmKey;
       let llmModel = globalSettingsMap['ve_llm_default_model'] || 'openai/gpt-4o-mini';
       let llmConfig = {};
 
@@ -1079,8 +1334,8 @@ ${agent.systemPrompt || ''}`;
       // 6. Build final STT/LLM/TTS configurations, resolving agent overrides.
       // IMPORTANT: resolve API keys AFTER all provider overrides (global → tenant → agent)
       // so that the correct key is used for the final effective provider.
-      const effectiveSttProvider = (agent.sttProvider || (agent.config as any)?.sttProvider || sttProvider) as string;
-      const effectiveTtsProvider = (agent.ttsProvider || (agent.config as any)?.ttsProvider || ttsProvider) as string;
+      const effectiveSttProvider = (agent.vaSttProvider || agent.sttProvider || (agent.config as any)?.sttProvider || sttProvider) as string;
+      const effectiveTtsProvider = (agent.vaTtsProvider || agent.ttsProvider || (agent.config as any)?.ttsProvider || ttsProvider) as string;
 
       const resolvedSttApiKey = effectiveSttProvider === 'sarvam'
         ? (globalSettingsMap['ve_sarvam_api_key'] || process.env.SARVAM_API_KEY || '')
@@ -1178,6 +1433,49 @@ ${apptSettingsText}`;
 You MUST speak ONLY in ${languageName}. From the very first word you say, speak in ${languageName}. Do NOT speak English or any other language. This overrides any previous language instructions in this prompt. This is mandatory.`;
       }
 
+      systemPrompt += `\n\n## MANDATORY CONVERSATIONAL & RESPONSE RULES:
+1. CONTEXT RETENTION & SITE VISIT RESPECT:
+   - Always retain customer preferences shared during the call (budget, location, BHK type, purpose).
+   - If the customer requests property details/images/location on WhatsApp or email, or explicitly states they do NOT want a site visit right now, IMMEDIATELY acknowledge their request ("Bilkul, main WhatsApp par saari details share kar deti hoon"), confirm WhatsApp delivery, and NEVER ask or push for a site visit again in that call!
+2. INFORMATION CAPTURE & NO CONFUSION FALLBACKS:
+   - Never output generic confusion phrases like "Aap kya keh rahe hain", "samajh nahi paa rahi hoon", or "Mujhe samajh nahi aaya".
+   - If a customer utterance is short or partially noisy, state what you already understood (e.g. "Aapne 1 BHK Gurugram budget 30-40 Lakh bataya tha...") and politely ask only for the specific missing detail.
+3. DYNAMIC RESPONSES & NO REPETITIVE FILLERS:
+   - NEVER start consecutive responses with repetitive filler words like "Achha", "Achha, samajh rahi hoon", "Sahi hai", or "Okay". Use natural, contextually rich, varied sentence openings.
+4. GENDER & RESPECTFUL ADDRESS:
+   - Always address the customer using polite respectful plural verbs (e.g. "dekh rahe hain", "chahte hain", "karenge"). Avoid gender-specific singular forms (like "dekh rahi hain", "karengi").
+5. RESPONSE FORMAT:
+   - Keep responses extremely short, direct, and conversational (1-2 sentences max). Always end sentences with punctuation ('.', '।', '?', '!'). Never use bullet points or lists.
+6. DATE vs TIME ACCURACY:
+   - Do NOT confuse date numbers (e.g. "5 September se 10 September") with time of day (e.g. "10 baje").
+   - If the customer specifies a date range like "5 September se 10 September ke beech", acknowledge the date range ("5 se 10 September ke beech") and politely ask for their preferred time ("Aap kis date aur kis time aana pasand karenge?").
+7. WHATSAPP PHOTOS & FAREWELL COMPLETION:
+   - When a customer requests site visit photos or details on WhatsApp, state: "Ji bilkul! Main aapke WhatsApp number par site visit ki photos aur details share kar deti hoon."
+   - Always speak a complete polite farewell message ("Thank you for connecting with Tricity Homes. Have a great day!") before invoking end_call tool.
+8. NO ALREADY-PROVIDED QUESTIONS:
+   - If the customer has already stated a detail (e.g. location, budget, or property type like "Vaishali, 1 CR, Residential"), NEVER ask for that detail again in subsequent turns!
+9. NO ROBOTIC RE-SUMMARIZATION:
+   - Do NOT repeat the exact same summary sentence back-to-back across consecutive turns (e.g. do not say "Aapne 1 Cr Vaishali ki baat ki" twice). Speak naturally like a helpful human consultant.
+10. NATURAL PHONE NUMBER CONFIRMATION:
+   - Do NOT spell out phone numbers digit-by-digit with spaces (like "9 1 7 0 2..."). Ask naturally: "Aapke isi registered mobile number par WhatsApp details bhej doon, sahi hai?"
+11. STRICT RESPONSE FORMAT & SHORT SENTENCES:
+   - Reply in MAXIMUM 1 SHORT SENTENCE (max 10-12 words) per turn. NO LONG PARAGRAPHS. NO BULLET POINTS.
+   - Never combine multiple sentences or questions into one reply.
+12. ONE QUESTION PER TURN & MANDATORY LISTENING:
+   - Ask EXACTLY ONE question per response turn.
+   - After asking ONE question, STOP speaking immediately and WAIT for the customer's answer.
+13. AFFIRMATION HANDLING ("Haan" / "Ji" / "Acha"):
+   - If the customer says "Haan", "Ji", "Haan ji", or "Acha", acknowledge politely and smoothly advance the conversation by asking the next relevant question about their property preferences (e.g. location, budget, or 2BHK/3BHK). Never repeat "Ji bilkul, batayein!" in a loop.
+14. MANDATORY PATIENT LISTENING & 3-4 SECOND SILENCE WAIT:
+   - After speaking your message, STOP speaking immediately and wait patiently for 3 to 4 seconds for the customer to answer.
+   - Listen to the customer's FULL response completely before replying. Never speak by yourself or generate unprompted turns while the customer is talking or within 3-4 seconds of silence.
+15. STRICT STEP-BY-STEP FLOW EXECUTION:
+   - Always progress through survey questions in exact step-by-step sequence (Step 1 -> Step 2 -> Step 3 -> Step 4 -> Step 5 -> Conclusion).
+   - NEVER skip questions, never ask already-answered questions, and never end the survey early before completing all questions.
+16. NO REPETITIVE QUESTION LOOPS:
+   - If the customer gives a vague answer or repeats a single word (like "mudda" or "haan"), DO NOT repeat the exact same question again.
+   - Give the 3 clear choices directly (e.g. "Kya aap Rozgar, Mehangai niyantran, ya Shiksha mein se chunna chahenge?") and smoothly advance to the next step. Never get stuck repeating a question for more than 2 turns!`;
+
       const llmConfigObj: LlmConfig = {
         provider: llmProvider,
         apiKey: llmApiKey,
@@ -1195,9 +1493,9 @@ You MUST speak ONLY in ${languageName}. From the very first word you say, speak 
       let resolvedSarvamSpeaker: string;
 
       if (effectiveTtsProvider === 'sarvam') {
-        // Speaker name: from agent field (only if it's NOT an aura- deepgram voice), else global speaker
-        const agentSpeaker = (agent.ttsVoice && !agent.ttsVoice.startsWith('aura-')) ? agent.ttsVoice
-          : (agent.openaiVoice && !agent.openaiVoice.startsWith('aura-')) ? agent.openaiVoice
+        const nonSarvamVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'ash', 'ballad', 'coral', 'sage', 'verse'];
+        const agentSpeaker = (agent.ttsVoice && !agent.ttsVoice.startsWith('aura-') && !nonSarvamVoices.includes(agent.ttsVoice.toLowerCase())) ? agent.ttsVoice
+          : (agent.openaiVoice && !agent.openaiVoice.startsWith('aura-') && !nonSarvamVoices.includes(agent.openaiVoice.toLowerCase())) ? agent.openaiVoice
             : null;
         resolvedSarvamSpeaker = agentSpeaker || finalTtsSpeaker || 'neha';
         resolvedTtsVoice = resolvedSarvamSpeaker; // voice field = speaker name for Sarvam
@@ -1215,12 +1513,12 @@ You MUST speak ONLY in ${languageName}. From the very first word you say, speak 
         apiKey: finalTtsApiKey,
         voice: resolvedTtsVoice,
         language: agent.language || 'en',
-        deepgramModel: resolvedTtsVoice,
-        sarvamModel: agent.ttsModel || finalTtsModel,
+        deepgramModel: (effectiveTtsProvider === 'deepgram' && agent.ttsModel && agent.ttsModel.startsWith('aura')) ? agent.ttsModel : resolvedTtsVoice,
+        sarvamModel: (effectiveTtsProvider === 'sarvam' && agent.ttsModel && agent.ttsModel.startsWith('bulbul')) ? agent.ttsModel : finalTtsModel,
         sarvamSpeaker: resolvedSarvamSpeaker,
         outputFormat: {
           encoding: 'linear16',
-          sampleRate: 8000,
+          sampleRate: effectiveTtsProvider === 'sarvam' ? 16000 : 8000,
           channels: 1,
           bitDepth: 16,
         },
@@ -1245,6 +1543,20 @@ You MUST speak ONLY in ${languageName}. From the very first word you say, speak 
 
       // Register session in our active pool
       this.registerSession(audioSession);
+
+      // Automatically restart mod_audio_fork when a TTS playback finishes
+      audioSession.on('playback_finished', async () => {
+        if (audioSession.isTransferred || (audioSession as any).destroyed) return;
+        
+        // If we are using streaming playback, we do not need to restart mod_audio_fork
+        // because the media bug was never detached.
+        if ((audioSession as any).streamingPlayback) {
+          console.log(`[AudioWS:${sessionId}] Playback finished (streaming). No restart needed.`);
+          return;
+        }
+        
+        console.log(`[AudioWS:${sessionId}] Playback finished. Continuous audio_fork active.`);
+      });
 
       return audioSession;
     } catch (err: any) {
@@ -1329,6 +1641,26 @@ You MUST speak ONLY in ${languageName}. From the very first word you say, speak 
               channel_uuid = ${channelUuid},
               updated_at = NOW()
           WHERE id = ${session.id}
+        `);
+
+        // Keep calls table in sync for call monitoring
+        const mappedStatus = sess.status === 'initializing' ? 'initiated' : (sess.status === 'completed' ? 'completed' : (sess.status === 'failed' ? 'failed' : 'in-progress'));
+        const transcriptText = typeof sess.transcript === 'string'
+          ? sess.transcript
+          : (Array.isArray(sess.transcript)
+              ? sess.transcript.map((t: any) => `${t.role === 'user' ? 'Customer' : 'Agent'}: ${t.content || t.text || ''}`).join('\n')
+              : JSON.stringify(sess.transcript || []));
+
+        await db.execute(sql`
+          UPDATE calls
+          SET status = ${mappedStatus},
+              duration = GREATEST(COALESCE(duration, 0), ${sess.durationSeconds || 0}),
+              ended_at = ${sess.endedAt || null},
+              transcript = ${transcriptText},
+              classification = ${sess.classification || null},
+              sentiment = ${sess.sentiment || null},
+              ai_summary = ${sess.aiSummary || null}
+          WHERE id = ${session.id} OR (metadata->>'sessionUuid' = ${session.id})
         `);
       } catch (err: any) {
         console.error(`[AudioWS] Failed to save session ${session.id} to DB:`, err.message);

@@ -134,7 +134,7 @@ export class FunctionToolBuilder {
       type: 'function',
       function: {
         name: 'end_call',
-        description: 'End the phone call. Use this when the conversation is complete, the caller wants to hang up, or you have finished helping them. Always say goodbye before calling this function.',
+        description: 'End the phone call. CRITICAL REQUIREMENT: You MUST speak the complete thank-you farewell message out loud to the caller FIRST. ONLY call this end_call function AFTER you have finished speaking the entire farewell message out loud to the caller.',
         parameters: {
           type: 'object',
           properties: {

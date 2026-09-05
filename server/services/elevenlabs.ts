@@ -1392,6 +1392,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
     voiceSpeed?: number;  // TTS speed (0.5-2.0)
     turnTimeout?: number;  // Turn timeout in seconds
     suggestedAudioTags?: boolean;  // Expressive Mode
+    endConversationEnabled?: boolean;  // Allow agent to end call via end_call tool
   }): Promise<ElevenLabsAgent> {
     console.log(`🔄 Updating Flow Agent workflow: ${agentId}`);
     console.log(`   Workflow nodes: ${Object.keys(workflow.nodes).length}`);
@@ -1581,14 +1582,15 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
     }
 
     // End call system tool - allows agent to hang up when reaching workflow end
+    // OR when endConversationEnabled is explicitly set (e.g., for flow agents with conversational prompts)
     // This is essential for Flow Agents to properly terminate calls
-    if (hasEndNodes) {
+    if (hasEndNodes || additionalOptions?.endConversationEnabled) {
       systemTools.push({
         type: "system",
         name: "end_call",
         description: "End the call when the conversation is complete, the user says goodbye, or the workflow reaches its end"
       });
-      console.log(`   ✓ System Tool: end_call`);
+      console.log(`   ✓ System Tool: end_call (hasEndNodes=${hasEndNodes}, endConversationEnabled=${additionalOptions?.endConversationEnabled})`);
     }
 
     // Note: Transfer functionality is handled by workflow phone_number nodes directly

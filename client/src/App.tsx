@@ -56,6 +56,7 @@ import TermsOfService from "@/pages/policies/TermsOfService";
 import CookiePolicy from "@/pages/policies/CookiePolicy";
 import InstallWizard from "@/pages/InstallWizard";
 import NotFound from "@/pages/not-found";
+import DemoPage from "@/pages/DemoPage";
 import FlowsPage from "@/pages/FlowsPage";
 import CRMPage from "@/pages/CRMPage";
 import WidgetsPage from "@/pages/WidgetsPage";
@@ -269,48 +270,54 @@ function AdminRouter() {
 }
 
 function UserRouter() {
+  const [location] = useLocation();
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
   };
   const { branding, currentLogo } = useBranding();
 
+  const isDemoPage = location === "/app/demo";
+
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
-        <AppSidebar />
+        {!isDemoPage && <AppSidebar />}
         <div className="flex flex-col flex-1 overflow-hidden">
-          <header className="flex items-center justify-between h-14 px-4 md:px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="flex items-center gap-3">
-              <SidebarTrigger className="md:hidden" data-testid="button-mobile-menu" />
-              <div className="md:hidden">
-                {currentLogo ? (
-                  <img 
-                    src={currentLogo} 
-                    alt={branding.app_name} 
-                    className="h-7 w-auto max-w-[120px] object-contain"
-                  />
-                ) : (
-                  <Zap className="h-6 w-6 text-primary" />
-                )}
+          {!isDemoPage && (
+            <header className="flex items-center justify-between h-14 px-4 md:px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+              <div className="flex items-center gap-3">
+                <SidebarTrigger className="md:hidden" data-testid="button-mobile-menu" />
+                <div className="md:hidden">
+                  {currentLogo ? (
+                    <img 
+                      src={currentLogo} 
+                      alt={branding.app_name} 
+                      className="h-7 w-auto max-w-[120px] object-contain"
+                    />
+                  ) : (
+                    <Zap className="h-6 w-6 text-primary" />
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="flex-1" />
-            <div className="flex items-center gap-2">
-              <HeaderBannerNotifications />
-              <NotificationBell />
-              <LanguageSelector variant="compact" />
-              <ThemeToggle />
-            </div>
-          </header>
+              <div className="flex-1" />
+              <div className="flex items-center gap-2">
+                <HeaderBannerNotifications />
+                <NotificationBell />
+                <LanguageSelector variant="compact" />
+                <ThemeToggle />
+              </div>
+            </header>
+          )}
           <main className="flex-1 overflow-auto">
-            <div className="w-full px-4 md:px-10 lg:px-16 xl:px-20 py-4 md:py-6">
+            <div className={location === "/app/demo" ? "w-full h-full" : "w-full px-4 md:px-10 lg:px-16 xl:px-20 py-4 md:py-6"}>
               <Switch>
                 <Route path="/">
                   <Redirect to="/app" />
                 </Route>
                 <Route path="/app" component={Dashboard} />
                 <Route path="/app/dashboard" component={Dashboard} />
+                <Route path="/app/demo" component={DemoPage} />
                 <Route path="/app/campaigns/:id" component={CampaignDetail} />
                 <Route path="/app/campaigns" component={Campaigns} />
                 <Route path="/app/calls/:id" component={CallDetail} />
@@ -368,32 +375,36 @@ function TeamMemberRouter() {
   };
   const { branding, currentLogo } = useBranding();
 
+  const isDemoPage = location === "/app/demo";
+
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
-        <TeamMemberSidebar />
+        {!isDemoPage && <TeamMemberSidebar />}
         <div className="flex flex-col flex-1 overflow-hidden">
-          <header className="flex items-center justify-between h-14 px-4 md:px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="flex items-center gap-3">
-              <SidebarTrigger className="md:hidden" data-testid="button-mobile-menu" />
-              <div className="md:hidden">
-                {currentLogo ? (
-                  <img 
-                    src={currentLogo} 
-                    alt={branding.app_name} 
-                    className="h-7 w-auto max-w-[120px] object-contain"
-                  />
-                ) : (
-                  <Zap className="h-6 w-6 text-primary" />
-                )}
+          {!isDemoPage && (
+            <header className="flex items-center justify-between h-14 px-4 md:px-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+              <div className="flex items-center gap-3">
+                <SidebarTrigger className="md:hidden" data-testid="button-mobile-menu" />
+                <div className="md:hidden">
+                  {currentLogo ? (
+                    <img 
+                      src={currentLogo} 
+                      alt={branding.app_name} 
+                      className="h-7 w-auto max-w-[120px] object-contain"
+                    />
+                  ) : (
+                    <Zap className="h-6 w-6 text-primary" />
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="flex-1" />
-            <div className="flex items-center gap-2">
-              <LanguageSelector variant="compact" />
-              <ThemeToggle />
-            </div>
-          </header>
+              <div className="flex-1" />
+              <div className="flex items-center gap-2">
+                <LanguageSelector variant="compact" />
+                <ThemeToggle />
+              </div>
+            </header>
+          )}
           <main className="flex-1 overflow-auto">
             <div className="w-full px-4 md:px-10 lg:px-16 xl:px-20 py-4 md:py-6">
               <Switch>
@@ -402,6 +413,7 @@ function TeamMemberRouter() {
                 </Route>
                 <Route path="/app" component={Dashboard} />
                 <Route path="/app/dashboard" component={Dashboard} />
+                <Route path="/app/demo" component={DemoPage} />
                 <Route path="/app/campaigns/:id" component={CampaignDetail} />
                 <Route path="/app/campaigns" component={Campaigns} />
                 <Route path="/app/calls/:id" component={CallDetail} />
@@ -617,6 +629,7 @@ function AdminTeamGuard({ children }: { children: React.ReactNode }) {
 }
 
 function UserGuard({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
   const [isTeamMember, setIsTeamMember] = useState(() => TeamAuth.isAuthenticated());
   const [teamAuthValid, setTeamAuthValid] = useState<boolean | null>(null);
   const [teamAuthLoading, setTeamAuthLoading] = useState(isTeamMember);
@@ -646,7 +659,6 @@ function UserGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isTeamMember && isError) {
       AuthStorage.clearAuth();
-      window.location.href = "/login";
     }
   }, [isError, isTeamMember]);
 
@@ -670,7 +682,8 @@ function UserGuard({ children }: { children: React.ReactNode }) {
 
   // Regular user authentication check
   if (!user) {
-    return <Redirect to="/login" />;
+    const redirectSearch = location === "/app/demo" ? "?redirect=/app/demo" : "";
+    return <Redirect to={`/login${redirectSearch}`} />;
   }
 
   return <>{children}</>;
@@ -754,7 +767,17 @@ function Router() {
     }
     const user = AuthStorage.getUser();
     const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-    const redirectTo = isAdmin ? '/admin' : '/app';
+    
+    // Parse redirect param if present in query string
+    let redirectTo = isAdmin ? '/admin' : '/app';
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const queryRedirect = params.get("redirect");
+      if (queryRedirect) {
+        redirectTo = queryRedirect;
+      }
+    }
+    
     console.log("Router - Authenticated user on auth page, redirecting to", redirectTo);
     return <Redirect to={redirectTo} />;
   }

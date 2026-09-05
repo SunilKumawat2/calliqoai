@@ -26,7 +26,7 @@ import { LandingLanguageSelector } from "@/components/LandingLanguageSelector";
 
 // Route theme map: determines if page hero is dark or light background
 const routeThemeMap: Record<string, "dark" | "light"> = {
-  "/": "light",
+  "/": "dark",
   "/features": "light",
   "/use-cases": "light", 
   "/pricing": "light",

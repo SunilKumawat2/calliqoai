@@ -175,6 +175,13 @@ export function EditCampaignDialog({ open, onOpenChange, campaign }: EditCampaig
 
   const sipPhoneNumbers = sipPhoneNumbersResponse?.data || [];
 
+  const { data: userSipPhoneNumbersResponse } = useQuery<{ success: boolean; data: any[] }>({
+    queryKey: ["/api/user/sip-phone-numbers"],
+    enabled: open,
+  });
+
+  const userSipPhoneNumbers = userSipPhoneNumbersResponse?.data || [];
+
   // Determine agent type for phone number selection
   const selectedAgent = agents.find(a => a.id === formData.agentId);
   const isElevenLabsSipAgent = selectedAgent?.telephonyProvider === 'elevenlabs-sip';
@@ -328,9 +335,9 @@ export function EditCampaignDialog({ open, onOpenChange, campaign }: EditCampaig
                 setFormData({ 
                   ...formData, 
                   agentId: value,
-                  phoneNumberId: (newIsElevenLabsSipAgent || newIsPlivoAgent) ? "" : formData.phoneNumberId,
-                  plivoPhoneNumberId: newIsPlivoAgent ? formData.plivoPhoneNumberId : "",
-                  sipPhoneNumberId: newIsElevenLabsSipAgent ? formData.sipPhoneNumberId : ""
+                  phoneNumberId: "",
+                  plivoPhoneNumberId: "",
+                  sipPhoneNumberId: ""
                 });
               }}
             >
@@ -391,54 +398,51 @@ export function EditCampaignDialog({ open, onOpenChange, campaign }: EditCampaig
                 </SelectContent>
               </Select>
             ) : selectedAgent?.telephonyProvider === 'custom-voice-engine' ? (
-              <Select 
-                value={formData.phoneNumberId || formData.plivoPhoneNumberId || formData.sipPhoneNumberId} 
-                onValueChange={(value) => {
-                  if (phoneNumbers.some(p => p.id === value)) {
-                    setFormData({ ...formData, phoneNumberId: value, plivoPhoneNumberId: '', sipPhoneNumberId: '' });
-                  } else if (plivoPhoneNumbers.some(p => p.id === value)) {
-                    setFormData({ ...formData, plivoPhoneNumberId: value, phoneNumberId: '', sipPhoneNumberId: '' });
-                  } else {
-                    setFormData({ ...formData, sipPhoneNumberId: value, phoneNumberId: '', plivoPhoneNumberId: '' });
-                  }
-                }}
-              >
-                <SelectTrigger data-testid="select-edit-phone">
-                  <SelectValue placeholder="Select any phone number (Optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {phoneNumbers.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>Twilio Numbers</SelectLabel>
-                      {phoneNumbers.map((phone) => (
-                        <SelectItem key={phone.id} value={phone.id}>
-                          {phone.friendlyName || phone.phoneNumber}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  )}
-                  {plivoPhoneNumbers.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>Plivo Numbers</SelectLabel>
-                      {plivoPhoneNumbers.map((phone) => (
-                        <SelectItem key={phone.id} value={phone.id}>
-                          {phone.friendlyName || phone.phoneNumber}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  )}
-                  {sipPhoneNumbers.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>SIP Numbers</SelectLabel>
-                      {sipPhoneNumbers.map((phone) => (
-                        <SelectItem key={phone.id} value={phone.id}>
-                          {phone.label || phone.phoneNumber}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  )}
-                </SelectContent>
-              </Select>
+              <>
+                <Select 
+                  value={
+                    formData.plivoPhoneNumberId 
+                      ? `plivo:${formData.plivoPhoneNumberId}` 
+                      : formData.sipPhoneNumberId 
+                        ? `sip:${formData.sipPhoneNumberId}` 
+                        : ""
+                  } 
+                  onValueChange={(value) => {
+                    if (value.startsWith('plivo:')) {
+                      const id = value.split(':')[1];
+                      setFormData({ ...formData, plivoPhoneNumberId: id, sipPhoneNumberId: '', phoneNumberId: '' });
+                    } else if (value.startsWith('sip:')) {
+                      const id = value.split(':')[1];
+                      setFormData({ ...formData, sipPhoneNumberId: id, plivoPhoneNumberId: '', phoneNumberId: '' });
+                    } else {
+                      setFormData({ ...formData, sipPhoneNumberId: '', plivoPhoneNumberId: '', phoneNumberId: '' });
+                    }
+                  }}
+                >
+                  <SelectTrigger data-testid="select-edit-phone">
+                    <SelectValue placeholder={
+                      (plivoPhoneNumbers.length === 0 && userSipPhoneNumbers.length === 0) 
+                        ? "No phone numbers available" 
+                        : "Select a phone number (Plivo or Custom SIP)"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {plivoPhoneNumbers.map((phone) => (
+                      <SelectItem key={`plivo:${phone.id}`} value={`plivo:${phone.id}`}>
+                        {phone.friendlyName || phone.phoneNumber} (Plivo)
+                      </SelectItem>
+                    ))}
+                    {userSipPhoneNumbers.map((phone) => (
+                      <SelectItem key={`sip:${phone.id}`} value={`sip:${phone.id}`}>
+                        {phone.phone_number} {phone.label ? `(${phone.label})` : ''} (Custom SIP)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {plivoPhoneNumbers.length === 0 && userSipPhoneNumbers.length === 0 && (
+                  <p className="text-sm text-muted-foreground mt-1">No phone numbers available. Please purchase a Plivo number or import a Custom SIP number first.</p>
+                )}
+              </>
             ) : (
               <Select 
                 value={formData.phoneNumberId} 

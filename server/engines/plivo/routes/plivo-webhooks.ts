@@ -67,14 +67,6 @@ export function setupPlivoWebhooks(app: Express, baseUrl: string): void {
       
       logger.info(`Answer for call ${callId}: ${CallUUID} from ${From} to ${To} (${Direction})`, undefined, 'PlivoWebhook');
 
-      // Update the call record with Plivo UUID
-      if (callId && CallUUID) {
-        await db
-          .update(plivoCalls)
-          .set({ plivoCallUuid: CallUUID })
-          .where(eq(plivoCalls.id, callId));
-      }
-
       const streamUrl = getStreamUrl(baseUrl, CallUUID);
 
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -86,6 +78,14 @@ export function setupPlivoWebhooks(app: Express, baseUrl: string): void {
 
       res.set('Content-Type', 'text/xml');
       res.send(xml);
+
+      // Update the call record with Plivo UUID asynchronously (non-blocking)
+      if (callId && CallUUID) {
+        db.update(plivoCalls)
+          .set({ plivoCallUuid: CallUUID })
+          .where(eq(plivoCalls.id, callId))
+          .catch(err => logger.error(`Error updating plivoCallUuid: ${err.message}`, err, 'PlivoWebhook'));
+      }
     } catch (error: any) {
       logger.error('Answer error', error, 'PlivoWebhook');
       res.set('Content-Type', 'text/xml');

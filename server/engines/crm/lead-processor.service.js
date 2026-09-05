@@ -1,0 +1,1218 @@
+'use strict';
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.CRMLeadProcessor = void 0;
+/**
+ * ============================================================
+ * CRM Lead Processor Engine
+ * ============================================================
+ *
+ * Centralized service that monitors completed calls from ALL
+ * telephony engines and automatically creates qualified CRM leads.
+ *
+ * Supported Engines:
+ * - ElevenLabs + Twilio (calls table)
+ * - Plivo + OpenAI (plivo_calls table)
+ * - Twilio + OpenAI (twilio_openai_calls table)
+ *
+ * Qualification Criteria (in priority order):
+ * 1. appointment_booked - Appointment was scheduled
+ * 2. form_submitted - Form data was collected
+ * 3. call_transfer - Call was transferred to human
+ * 4. need_follow_up - AI determined follow-up needed
+ * 5. hot - Engagement score >= 70
+ * 6. warm - Engagement score >= 40
+ *
+ * Calls that don't meet any criteria are not added to CRM.
+ */
+const db_1 = require("../../db");
+const schema_1 = require("@shared/schema");
+const crm_storage_1 = require("../../storage/crm-storage");
+const drizzle_orm_1 = require("drizzle-orm");
+class CRMLeadProcessor {
+    static LOG_PREFIX = '[CRM Lead Processor]';
+    // Minimum quality thresholds
+    static MIN_DURATION_SECONDS = 10; // At least 10 seconds
+    static MIN_TRANSCRIPT_LENGTH = 20; // At least 20 characters
+    /**
+     * Resolve the correct phone number based on call direction
+     * For incoming calls: customer is the caller (fromNumber)
+     * For outgoing calls: customer is the recipient (toNumber)
+     * Handles undefined callDirection and engine-specific metadata
+     */
+    static resolveLeadPhone(callData) {
+        let phone = null;
+        // First, try engine-specific metadata fields (these are most reliable)
+        const metadata = callData.metadata || {};
+        if (metadata.customerPhone) {
+            phone = String(metadata.customerPhone);
+        }
+        else if (metadata.callerPhone) {
+            phone = String(metadata.callerPhone);
+        }
+        // If no metadata phone, resolve based on call direction
+        if (!phone || !this.isValidPhone(phone)) {
+            const direction = callData.callDirection?.toLowerCase();
+            if (direction === 'incoming') {
+                // For incoming calls, the customer called us - use fromNumber
+                phone = callData.fromNumber || callData.phoneNumber || callData.toNumber || null;
+            }
+            else if (direction === 'outgoing') {
+                // For outgoing calls, we called the customer - use toNumber
+                phone = callData.toNumber || callData.phoneNumber || callData.fromNumber || null;
+            }
+            else {
+                // Unknown direction - try both fields, prefer non-empty ones
+                phone = callData.fromNumber || callData.toNumber || callData.phoneNumber || null;
+            }
+        }
+        // Final validation, normalization and cleanup
+        if (phone && this.isValidPhone(phone)) {
+            return this.normalizePhone(phone);
+        }
+        return 'Unknown';
+    }
+    /**
+     * Check if a phone number is valid dialable number
+     * Rejects SIP identifiers, client IDs, and non-phone strings
+     */
+    static isValidPhone(phone) {
+        if (!phone)
+            return false;
+        const cleaned = phone.trim().toLowerCase();
+        // Reject common placeholder values
+        if (cleaned === '' ||
+            cleaned === 'unknown' ||
+            cleaned === 'anonymous' ||
+            cleaned === 'null' ||
+            cleaned === 'undefined') {
+            return false;
+        }
+        // Reject SIP/client identifiers (Twilio warm-transfer uses these)
+        if (cleaned.startsWith('client:') ||
+            cleaned.startsWith('sip:') ||
+            cleaned.startsWith('agent:') ||
+            cleaned.includes('@')) {
+            return false;
+        }
+        // Extract just the digits from the phone number
+        const digitsOnly = phone.replace(/\D/g, '');
+        // Must have at least 5 digits (covers short codes) and at most 15 (E.164 max)
+        if (digitsOnly.length < 5 || digitsOnly.length > 15) {
+            return false;
+        }
+        // Must have at least 50% digits (to reject strings like "CallAgent123")
+        const digitRatio = digitsOnly.length / cleaned.replace(/\s/g, '').length;
+        if (digitRatio < 0.5) {
+            return false;
+        }
+        return true;
+    }
+    /**
+     * Normalize phone number to E.164 format for consistent deduplication
+     * Always outputs +<digits> format when possible
+     */
+    static normalizePhone(phone) {
+        // Remove common prefixes
+        let normalized = phone.trim();
+        // Remove whatsapp/tel prefixes
+        normalized = normalized.replace(/^(whatsapp:|tel:|phone:)/i, '');
+        // Extract all digits
+        const digitsOnly = normalized.replace(/[^\d]/g, '');
+        // Determine if original had + prefix
+        const hadPlus = normalized.startsWith('+');
+        // For E.164 compliance, always add + prefix for international numbers
+        if (digitsOnly.length >= 10) {
+            // If already had +, keep it; otherwise add it for 10+ digit numbers
+            return '+' + digitsOnly;
+        }
+        else if (digitsOnly.length >= 5) {
+            // Short codes or local numbers - preserve original format but clean
+            return hadPlus ? '+' + digitsOnly : digitsOnly;
+        }
+        // Fallback - return cleaned version
+        return digitsOnly || normalized;
+    }
+    /**
+     * Check if a call meets minimum quality standards for lead creation
+     * Requires either meaningful duration OR transcript content OR high-value signals
+     */
+    static meetsQualityThreshold(callData) {
+        // Check for high-value signals that bypass duration/transcript requirements
+        // These indicate valid business outcomes even on short/failed-transcription calls
+        const metadata = callData.metadata || {};
+        const aiInsights = (callData.aiInsights || metadata.aiInsights || {});
+        // Check for appointment booking indicators
+        const hasAppointment = metadata.appointmentBooked === true ||
+            metadata.hasAppointment === true ||
+            aiInsights.primaryOutcome === 'appointment_booked' ||
+            aiInsights.appointmentBooked === true ||
+            metadata.appointmentDetails !== undefined ||
+            metadata.appointmentData !== undefined;
+        // Check for form submission indicators
+        const hasForm = metadata.formSubmitted === true ||
+            metadata.hasFormSubmission === true ||
+            aiInsights.primaryOutcome === 'form_submitted' ||
+            aiInsights.formSubmitted === true ||
+            metadata.formData !== undefined ||
+            metadata.collectedData !== undefined;
+        // Check for transfer/callback indicators
+        const hasTransfer = callData.wasTransferred === true || aiInsights.primaryOutcome === 'call_transfer';
+        const hasCallback = aiInsights.primaryOutcome === 'need_follow_up' || aiInsights.needsFollowUp === true;
+        console.log(`${this.LOG_PREFIX} [Quality Threshold Check] Call ID: ${callData.id}`);
+        console.log(`  - Duration: ${callData.duration || 0}s (Min: ${this.MIN_DURATION_SECONDS}s)`);
+        console.log(`  - Transcript length: ${callData.transcript?.trim().length || 0} chars (Min: ${this.MIN_TRANSCRIPT_LENGTH} chars)`);
+        console.log(`  - High-value indicators: Appointment=${hasAppointment}, Form=${hasForm}, Transfer=${hasTransfer}, Callback=${hasCallback}`);
+        // Explicitly reject extremely short calls (under 10 seconds) unless they have a high-value outcome
+        const duration = callData.duration ?? 0;
+        if (duration > 0 && duration < this.MIN_DURATION_SECONDS && !hasAppointment && !hasForm && !hasTransfer && !hasCallback) {
+            const failReason = `Call duration too short (${duration}s) without high-value business outcome`;
+            console.log(`  - Passed: False (Reason: ${failReason})`);
+            return { passed: false, reason: failReason };
+        }
+        // High-value signals bypass duration/transcript requirements
+        if (hasAppointment || hasForm || hasTransfer || hasCallback) {
+            const activeSignals = [
+                hasAppointment && 'Appointment Booked',
+                hasForm && 'Form Submitted',
+                hasTransfer && 'Call Transferred',
+                hasCallback && 'Callback Requested'
+            ].filter(Boolean).join(', ');
+            console.log(`  - Passed: True (bypassed via high-value outcome: ${activeSignals})`);
+            return { passed: true, reason: `Has high-value business outcome: ${activeSignals}` };
+        }
+        // Check if there's a meaningful transcript
+        const hasTranscript = callData.transcript && callData.transcript.trim().length >= this.MIN_TRANSCRIPT_LENGTH;
+        // Check if there's meaningful duration
+        const hasDuration = callData.duration && callData.duration >= this.MIN_DURATION_SECONDS;
+        // Check for explicit qualification signals (these bypass duration/transcript requirements)
+        // Only count actual qualification classifications, ignoring generic call statuses like 'completed'
+        const validQualificationClassifications = ['hot', 'warm', 'cold', 'qualified', 'interested', 'not_interested', 'need_follow_up'];
+        const hasValidClassification = callData.classification &&
+            validQualificationClassifications.includes(callData.classification.trim().toLowerCase());
+        const hasExplicitSignal = (callData.aiSummary && callData.aiSummary.trim().length > 10) ||
+            hasValidClassification ||
+            (callData.sentiment && callData.sentiment.trim() !== '');
+        console.log(`  - Standard Checks: HasTranscript=${!!hasTranscript}, HasDuration=${!!hasDuration}, HasExplicitSignal=${!!hasExplicitSignal}`);
+        console.log(`  - Explicit signals: AI Summary length=${callData.aiSummary?.trim().length || 0}, Classification=${callData.classification || 'none'} (valid=${!!hasValidClassification}), Sentiment=${callData.sentiment || 'none'}`);
+        if (hasTranscript || hasDuration || hasExplicitSignal) {
+            console.log(`  - Passed: True (Meets standard quality thresholds)`);
+            return { passed: true, reason: 'Meets quality threshold' };
+        }
+        const failReason = `Call too short (${callData.duration || 0}s) and no transcript (${callData.transcript?.length || 0} chars)`;
+        console.log(`  - Passed: False (Reason: ${failReason})`);
+        return {
+            passed: false,
+            reason: failReason
+        };
+    }
+    /**
+     * Process a completed call and create a lead if it qualifies
+     */
+    static async processCall(callData) {
+        console.log(`${this.LOG_PREFIX} Processing call ${callData.id} from engine: ${callData.engine}`);
+        // Check minimum quality threshold first
+        const qualityCheck = this.meetsQualityThreshold(callData);
+        if (!qualityCheck.passed) {
+            console.log(`${this.LOG_PREFIX} Call ${callData.id} rejected: ${qualityCheck.reason}`);
+            return {
+                leadId: null,
+                qualification: {
+                    qualified: false,
+                    category: null,
+                    score: 0,
+                    hasAppointment: false,
+                    hasFormSubmission: false,
+                    hasTransfer: false,
+                    hasCallback: false,
+                }
+            };
+        }
+        try {
+            // Qualify the call first
+            const qualification = await this.qualifyCall(callData);
+            if (!qualification.qualified) {
+                console.log(`${this.LOG_PREFIX} Call ${callData.id} does not qualify for CRM (no category matched)`);
+                return { leadId: null, qualification };
+            }
+            // Update call classification to match calculated category
+            if (qualification.category) {
+                await this.updateCallClassification(callData.id, callData.engine, qualification.category);
+            }
+            // Check if lead already exists for this call (by phone number)
+            const existingLead = await this.findExistingLead(callData);
+            if (existingLead) {
+                // Update existing lead with new call data and qualification
+                const updatedLead = await this.updateExistingLead(existingLead, callData, qualification);
+                if (updatedLead) {
+                    const categoryChanged = existingLead.aiCategory !== updatedLead.aiCategory;
+                    console.log(`${this.LOG_PREFIX} Updated existing lead ${updatedLead.id} - aiCategory: ${existingLead.aiCategory || 'none'} -> ${updatedLead.aiCategory || qualification.category}${categoryChanged ? ' (changed)' : ''}`);
+                    return {
+                        leadId: updatedLead.id,
+                        qualification,
+                    };
+                }
+                // Fall through to create new lead if update failed
+                console.log(`${this.LOG_PREFIX} Update returned null, creating new lead`);
+            }
+            // Create new lead
+            const lead = await this.createLeadFromCall(callData, qualification);
+            if (!lead) {
+                console.log(`${this.LOG_PREFIX} Failed to create lead for call ${callData.id} - createLeadFromCall returned null`);
+                return { leadId: null, qualification };
+            }
+            console.log(`${this.LOG_PREFIX} Created lead ${lead.id} with category: ${qualification.category}`);
+            // Log activity
+            try {
+                await crm_storage_1.CRMStorage.createActivity({
+                    userId: callData.userId,
+                    leadId: lead.id,
+                    activityType: 'call',
+                    title: `Auto-created from ${callData.engine} call`,
+                    description: `Lead auto-created from ${callData.engine} ${callData.callDirection} call`,
+                    metadata: {
+                        callId: callData.id,
+                    },
+                });
+            }
+            catch (activityError) {
+                console.error(`${this.LOG_PREFIX} Failed to create activity:`, activityError);
+            }
+            // Trigger form.lead_created webhook event
+            try {
+                const { webhookDeliveryService } = await Promise.resolve().then(() => require('../../services/webhook-delivery'));
+                await webhookDeliveryService.triggerEvent(callData.userId, 'form.lead_created', {
+                    lead: {
+                        id: lead.id,
+                        name: lead.firstName || lead.lastName ? `${lead.firstName || ''} ${lead.lastName || ''}`.trim() : 'Unknown',
+                        email: lead.email,
+                        phone: lead.phone,
+                        company: lead.company,
+                        source: callData.campaignId ? 'Outbound Campaign' : 'Incoming Call',
+                        status: lead.stage || 'new',
+                        createdAt: lead.createdAt ? new Date(lead.createdAt).toISOString() : new Date().toISOString(),
+                    },
+                    call: {
+                        id: callData.id,
+                        duration: callData.duration || 0,
+                        direction: callData.callDirection || 'incoming',
+                        phoneNumber: callData.phoneNumber || null,
+                    },
+                    qualification: {
+                        score: qualification.score,
+                        category: qualification.category,
+                        hasAppointment: qualification.hasAppointment,
+                        hasFormSubmission: qualification.hasFormSubmission,
+                        hasTransfer: qualification.hasTransfer,
+                        hasCallback: qualification.hasCallback,
+                    }
+                }, callData.campaignId);
+                console.log(`${this.LOG_PREFIX} Triggered form.lead_created webhook event for lead ${lead.id}`);
+            }
+            catch (webhookError) {
+                console.error(`${this.LOG_PREFIX} Failed to trigger form.lead_created webhook:`, webhookError.message);
+            }
+            return { leadId: lead.id, qualification };
+        }
+        catch (error) {
+            console.error(`${this.LOG_PREFIX} Error processing call ${callData.id}:`, error);
+            throw error;
+        }
+    }
+    /**
+     * Qualify a call and determine its CRM category
+     * Priority order: appointment_booked > form_submitted > call_transfer > need_follow_up > hot > warm
+     */
+    static async qualifyCall(callData) {
+        const metadata = callData.metadata || {};
+        // Extract insights from multiple sources - callData.aiInsights takes priority (ElevenLabs stores here)
+        // Then check metadata.aiInsights, then metadata itself
+        const aiInsights = (callData.aiInsights || metadata.aiInsights || metadata);
+        // Merge aiInsights into metadata for downstream checks
+        const mergedMetadata = { ...metadata, ...aiInsights };
+        const primaryOutcome = aiInsights.primaryOutcome;
+        const engagementScore = this.extractEngagementScore(callData, aiInsights);
+        // Check for appointment booking - use mergedMetadata for comprehensive check
+        let hasAppointment = this.checkAppointmentBooked(callData, mergedMetadata);
+        let appointmentData = hasAppointment ? this.extractAppointmentData(mergedMetadata) : undefined;
+        if (!hasAppointment) {
+            const dbAppointment = await this.checkAppointmentInDatabase(callData);
+            if (dbAppointment) {
+                hasAppointment = true;
+                appointmentData = dbAppointment;
+            }
+        }
+        // Check for form submission - use mergedMetadata for comprehensive check
+        const hasFormSubmission = this.checkFormSubmitted(callData, mergedMetadata);
+        const formData = hasFormSubmission ? this.extractFormData(mergedMetadata) : undefined;
+        // Check for call transfer
+        const hasTransfer = callData.wasTransferred === true || primaryOutcome === 'call_transfer';
+        // Check for callback/follow-up needed
+        const hasCallback = primaryOutcome === 'need_follow_up' ||
+            this.checkNeedsFollowUp(callData, aiInsights);
+        // Determine category based on priority
+        let category = null;
+        if (hasAppointment) {
+            category = schema_1.AI_LEAD_CATEGORIES.APPOINTMENT_BOOKED;
+        }
+        else if (hasFormSubmission) {
+            category = schema_1.AI_LEAD_CATEGORIES.FORM_SUBMITTED;
+        }
+        else if (hasTransfer) {
+            category = schema_1.AI_LEAD_CATEGORIES.CALL_TRANSFER;
+        }
+        else if (hasCallback) {
+            category = schema_1.AI_LEAD_CATEGORIES.NEED_FOLLOW_UP;
+        }
+        else if (engagementScore >= 70) {
+            category = schema_1.AI_LEAD_CATEGORIES.HOT;
+        }
+        else if (engagementScore >= 40) {
+            category = schema_1.AI_LEAD_CATEGORIES.WARM;
+        }
+        const qualified = category !== null;
+        console.log(`${this.LOG_PREFIX} Qualification result for call ${callData.id}:`, {
+            qualified,
+            category,
+            score: engagementScore,
+            hasAppointment,
+            hasFormSubmission,
+            hasTransfer,
+            hasCallback,
+            primaryOutcome,
+        });
+        return {
+            qualified,
+            category,
+            score: engagementScore,
+            hasAppointment,
+            hasFormSubmission,
+            hasTransfer,
+            hasCallback,
+            appointmentData,
+            formData,
+        };
+    }
+    /**
+     * Extract engagement score from call data or AI insights
+     */
+    static extractEngagementScore(callData, aiInsights) {
+        // Try to get score from various sources
+        const sources = [
+            aiInsights.engagementScore,
+            aiInsights.leadScore,
+            aiInsights.score,
+            callData.metadata?.leadScore,
+            callData.metadata?.engagementScore,
+        ];
+        for (const source of sources) {
+            if (typeof source === 'number' && source >= 0 && source <= 100) {
+                return source;
+            }
+        }
+        // Calculate score based on sentiment and classification if no explicit score
+        return this.calculateScoreFromSentiment(callData);
+    }
+    /**
+     * Calculate engagement score based on sentiment, classification, and call quality
+     * Balanced scoring - requires signals to qualify but tolerant of formatting differences
+     */
+    static calculateScoreFromSentiment(callData) {
+        // Start with a moderate base score
+        let score = 30;
+        let hasAnySignal = false;
+        // Normalize and trim sentiment for case-insensitive matching
+        const sentiment = (callData.sentiment || '').trim().toLowerCase();
+        if (sentiment === 'positive' || sentiment === 'pos' || sentiment.includes('positive')) {
+            score += 30;
+            hasAnySignal = true;
+        }
+        else if (sentiment === 'neutral' || sentiment.includes('neutral')) {
+            score += 15;
+            hasAnySignal = true;
+        }
+        else if (sentiment === 'negative' || sentiment === 'neg' || sentiment.includes('negative')) {
+            score -= 10;
+            hasAnySignal = true;
+        }
+        // Normalize and trim classification for case-insensitive matching
+        const classification = (callData.classification || '').trim().toLowerCase();
+        if (classification === 'hot' || classification === 'interested' || classification === 'qualified' ||
+            classification.includes('hot') || classification.includes('interested')) {
+            score += 25;
+            hasAnySignal = true;
+        }
+        else if (classification === 'warm' || classification.includes('warm')) {
+            score += 15;
+            hasAnySignal = true;
+        }
+        else if (classification === 'cold' || classification === 'not_interested' ||
+            classification.includes('cold') || classification.includes('not interested')) {
+            score -= 10;
+            hasAnySignal = true;
+        }
+        // Adjust based on call duration (longer calls often indicate interest)
+        if (callData.duration) {
+            if (callData.duration >= 180) {
+                score += 20; // 3+ minute call - strong engagement
+                hasAnySignal = true;
+            }
+            else if (callData.duration >= 120) {
+                score += 15; // 2+ minute call
+                hasAnySignal = true;
+            }
+            else if (callData.duration >= 60) {
+                score += 10; // 1+ minute call
+                hasAnySignal = true;
+            }
+            else if (callData.duration >= 30) {
+                score += 5; // 30+ seconds
+                hasAnySignal = true;
+            }
+        }
+        // Bonus for having transcript (indicates meaningful conversation)
+        if (callData.transcript && callData.transcript.trim().length > 50) {
+            score += 10;
+            hasAnySignal = true;
+        }
+        // Bonus for having AI summary (indicates analyzed call)
+        if (callData.aiSummary && callData.aiSummary.trim().length > 20) {
+            score += 5;
+            hasAnySignal = true;
+        }
+        // If no signals at all, keep score below warm threshold
+        if (!hasAnySignal) {
+            score = 25; // Below warm threshold (40)
+        }
+        return Math.max(0, Math.min(100, score));
+    }
+    /**
+     * Check if appointment was booked during the call
+     */
+    static checkAppointmentBooked(callData, metadata) {
+        // Check explicit flags
+        if (metadata.appointmentBooked === true)
+            return true;
+        if (metadata.hasAppointment === true)
+            return true;
+        // Check aiInsights
+        const aiInsights = metadata.aiInsights;
+        if (aiInsights?.primaryOutcome === 'appointment_booked')
+            return true;
+        if (aiInsights?.appointmentBooked === true)
+            return true;
+        // Check for appointment data presence
+        if (metadata.appointmentDetails || metadata.appointmentData)
+            return true;
+        // Check transcript for appointment keywords if available
+        if (callData.aiSummary) {
+            const summary = callData.aiSummary.toLowerCase();
+            if (summary.includes('appointment scheduled') ||
+                summary.includes('meeting booked') ||
+                summary.includes('appointment booked') ||
+                summary.includes('scheduled for') ||
+                summary.includes('meeting scheduled') ||
+                summary.includes('scheduled a meeting') ||
+                summary.includes('scheduled an appointment') ||
+                /(?:scheduled|booked)\s+(?:[a-zA-Z0-9-]+\s+){0,10}(?:meeting|appointment)/i.test(summary) ||
+                /(?:meeting|appointment)\s+(?:[a-zA-Z0-9-]+\s+){0,10}(?:scheduled|booked)/i.test(summary)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    static async checkAppointmentInDatabase(callData) {
+        try {
+            const formatAppt = (appt, matchedBy) => {
+                console.log(`${this.LOG_PREFIX} Found appointment ${appt.id} in database for call ${callData.id} (matched by: ${matchedBy})`);
+                return {
+                    appointmentId: appt.id,
+                    contactName: appt.contactName,
+                    contactPhone: appt.contactPhone,
+                    date: appt.appointmentDate,
+                    time: appt.appointmentTime,
+                    bookedAt: appt.createdAt?.toISOString(),
+                };
+            };
+            const byCallId = await db_1.db
+                .select()
+                .from(schema_1.appointments)
+                .where((0, drizzle_orm_1.eq)(schema_1.appointments.callId, callData.id))
+                .limit(1);
+            if (byCallId.length > 0) {
+                return formatAppt(byCallId[0], 'callId');
+            }
+            const phone = callData.phoneNumber || callData.fromNumber || callData.toNumber;
+            if (!phone)
+                return null;
+            const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
+            if (normalizedPhone.length < 7)
+                return null;
+            const byPhone = await db_1.db
+                .select()
+                .from(schema_1.appointments)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.appointments.userId, callData.userId), (0, drizzle_orm_1.sql) `${schema_1.appointments.createdAt} > NOW() - INTERVAL '30 minutes'`, (0, drizzle_orm_1.sql) `RIGHT(REGEXP_REPLACE(${schema_1.appointments.contactPhone}, '[^0-9]', '', 'g'), 10) = ${normalizedPhone}`))
+                .limit(1);
+            if (byPhone.length > 0) {
+                return formatAppt(byPhone[0], `userId+phone(${normalizedPhone})`);
+            }
+            return null;
+        }
+        catch (error) {
+            console.warn(`${this.LOG_PREFIX} Appointment DB check failed for call ${callData.id}: ${error.message}`);
+            return null;
+        }
+    }
+    /**
+     * Check if form was submitted during the call
+     */
+    static checkFormSubmitted(callData, metadata) {
+        // Check explicit flags
+        if (metadata.formSubmitted === true)
+            return true;
+        if (metadata.hasFormSubmission === true)
+            return true;
+        // Check aiInsights
+        const aiInsights = metadata.aiInsights;
+        if (aiInsights?.primaryOutcome === 'form_submitted')
+            return true;
+        if (aiInsights?.formSubmitted === true)
+            return true;
+        // Check for form data presence
+        if (metadata.formData || metadata.collectedData)
+            return true;
+        if (aiInsights?.formData || aiInsights?.collectedData)
+            return true;
+        return false;
+    }
+    /**
+     * Check if call needs follow-up
+     */
+    static checkNeedsFollowUp(callData, aiInsights) {
+        // Check classification
+        const classification = (callData.classification || '').toLowerCase();
+        if (classification === 'follow_up' || classification === 'callback')
+            return true;
+        // Check AI insights
+        if (aiInsights.needsFollowUp === true)
+            return true;
+        if (aiInsights.followUpRequired === true)
+            return true;
+        if (aiInsights.callbackRequested === true)
+            return true;
+        // Check aiNextAction suggestion
+        const nextAction = (aiInsights.aiNextAction || aiInsights.nextAction || '');
+        if (nextAction.toLowerCase().includes('follow') ||
+            nextAction.toLowerCase().includes('callback') ||
+            nextAction.toLowerCase().includes('call back')) {
+            return true;
+        }
+        return false;
+    }
+    /**
+     * Extract appointment data from metadata
+     */
+    static extractAppointmentData(metadata) {
+        return (metadata.appointmentDetails || metadata.appointmentData ||
+            metadata.aiInsights?.appointmentDetails);
+    }
+    /**
+     * Extract form data from metadata
+     */
+    static extractFormData(metadata) {
+        return (metadata.formData || metadata.collectedData ||
+            metadata.aiInsights?.formData ||
+            metadata.aiInsights?.collectedData);
+    }
+    /**
+     * Find existing lead for a call
+     * Respects campaign/incoming scope to prevent collapsing different campaigns' leads
+     */
+    static async findExistingLead(callData) {
+        const phoneNumber = this.resolveLeadPhone(callData);
+        const hasValidPhone = phoneNumber && phoneNumber !== 'Unknown';
+        // For ElevenLabs-Twilio engine, check callId first
+        if (callData.engine === 'elevenlabs-twilio') {
+            const [existingByCallId] = await db_1.db
+                .select()
+                .from(schema_1.leads)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.leads.userId, callData.userId), (0, drizzle_orm_1.eq)(schema_1.leads.callId, callData.id)))
+                .limit(1);
+            if (existingByCallId)
+                return existingByCallId;
+        }
+        // For campaign calls, scope by campaignId to prevent different campaigns from sharing leads
+        if (callData.campaignId && hasValidPhone) {
+            const [existingByCampaign] = await db_1.db
+                .select()
+                .from(schema_1.leads)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.leads.userId, callData.userId), (0, drizzle_orm_1.eq)(schema_1.leads.phone, phoneNumber), (0, drizzle_orm_1.eq)(schema_1.leads.campaignId, callData.campaignId)))
+                .limit(1);
+            if (existingByCampaign)
+                return existingByCampaign;
+        }
+        // For incoming calls, scope by incomingConnectionId if available
+        if (callData.incomingConnectionId && hasValidPhone) {
+            const [existingByConnection] = await db_1.db
+                .select()
+                .from(schema_1.leads)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.leads.userId, callData.userId), (0, drizzle_orm_1.eq)(schema_1.leads.phone, phoneNumber), (0, drizzle_orm_1.eq)(schema_1.leads.incomingConnectionId, callData.incomingConnectionId)))
+                .limit(1);
+            if (existingByConnection)
+                return existingByConnection;
+        }
+        // Fallback: Check by phone number without source scope (for incoming without connection ID)
+        if (hasValidPhone && !callData.campaignId) {
+            const [existingByPhone] = await db_1.db
+                .select()
+                .from(schema_1.leads)
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.leads.userId, callData.userId), (0, drizzle_orm_1.eq)(schema_1.leads.phone, phoneNumber), (0, drizzle_orm_1.eq)(schema_1.leads.sourceType, 'incoming')))
+                .limit(1);
+            return existingByPhone || null;
+        }
+        return null;
+    }
+    /**
+     * Create a lead from call data
+     */
+    static async createLeadFromCall(callData, qualification) {
+        // Use the centralized phone resolution helper
+        const phoneNumber = this.resolveLeadPhone(callData);
+        // Determine source type and IDs
+        const sourceType = callData.campaignId ? 'campaign' : 'incoming';
+        const leadData = {
+            userId: callData.userId,
+            sourceType,
+            campaignId: callData.campaignId || null,
+            incomingConnectionId: callData.incomingConnectionId || null,
+            phone: phoneNumber,
+            firstName: callData.firstName || null,
+            lastName: callData.lastName || null,
+            email: callData.email || null,
+            company: callData.company || null,
+            stage: 'new',
+            leadScore: qualification.score,
+            aiSummary: callData.aiSummary,
+            aiNextAction: this.generateNextAction(qualification),
+            sentiment: callData.sentiment,
+            aiCategory: qualification.category,
+            hasAppointment: qualification.hasAppointment,
+            hasFormSubmission: qualification.hasFormSubmission,
+            hasTransfer: qualification.hasTransfer,
+            hasCallback: qualification.hasCallback,
+            appointmentDetails: qualification.appointmentData,
+            formData: qualification.formData,
+            transferredTo: callData.transferredTo,
+            transferredAt: callData.wasTransferred ? new Date() : null,
+            callId: callData.engine === 'elevenlabs-twilio' ? callData.id : null,
+            plivoCallId: callData.engine === 'plivo-openai' ? callData.id : null,
+            twilioOpenaiCallId: callData.engine === 'twilio-openai' ? callData.id : null,
+            sipCallId: (callData.engine === 'elevenlabs-sip' || callData.engine === 'openai-sip') ? callData.id : null,
+            veSessionId: callData.engine === 'custom-voice-engine' ? callData.id : null,
+        };
+        return crm_storage_1.CRMStorage.createLead(leadData);
+    }
+    /**
+     * Update an existing lead with new call data and qualification
+     */
+    static async updateExistingLead(existingLead, callData, qualification) {
+        const updates = {};
+        // Update contact details if not already present
+        if (callData.firstName && !existingLead.firstName) {
+            updates.firstName = callData.firstName;
+        }
+        if (callData.lastName && !existingLead.lastName) {
+            updates.lastName = callData.lastName;
+        }
+        if (callData.email && !existingLead.email) {
+            updates.email = callData.email;
+        }
+        if (callData.company && !existingLead.company) {
+            updates.company = callData.company;
+        }
+        // Update score if higher
+        if (qualification.score > (existingLead.leadScore || 0)) {
+            updates.leadScore = qualification.score;
+        }
+        // Update category based on outcome type:
+        // - "Action" categories (appointment, form, transfer, follow_up) always update - these represent specific call outcomes
+        // - "Sentiment" categories (hot, warm) only update if current category is also sentiment-based or null
+        // This ensures action outcomes are always visible while preserving high-value leads
+        const actionCategories = [
+            schema_1.AI_LEAD_CATEGORIES.APPOINTMENT_BOOKED,
+            schema_1.AI_LEAD_CATEGORIES.FORM_SUBMITTED,
+            schema_1.AI_LEAD_CATEGORIES.CALL_TRANSFER,
+            schema_1.AI_LEAD_CATEGORIES.NEED_FOLLOW_UP,
+        ];
+        const sentimentCategories = [
+            schema_1.AI_LEAD_CATEGORIES.HOT,
+            schema_1.AI_LEAD_CATEGORIES.WARM,
+        ];
+        const isNewCategoryAction = qualification.category && actionCategories.includes(qualification.category);
+        const isExistingCategorySentiment = !existingLead.aiCategory || sentimentCategories.includes(existingLead.aiCategory);
+        // Always update for action categories, or update sentiment if current is also sentiment/null
+        if (qualification.category && (isNewCategoryAction || isExistingCategorySentiment)) {
+            updates.aiCategory = qualification.category;
+            updates.aiNextAction = this.generateNextAction(qualification);
+        }
+        // Update flags - only set to true, never false (accumulate)
+        if (qualification.hasAppointment && !existingLead.hasAppointment) {
+            updates.hasAppointment = true;
+            if (qualification.appointmentData) {
+                updates.appointmentDetails = qualification.appointmentData;
+            }
+        }
+        if (qualification.hasFormSubmission && !existingLead.hasFormSubmission) {
+            updates.hasFormSubmission = true;
+            if (qualification.formData) {
+                updates.formData = qualification.formData;
+            }
+        }
+        if (qualification.hasTransfer && !existingLead.hasTransfer) {
+            updates.hasTransfer = true;
+            if (callData.transferredTo) {
+                updates.transferredTo = callData.transferredTo;
+                updates.transferredAt = new Date();
+            }
+        }
+        if (qualification.hasCallback && !existingLead.hasCallback) {
+            updates.hasCallback = true;
+        }
+        // Update summary/sentiment if newer call has them
+        if (callData.aiSummary) {
+            updates.aiSummary = callData.aiSummary;
+        }
+        if (callData.sentiment) {
+            updates.sentiment = callData.sentiment;
+        }
+        // Update source IDs if not already set
+        if (!existingLead.campaignId && callData.campaignId) {
+            updates.campaignId = callData.campaignId;
+            updates.sourceType = 'campaign';
+        }
+        if (!existingLead.incomingConnectionId && callData.incomingConnectionId) {
+            updates.incomingConnectionId = callData.incomingConnectionId;
+        }
+        // Always update call reference to the latest call
+        if (callData.engine === 'elevenlabs-twilio') {
+            updates.callId = callData.id;
+        }
+        else if (callData.engine === 'plivo-openai') {
+            updates.plivoCallId = callData.id;
+        }
+        else if (callData.engine === 'twilio-openai') {
+            updates.twilioOpenaiCallId = callData.id;
+        }
+        else if (callData.engine === 'elevenlabs-sip' || callData.engine === 'openai-sip') {
+            updates.sipCallId = callData.id;
+        }
+        else if (callData.engine === 'custom-voice-engine') {
+            updates.veSessionId = callData.id;
+        }
+        // Always increment total calls and update last call timestamp
+        updates.totalCalls = (existingLead.totalCalls || 0) + 1;
+        updates.lastCallAt = new Date();
+        return crm_storage_1.CRMStorage.updateLead(existingLead.id, callData.userId, updates);
+    }
+    /**
+     * Generate suggested next action based on qualification
+     */
+    static generateNextAction(qualification) {
+        if (qualification.hasAppointment) {
+            return 'Confirm appointment details and send reminder';
+        }
+        if (qualification.hasFormSubmission) {
+            return 'Review submitted form data and follow up';
+        }
+        if (qualification.hasTransfer) {
+            return 'Review call transfer outcome with agent';
+        }
+        if (qualification.hasCallback) {
+            return 'Schedule follow-up call';
+        }
+        if (qualification.category === schema_1.AI_LEAD_CATEGORIES.HOT) {
+            return 'High priority - contact immediately';
+        }
+        if (qualification.category === schema_1.AI_LEAD_CATEGORIES.WARM) {
+            return 'Nurture lead with relevant content';
+        }
+        return 'Review call and determine next steps';
+    }
+    /**
+     * Process a call from the ElevenLabs-Twilio engine (calls table)
+     */
+    static async processElevenLabsTwilioCall(callId) {
+        const [call] = await db_1.db
+            .select()
+            .from(schema_1.calls)
+            .where((0, drizzle_orm_1.eq)(schema_1.calls.id, callId))
+            .limit(1);
+        if (!call || !call.userId) {
+            console.log(`${this.LOG_PREFIX} Call not found or no user: ${callId}`);
+            return null;
+        }
+        // Only process completed calls
+        if (call.status !== 'completed' && call.status !== 'done') {
+            console.log(`${this.LOG_PREFIX} Call ${callId} not completed (status: ${call.status})`);
+            return null;
+        }
+        // For ElevenLabs-Twilio, extract aiInsights from metadata if available
+        const elevenLabsMetadata = call.metadata || {};
+        const elevenLabsAiInsights = elevenLabsMetadata.aiInsights || this.parseAiSummaryAsInsights(call.aiSummary);
+        const callData = {
+            id: call.id,
+            userId: call.userId,
+            phoneNumber: call.phoneNumber || '',
+            fromNumber: call.fromNumber,
+            toNumber: call.toNumber,
+            callDirection: call.callDirection,
+            status: call.status,
+            duration: call.duration,
+            transcript: call.transcript,
+            aiSummary: call.aiSummary,
+            sentiment: call.sentiment,
+            classification: call.classification,
+            wasTransferred: call.wasTransferred || false,
+            transferredTo: call.transferredTo,
+            campaignId: call.campaignId,
+            incomingConnectionId: call.incomingConnectionId,
+            metadata: elevenLabsMetadata,
+            aiInsights: elevenLabsAiInsights, // ElevenLabs stores insights in metadata
+            engine: 'elevenlabs-twilio',
+        };
+        return this.processCall(callData);
+    }
+    /**
+     * Process a call from the Plivo+OpenAI engine (plivo_calls table)
+     */
+    static async processPlivoOpenAICall(callId) {
+        const [call] = await db_1.db
+            .select()
+            .from(schema_1.plivoCalls)
+            .where((0, drizzle_orm_1.eq)(schema_1.plivoCalls.id, callId))
+            .limit(1);
+        if (!call || !call.userId) {
+            console.log(`${this.LOG_PREFIX} Plivo call not found or no user: ${callId}`);
+            return null;
+        }
+        // Only process completed calls
+        if (call.status !== 'completed' && call.status !== 'done') {
+            console.log(`${this.LOG_PREFIX} Plivo call ${callId} not completed (status: ${call.status})`);
+            return null;
+        }
+        // For Plivo+OpenAI, extract aiInsights from metadata if available
+        const plivoMetadata = call.metadata || {};
+        const plivoAiInsights = plivoMetadata.aiInsights || this.parseAiSummaryAsInsights(call.aiSummary);
+        const callData = {
+            id: call.id,
+            userId: call.userId,
+            phoneNumber: call.fromNumber || call.toNumber || '',
+            fromNumber: call.fromNumber,
+            toNumber: call.toNumber,
+            callDirection: call.callDirection,
+            status: call.status,
+            duration: call.duration,
+            transcript: call.transcript,
+            aiSummary: call.aiSummary,
+            sentiment: call.sentiment,
+            classification: call.classification,
+            wasTransferred: call.wasTransferred || false,
+            transferredTo: call.transferredTo,
+            campaignId: call.campaignId,
+            incomingConnectionId: null, // Plivo uses plivoPhoneNumberId instead
+            metadata: plivoMetadata,
+            aiInsights: plivoAiInsights,
+            engine: 'plivo-openai',
+        };
+        return this.processCall(callData);
+    }
+    /**
+     * Process a call from the Twilio+OpenAI engine (twilio_openai_calls table)
+     */
+    static async processTwilioOpenAICall(callId) {
+        const [call] = await db_1.db
+            .select()
+            .from(schema_1.twilioOpenaiCalls)
+            .where((0, drizzle_orm_1.eq)(schema_1.twilioOpenaiCalls.id, callId))
+            .limit(1);
+        if (!call || !call.userId) {
+            console.log(`${this.LOG_PREFIX} Twilio-OpenAI call not found or no user: ${callId}`);
+            return null;
+        }
+        // Only process completed calls
+        if (call.status !== 'completed' && call.status !== 'done') {
+            console.log(`${this.LOG_PREFIX} Twilio-OpenAI call ${callId} not completed (status: ${call.status})`);
+            return null;
+        }
+        // For Twilio+OpenAI, extract aiInsights from metadata if available
+        const twilioMetadata = call.metadata || {};
+        const twilioAiInsights = twilioMetadata.aiInsights || this.parseAiSummaryAsInsights(call.aiSummary);
+        const callData = {
+            id: call.id,
+            userId: call.userId,
+            phoneNumber: call.fromNumber || call.toNumber || '',
+            fromNumber: call.fromNumber,
+            toNumber: call.toNumber,
+            callDirection: call.callDirection,
+            status: call.status,
+            duration: call.duration,
+            transcript: call.transcript,
+            aiSummary: call.aiSummary,
+            sentiment: call.sentiment,
+            classification: call.classification,
+            wasTransferred: call.wasTransferred || false,
+            transferredTo: call.transferredTo,
+            campaignId: call.campaignId,
+            incomingConnectionId: null, // Twilio-OpenAI uses twilioPhoneNumberId instead
+            metadata: twilioMetadata,
+            aiInsights: twilioAiInsights,
+            engine: 'twilio-openai',
+        };
+        return this.processCall(callData);
+    }
+    /**
+     * Process a call from the SIP engine (sip_calls table)
+     */
+    static async processSipCall(callId) {
+        const [call] = await db_1.db
+            .select()
+            .from(schema_1.sipCalls)
+            .where((0, drizzle_orm_1.eq)(schema_1.sipCalls.id, callId))
+            .limit(1);
+        if (!call || !call.userId) {
+            console.log(`${this.LOG_PREFIX} SIP call not found or no user: ${callId}`);
+            return null;
+        }
+        if (call.status !== 'completed' && call.status !== 'done') {
+            console.log(`${this.LOG_PREFIX} SIP call ${callId} not completed (status: ${call.status})`);
+            return null;
+        }
+        const sipMetadata = call.metadata || {};
+        const sipAiInsights = sipMetadata.aiInsights || this.parseAiSummaryAsInsights(call.aiSummary);
+        const callData = {
+            id: call.id,
+            userId: call.userId,
+            phoneNumber: call.direction === 'inbound' ? (call.fromNumber || '') : (call.toNumber || ''),
+            fromNumber: call.fromNumber,
+            toNumber: call.toNumber,
+            callDirection: call.direction === 'inbound' ? 'incoming' : 'outgoing',
+            status: call.status || 'completed',
+            duration: call.durationSeconds,
+            transcript: call.transcript ? (typeof call.transcript === 'string' ? call.transcript : JSON.stringify(call.transcript)) : null,
+            aiSummary: call.aiSummary,
+            sentiment: call.sentiment,
+            classification: call.classification,
+            wasTransferred: false,
+            transferredTo: null,
+            campaignId: call.campaignId,
+            incomingConnectionId: null,
+            metadata: sipMetadata,
+            aiInsights: sipAiInsights,
+            engine: call.engine || 'elevenlabs-sip',
+        };
+        return this.processCall(callData);
+    }
+    /**
+     * Process a call from the Custom Voice Engine (ve_sessions table)
+     */
+    static async processCustomVoiceEngineCall(sessionId) {
+        try {
+            const result = await db_1.db.execute((0, drizzle_orm_1.sql) `
+        SELECT * FROM ve_sessions WHERE id = ${sessionId} LIMIT 1
+      `);
+            const call = result.rows[0];
+            if (!call || !call.user_id) {
+                console.log(`${this.LOG_PREFIX} Custom Voice Engine session not found or no user: ${sessionId}`);
+                return null;
+            }
+            // Only process completed calls
+            if (call.status !== 'completed' && call.status !== 'done') {
+                console.log(`${this.LOG_PREFIX} Custom Voice Engine session ${sessionId} not completed (status: ${call.status})`);
+                return null;
+            }
+            const metadata = (typeof call.metadata === 'string' ? JSON.parse(call.metadata) : call.metadata) || {};
+            // Parse transcript and build clean text transcript for LLM
+            const turns = typeof call.transcript === 'string'
+                ? JSON.parse(call.transcript)
+                : (call.transcript || []);
+            const transcriptText = Array.isArray(turns)
+                ? turns.map((t) => `${t.role === 'assistant' ? 'Agent' : 'Customer'}: ${t.content || t.message || ''}`).join('\n')
+                : '';
+            let aiSummary = call.ai_summary;
+            let sentiment = call.sentiment;
+            let classification = call.classification;
+            let extractedFirstName = null;
+            let extractedLastName = null;
+            let extractedEmail = null;
+            let extractedCompany = null;
+            if (transcriptText.trim().length > 0) {
+                try {
+                    const dbApiKey = await db_1.db.execute((0, drizzle_orm_1.sql) `
+            SELECT value FROM global_settings WHERE key = 'openai_api_key' LIMIT 1
+          `);
+                    const apiKey = dbApiKey.rows[0]?.value || process.env.OPENAI_API_KEY;
+                    if (apiKey) {
+                        const { default: OpenAI } = await Promise.resolve().then(() => require('openai'));
+                        const openai = new OpenAI({ apiKey });
+                        const prompt = `You are an AI assistant analyzing a call transcript between an agent and a customer.
+Analyze the transcript and extract the following details.
+
+TRANSCRIPT:
+${transcriptText}
+
+Respond ONLY with a valid JSON object in this exact format:
+{
+  "summary": "2-3 sentence summary of the call",
+  "sentiment": "positive" | "neutral" | "negative",
+  "classification": "hot" | "warm" | "cold" | "lost",
+  "extractedFirstName": "extracted customer first name or null if not mentioned",
+  "extractedLastName": "extracted customer last name or null if not mentioned",
+  "extractedEmail": "extracted customer email address or null if not mentioned",
+  "extractedCompany": "extracted customer company name or null if not mentioned"
+}
+
+Classification Guide:
+- "hot": Customer showed strong interest, ready to buy/proceed
+- "warm": Customer showed moderate interest, needs follow-up
+- "cold": Customer showed little interest, unlikely to convert
+- "lost": Customer explicitly declined or hung up early
+
+Return ONLY the JSON object. No explanation, no markdown formatting.`;
+                        const response = await openai.chat.completions.create({
+                            model: 'gpt-4o-mini',
+                            messages: [{ role: 'user', content: prompt }],
+                            response_format: { type: 'json_object' },
+                            temperature: 0.2,
+                            max_tokens: 500,
+                        });
+                        const content = response.choices[0]?.message?.content;
+                        if (content) {
+                            const result = JSON.parse(content);
+                            aiSummary = result.summary || aiSummary;
+                            sentiment = result.sentiment || sentiment;
+                            classification = result.classification || classification;
+                            extractedFirstName = result.extractedFirstName || null;
+                            extractedLastName = result.extractedLastName || null;
+                            extractedEmail = result.extractedEmail || null;
+                            extractedCompany = result.extractedCompany || null;
+                            console.log(`💼 [CRM Lead Processor] Extracted call details: Summary="${aiSummary}", Classification="${classification}", Company="${extractedCompany}"`);
+                        }
+                    }
+                }
+                catch (err) {
+                    console.error('💼 [CRM Lead Processor] Error analyzing transcript with OpenAI:', err.message);
+                }
+            }
+            // Update ve_sessions in the database with the AI analysis results
+            // Note: ve_sessions does not have a `classification` column, so we only update ai_summary and sentiment
+            if (aiSummary !== call.ai_summary || sentiment !== call.sentiment) {
+                try {
+                    await db_1.db.execute((0, drizzle_orm_1.sql) `
+            UPDATE ve_sessions
+            SET ai_summary = ${aiSummary},
+                sentiment = ${sentiment},
+                updated_at = NOW()
+            WHERE id = ${sessionId}
+          `);
+                }
+                catch (updateErr) {
+                    console.error('💼 [CRM Lead Processor] Failed to update ve_sessions with AI analysis:', updateErr.message);
+                }
+            }
+            const aiInsights = metadata.aiInsights || this.parseAiSummaryAsInsights(aiSummary);
+            const callData = {
+                id: call.id,
+                userId: call.user_id,
+                phoneNumber: call.direction === 'inbound' ? (call.from_number || '') : (call.to_number || ''),
+                fromNumber: call.from_number,
+                toNumber: call.to_number,
+                callDirection: call.direction === 'inbound' ? 'incoming' : 'outgoing',
+                status: call.status || 'completed',
+                duration: call.duration_seconds,
+                transcript: call.transcript ? (typeof call.transcript === 'string' ? call.transcript : JSON.stringify(call.transcript)) : null,
+                aiSummary: aiSummary,
+                sentiment: sentiment,
+                classification: classification,
+                firstName: extractedFirstName,
+                lastName: extractedLastName,
+                email: extractedEmail,
+                company: extractedCompany,
+                wasTransferred: false,
+                transferredTo: null,
+                campaignId: null,
+                incomingConnectionId: null,
+                metadata,
+                aiInsights: aiInsights,
+                engine: 'custom-voice-engine',
+            };
+            return this.processCall(callData);
+        }
+        catch (error) {
+            console.error(`${this.LOG_PREFIX} Error processing Custom Voice Engine session ${sessionId}:`, error.message);
+            return null;
+        }
+    }
+    /**
+     * Parse AI summary as insights if it's a JSON string
+     */
+    static parseAiSummaryAsInsights(aiSummary) {
+        if (!aiSummary)
+            return null;
+        try {
+            // Check if aiSummary is JSON (sometimes it's stored as stringified JSON)
+            const parsed = JSON.parse(aiSummary);
+            if (typeof parsed === 'object' && parsed !== null) {
+                return parsed;
+            }
+        }
+        catch {
+            // Not JSON, ignore
+        }
+        return null;
+    }
+    /**
+     * Update the call record's classification in the database to align with the CRM lead category.
+     */
+    static async updateCallClassification(callId, engine, category) {
+        try {
+            console.log(`[CRM Lead Processor] Updating call classification for call ${callId} to: ${category} (engine: ${engine})`);
+            if (engine === 'elevenlabs-twilio') {
+                await db_1.db
+                    .update(schema_1.calls)
+                    .set({ classification: category })
+                    .where((0, drizzle_orm_1.eq)(schema_1.calls.id, callId));
+            }
+            else if (engine === 'plivo-openai') {
+                await db_1.db
+                    .update(schema_1.plivoCalls)
+                    .set({ classification: category })
+                    .where((0, drizzle_orm_1.eq)(schema_1.plivoCalls.id, callId));
+            }
+            else if (engine === 'twilio-openai') {
+                await db_1.db
+                    .update(schema_1.twilioOpenaiCalls)
+                    .set({ classification: category })
+                    .where((0, drizzle_orm_1.eq)(schema_1.twilioOpenaiCalls.id, callId));
+            }
+            else if (engine === 'elevenlabs-sip' || engine === 'openai-sip') {
+                await db_1.db
+                    .update(schema_1.sipCalls)
+                    .set({ classification: category })
+                    .where((0, drizzle_orm_1.eq)(schema_1.sipCalls.id, callId));
+            }
+            else if (engine === 'custom-voice-engine') {
+                // ve_sessions table does not have a classification column — store in metadata instead
+                await db_1.db.execute((0, drizzle_orm_1.sql) `
+          UPDATE ve_sessions
+          SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('classification', ${category}::text),
+              updated_at = NOW()
+          WHERE id = ${callId}
+        `);
+            }
+        }
+        catch (error) {
+            console.error(`[CRM Lead Processor] Failed to update call classification for call ${callId}:`, error);
+        }
+    }
+}
+exports.CRMLeadProcessor = CRMLeadProcessor;
+exports.default = CRMLeadProcessor;

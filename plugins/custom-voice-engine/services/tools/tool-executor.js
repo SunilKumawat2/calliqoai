@@ -33,11 +33,12 @@ class ToolExecutor {
     } else if (name.startsWith("webhook_") || name.startsWith("send_email_") || name.startsWith("send_whatsapp_") || metadata?.webhookUrl || metadata?.url) {
       return await ToolExecutor.executeWebhook(name, params, metadata);
     } else if (name === "end_call") {
-      setImmediate(() => {
+      console.log(`[ToolExecutor] end_call invoked \u2014 delaying hangup by 12 seconds so full farewell message plays out completely.`);
+      setTimeout(() => {
         session.end("hangup").catch(() => {
         });
-      });
-      return { success: true, result: "Ending call" };
+      }, 12e3);
+      return { success: true, result: "Ending call after farewell." };
     } else if (name === "transfer_call" || name.startsWith("transfer_")) {
       const targetNumber = params.destination || params.phoneNumber || metadata?.phoneNumber || "";
       if (!targetNumber) {

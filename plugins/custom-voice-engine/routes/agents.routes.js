@@ -31,7 +31,7 @@ function createAgentsRouter() {
   router.post("/", async (req, res) => {
     try {
       const userId = req.userId;
-      const { name, description, systemPrompt, firstMessage, language, llmModel, temperature, maxTokens, ttsVoice, ttsProvider, sttProvider, sttModel, ttsModel, interruptible, silenceTimeoutMs, maxDurationSeconds, endCallOnSilence, businessRules, knowledgeBaseIds, enabledTools, enableMemory, memoryRetentionDays, detectLanguageEnabled, appointmentBookingEnabled, endConversationEnabled, transferEnabled, transferPhoneNumber, messagingEmailEnabled, messagingWhatsappEnabled, messagingEmailTemplate, messagingWhatsappTemplate } = req.body;
+      const { type, flowId, name, description, systemPrompt, firstMessage, language, llmModel, temperature, maxTokens, ttsVoice, ttsProvider, sttProvider, sttModel, ttsModel, interruptible, silenceTimeoutMs, maxDurationSeconds, endCallOnSilence, businessRules, knowledgeBaseIds, enabledTools, enableMemory, memoryRetentionDays, detectLanguageEnabled, appointmentBookingEnabled, endConversationEnabled, transferEnabled, transferPhoneNumber, messagingEmailEnabled, messagingWhatsappEnabled, messagingEmailTemplate, messagingWhatsappTemplate } = req.body;
       if (!name || !systemPrompt) return res.status(400).json({ success: false, error: "name and systemPrompt are required" });
       const result = await db.execute(sql`
         INSERT INTO ve_voice_agents (
@@ -57,6 +57,10 @@ function createAgentsRouter() {
         )
         RETURNING *
       `);
+      const agentId = result.rows[0].id;
+      if (flowId) {
+        await db.execute(sql`UPDATE flows SET agent_id = ${agentId} WHERE id = ${flowId}`);
+      }
       res.json({ success: true, data: result.rows[0] });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
@@ -65,7 +69,7 @@ function createAgentsRouter() {
   router.put("/:id", async (req, res) => {
     try {
       const userId = req.userId;
-      const { name, description, systemPrompt, firstMessage, language, llmModel, temperature, maxTokens, ttsVoice, ttsProvider, sttProvider, sttModel, ttsModel, interruptible, silenceTimeoutMs, maxDurationSeconds, endCallOnSilence, businessRules, knowledgeBaseIds, enableMemory, isActive, detectLanguageEnabled, appointmentBookingEnabled, endConversationEnabled, transferEnabled, transferPhoneNumber, messagingEmailEnabled, messagingWhatsappEnabled, messagingEmailTemplate, messagingWhatsappTemplate } = req.body;
+      const { type, flowId, name, description, systemPrompt, firstMessage, language, llmModel, temperature, maxTokens, ttsVoice, ttsProvider, sttProvider, sttModel, ttsModel, interruptible, silenceTimeoutMs, maxDurationSeconds, endCallOnSilence, businessRules, knowledgeBaseIds, enableMemory, isActive, detectLanguageEnabled, appointmentBookingEnabled, endConversationEnabled, transferEnabled, transferPhoneNumber, messagingEmailEnabled, messagingWhatsappEnabled, messagingEmailTemplate, messagingWhatsappTemplate } = req.body;
       const effectiveSttModel = sttModel !== void 0 ? sttModel || (sttProvider === "sarvam" ? "saaras:v3" : sttModel) : void 0;
       const effectiveTtsModel = ttsModel !== void 0 ? ttsModel || (ttsProvider === "sarvam" ? "bulbul:v3" : ttsModel) : void 0;
       const result = await db.execute(sql`
@@ -96,6 +100,13 @@ function createAgentsRouter() {
         WHERE id = ${req.params.id} AND user_id = ${userId} RETURNING *
       `);
       if (result.rows.length === 0) return res.status(404).json({ success: false, error: "Not found" });
+      const agentId = req.params.id;
+      if (flowId !== void 0) {
+        await db.execute(sql`UPDATE flows SET agent_id = null WHERE agent_id = ${agentId}`);
+        if (flowId) {
+          await db.execute(sql`UPDATE flows SET agent_id = ${agentId} WHERE id = ${flowId}`);
+        }
+      }
       try {
         await db.execute(sql`
           UPDATE agents 
@@ -104,7 +115,9 @@ function createAgentsRouter() {
               system_prompt = COALESCE(${systemPrompt}, system_prompt),
               first_message = COALESCE(${firstMessage}, first_message),
               llm_model = COALESCE(${llmModel}, llm_model),
-              temperature = COALESCE(${temperature}, temperature)
+              temperature = COALESCE(${temperature}, temperature),
+              type = COALESCE(${type}, type),
+              flow_id = ${flowId !== void 0 ? flowId || null : sql`flow_id`}
           WHERE id = ${req.params.id} AND user_id = ${userId}
         `);
       } catch (syncErr) {
@@ -124,6 +137,27 @@ function createAgentsRouter() {
       res.status(500).json({ success: false, error: err.message });
     }
   });
+  function createWavHeaderBuffer(pcm, sampleRate = 8e3, numChannels = 1) {
+    const header = Buffer.alloc(44);
+    const dataSize = pcm.length;
+    const fileSize = 36 + dataSize;
+    const byteRate = sampleRate * numChannels * 2;
+    const blockAlign = numChannels * 2;
+    header.write("RIFF", 0);
+    header.writeUInt32LE(fileSize, 4);
+    header.write("WAVE", 8);
+    header.write("fmt ", 12);
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20);
+    header.writeUInt16LE(numChannels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(16, 34);
+    header.write("data", 36);
+    header.writeUInt32LE(dataSize, 40);
+    return Buffer.concat([header, pcm]);
+  }
   router.post("/preview", async (req, res) => {
     try {
       const { voiceId, text, provider, language, ttsModel } = req.body;
@@ -149,7 +183,7 @@ function createAgentsRouter() {
         language: language || "en-IN",
         outputFormat: {
           encoding: "linear16",
-          sampleRate: 8e3
+          sampleRate: 16e3
         },
         speed: 1
       } : {
@@ -161,7 +195,12 @@ function createAgentsRouter() {
           sampleRate: 24e3
         }
       };
-      const audioBuffer = await ttsProvider.synthesize(previewText, config);
+      let audioBuffer = await ttsProvider.synthesize(previewText, config);
+      if (isSarvam) {
+        if (audioBuffer.length >= 44 && audioBuffer.readUInt32BE(0) !== 1380533830) {
+          audioBuffer = createWavHeaderBuffer(audioBuffer, 16e3);
+        }
+      }
       res.setHeader("Content-Type", isSarvam ? "audio/wav" : "audio/mpeg");
       res.setHeader("Content-Length", audioBuffer.length);
       res.setHeader("Cache-Control", "no-cache");

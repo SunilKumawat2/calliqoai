@@ -64,15 +64,12 @@ export class FreeSwitchHealthMonitor {
       await esl.connect();
 
       // Set the dynamic WebSocket URL as a global variable in FreeSWITCH
-      const containerIp = getContainerIp();
-      if (containerIp !== '127.0.0.1') {
-        const wsUrl = `ws://${containerIp}:${process.env.PORT || '5000'}/voice-engine/ws/audio`;
-        try {
-          await esl.api(`global_setvar ve_audio_ws_url ${wsUrl}`);
-          console.log(`[FreeSWITCH Health] Updated global ve_audio_ws_url to ${wsUrl} on node ${node.name}`);
-        } catch (setvarErr: any) {
-          console.warn(`[FreeSWITCH Health] Failed to set ve_audio_ws_url on node ${node.name}:`, setvarErr.message);
-        }
+      const wsUrl = `wss://calliqoai.com/voice-engine/ws/audio`;
+      try {
+        await esl.api(`global_setvar ve_audio_ws_url ${wsUrl}`);
+        console.log(`[FreeSWITCH Health] Updated global ve_audio_ws_url to ${wsUrl} on node ${node.name}`);
+      } catch (setvarErr: any) {
+        console.warn(`[FreeSWITCH Health] Failed to set ve_audio_ws_url on node ${node.name}:`, setvarErr.message);
       }
 
       // Get active call count

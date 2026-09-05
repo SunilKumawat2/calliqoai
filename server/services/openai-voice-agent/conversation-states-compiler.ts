@@ -73,7 +73,11 @@ export class ConversationStatesCompiler {
     const data = node.data || {};
     const config = (data.config as any) || {};
     // Check config first (more specific), then data directly
-    return config[field] || (data as any)[field] || '';
+    let val = config[field] || (data as any)[field];
+    if (!val && (field === 'message' || field === 'endMessage')) {
+      val = config['endMessage'] || (data as any)['endMessage'] || config['end_message'] || (data as any)['end_message'];
+    }
+    return val || '';
   }
 
   /**
@@ -153,7 +157,7 @@ ${statesJson}
 
 # CRITICAL TOOL USAGE REQUIREMENTS
 - FORM SUBMISSIONS: After collecting all required information from the caller, you MUST call the submit_form tool with the collected data. Do NOT just say you have saved the information - you MUST actually call the submit_form function to save it.
-- ENDING CALLS: When the conversation is complete and you say goodbye, you MUST call the end_call function to disconnect the call. Do NOT just say goodbye and wait - you MUST call end_call to hang up the phone.
+- ENDING CALLS: When ending a conversation, FIRST speak your complete farewell message out loud to the caller (e.g. "ਤੁਹਾਡਾ ਕੀਮਤੀ ਸਮਾਂ ਅਤੇ ਫੀਡਬੈਕ ਦੇਣ ਲਈ ਬਹੁਤ ਧੰਨਵਾਦ ਜੀ..."). AFTER AND ONLY AFTER you have completely spoken the entire farewell message out loud, call the end_call function to hang up. NEVER call end_call in the same turn before speaking the full farewell message.
 - TRANSFERS: When transferring to a human agent, you MUST call the transfer_call function. Do NOT just say you are transferring - actually call the function.
 - APPOINTMENTS: When booking appointments, you MUST call the book_appointment function with all collected details.
 - SEND EMAIL: When instructed to send an email, you MUST call the appropriate send_email_* function with the recipient email and template name. If no recipient email is pre-configured, ask the caller for it first.
@@ -324,9 +328,9 @@ Remember: Saying you will do something is NOT the same as actually calling the t
           description: label || 'End the conversation politely.',
           instructions: [
             message 
-              ? `Say: "${this.substituteVariables(message)}"` 
-              : 'Thank the caller and say goodbye.',
-            'Call the "end_call" function to end the call.',
+              ? `FIRST, speak this exact message out loud to the caller word-for-word: "${this.substituteVariables(message)}"` 
+              : 'FIRST, thank the caller warmly and say goodbye.',
+            'AFTER AND ONLY AFTER you have completely spoken the full farewell message out loud to the caller, call the "end_call" function to disconnect.',
           ],
           examples: [
             message || 'Thank you for calling. Have a great day!',

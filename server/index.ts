@@ -45,7 +45,8 @@ import { correlationIdMiddleware } from "./middleware/correlation-id";
 import { emailService } from "./services/email-service";
 import { initializeDirectories } from "./utils/init-directories";
 import { runAllSeeds } from "./seed-all";
-export { db } from "./db";
+import { db } from "./db";
+export { db };
 import { sql } from "drizzle-orm";
 import { resyncSipAgentTransferTools, resyncSipTrunkConfigs, resyncAppointmentWebhookUrls, resyncFormWebhookUrls, resyncMessagingWebhookUrls } from "./services/sip-transfer-resync";
 import { CRMLeadProcessor } from "./engines/crm/lead-processor.service";
@@ -114,6 +115,7 @@ app.use('/uploads', (_req, res, next) => {
 // Serve static images from client/public/images folder (for logos, favicons, SEO images)
 // Images are stored as files instead of base64 to prevent database timeouts
 app.use('/images', express.static(path.join(process.cwd(), 'client', 'public', 'images'), staticCacheOptions));
+app.use('/images', express.static(path.join(process.cwd(), 'dist', 'public', 'images'), staticCacheOptions));
 
 // Serve audio files from public/audio folder (for flow automation play_audio nodes)
 app.use('/audio', express.static(path.join(process.cwd(), 'public', 'audio'), staticCacheOptions));
@@ -398,11 +400,20 @@ app.use((req, res, next) => {
           .replace(/'/g, '&#039;');
       };
 
-      const siteName: string = String(appNameSetting?.value || 'AI Platform');
-      const tagline: string = String(appTaglineSetting?.value || '');
-      const title: string = String(seoSettings?.defaultTitle || siteName);
-      const fullTitle = tagline ? `${title} - ${tagline}` : title;
-      const description: string = String(seoSettings?.defaultDescription || tagline || 'AI-powered voice agents for automated calling');
+      let siteName: string = String(appNameSetting?.value || 'CALLIQO AI');
+      if (siteName.toLowerCase() === 'calliqo ai' || siteName.toLowerCase() === 'calliqoai') {
+        siteName = 'CALLIQO AI';
+      }
+      const tagline: string = String(appTaglineSetting?.value || 'The Intelligence Behind Every Conversation.');
+      
+      let title: string = String(seoSettings?.defaultTitle || siteName);
+      if (title.toLowerCase() === 'calliqo ai' || title.toLowerCase() === 'calliqoai') {
+        title = 'CALLIQO AI';
+      }
+
+      const isHome = pagePath === '/' || pagePath === '';
+      const fullTitle = isHome ? 'CALLIQO AI' : (tagline ? `${title} - ${tagline}` : title);
+      const description: string = isHome ? 'The Intelligence Behind Every Conversation.' : String(seoSettings?.defaultDescription || tagline || 'The Intelligence Behind Every Conversation.');
 
       const isPublic = isPublicRoute(pagePath);
 

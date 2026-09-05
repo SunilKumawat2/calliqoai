@@ -150,21 +150,23 @@ export class EslConnection extends EventEmitter {
       .map(([k, v]) => `${k}=${v}`)
       .join(',');
     const varsStr = vars ? `{${vars}}` : '';
-    return this.bgapi(`originate ${varsStr}${dialString} ${destination}`);
+    const cmd = `originate ${varsStr}${dialString} ${destination}`;
+    console.log(`[ESL] Executing originate command: ${cmd}`);
+    return this.bgapi(cmd);
   }
 
   /**
    * Start audio forking on a channel (sends audio to WebSocket)
    */
   async startAudioFork(uuid: string, wsUrl: string): Promise<string> {
-    return this.execute(uuid, 'audio_fork', wsUrl);
+    return this.api(`uuid_audio_fork ${uuid} start ${wsUrl} mono 8k`);
   }
 
   /**
    * Stop audio forking on a channel
    */
   async stopAudioFork(uuid: string): Promise<string> {
-    return this.execute(uuid, 'stop_audio_fork');
+    return this.api(`uuid_audio_fork ${uuid} stop`);
   }
 
   /**

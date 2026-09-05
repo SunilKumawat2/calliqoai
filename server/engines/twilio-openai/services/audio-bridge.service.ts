@@ -110,9 +110,15 @@ export class TwilioOpenAIAudioBridge {
     return new Promise((resolve, reject) => {
       const { agentConfig, callSid } = session;
 
-      const wsUrl = `${this.OPENAI_REALTIME_URL}?model=${agentConfig.model}`;
+      let model = agentConfig.model;
+      if (model === 'gpt-realtime-1.5' || model === 'gpt-realtime' || model === 'gpt-4o-realtime-preview' || model === 'gpt-4o-realtime-preview-2024-10-01') {
+        model = 'gpt-realtime';
+      } else if (model === 'gpt-realtime-mini' || model === 'gpt-4o-mini-realtime-preview' || model === 'gpt-4o-mini-realtime-preview-2024-12-17') {
+        model = 'gpt-realtime-mini';
+      }
+      const wsUrl = `${this.OPENAI_REALTIME_URL}?model=${model}`;
 
-      console.log(`[TwilioOpenAI Bridge] Connecting to OpenAI: ${agentConfig.model}`);
+      console.log(`[TwilioOpenAI Bridge] Connecting to OpenAI: ${model} (mapped from ${agentConfig.model})`);
 
       const ws = new WebSocket(wsUrl, {
         headers: {
@@ -217,9 +223,10 @@ export class TwilioOpenAIAudioBridge {
 IMPORTANT FUNCTION CALLING REQUIREMENTS:
 1. After collecting all form information from the user, you MUST call the submit_form function with the collected data. Do NOT just say "I have recorded your information" - you MUST actually call the submit_form function to save the data.
 2. After completing the main task (like form submission), say a friendly closing message and ask if there's anything else. Wait for the user to respond.
-3. Only call the end_call function AFTER the user confirms they are done or says goodbye. Do not hang up immediately after completing a task - give the user a chance to respond.
-4. When the user says goodbye or confirms they are done, THEN call the end_call function to disconnect.
-5. These function calls are MANDATORY. Data will NOT be saved unless you call the functions.
+3. When the user says goodbye, confirms they are done, or explicitly asks to disconnect or end the call, you MUST IMMEDIATELY CALL the end_call function.
+4. Under NO circumstances should you verbally say goodbye, bye, or close the call without triggering the end_call tool call. The moment you decide to end the conversation, you MUST invoke the end_call function tool.
+5. In Hindi/Hinglish calls, if the user says "Call cut kar do", "khatam karo", "bye", "alvida", "thank you", or indicates they are done, you MUST call the end_call function immediately.
+6. These function calls are MANDATORY. The call will remain open and active unless you call the end_call function.
 
 BACKGROUND NOISE HANDLING:
 - IGNORE background noise, music, TV, radio, or ambient sounds entirely.
@@ -722,21 +729,25 @@ BACKGROUND NOISE HANDLING:
             console.log(`[TwilioOpenAI Bridge] Ignoring end_call - session already disconnecting/transferring`);
             result = { ignored: true, reason: 'Session already disconnecting or transfer in progress' };
           } else {
-            console.log(`[TwilioOpenAI Bridge] Executing end call: ${actionResult.reason}`);
-            const hangupResult = await this.executeHangup(session);
-            if (!hangupResult.success) {
-              result = {
-                ...actionResult,
-                hangupError: hangupResult.error,
-                message: 'Failed to end call, please try again.'
-              };
-            } else {
-              result = {
-                ...actionResult,
-                hangupSuccess: true,
-                message: 'Call ended successfully.'
-              };
-            }
+            console.log(`[TwilioOpenAI Bridge] Executing end call: ${actionResult.reason}. Delaying hangup by 8s...`);
+            
+            // Mark session as disconnected immediately to prevent processing any further user voice inputs
+            session.status = 'disconnected';
+
+            setTimeout(async () => {
+              try {
+                const hangupResult = await AudioBridgeService.executeHangup(session);
+                console.log(`[TwilioOpenAI Bridge] Delayed hangup completed: ${JSON.stringify(hangupResult)}`);
+              } catch (err: any) {
+                console.error(`[TwilioOpenAI Bridge] Error in delayed hangup: ${err.message}`);
+              }
+            }, 3000);
+
+            result = {
+              ...actionResult,
+              hangupSuccess: true,
+              message: 'Call ended successfully.'
+            };
           }
         }
       }
@@ -876,6 +887,9 @@ BACKGROUND NOISE HANDLING:
         break;
 
       case 'media':
+        if (session.status === 'disconnected') {
+          break;
+        }
         if (event.media?.payload && session.openaiWs && session.openaiWs.readyState === WebSocket.OPEN) {
           session.openaiWs.send(JSON.stringify({
             type: 'input_audio_buffer.append',
@@ -901,7 +915,11 @@ BACKGROUND NOISE HANDLING:
     if (session) {
       session.twilioWs = twilioWs;
       session.streamSid = streamSid;
+      session.twilioStreamReady = true;
       console.log(`[TwilioOpenAI Bridge] Twilio WebSocket set for ${callSid}, streamSid: ${streamSid}`);
+      // For outbound calls: Twilio stream is already ready when this is called.
+      // Try to send the first message now (will fire if OpenAI is also connected).
+      this.trySendFirstMessage(session);
     }
   }
 
@@ -985,6 +1003,12 @@ BACKGROUND NOISE HANDLING:
     const { callSid, openaiWs, twilioWs, streamSid } = session;
 
     if (!openaiWs || openaiWs.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    // Protection: Do NOT allow barge-in during the initial greeting / startup window (first 3500ms)
+    if (Date.now() - session.startedAt.getTime() < 3500) {
+      console.log(`[TwilioOpenAI Bridge] Ignoring barge-in during initial startup/greeting window for ${callSid}`);
       return;
     }
 

@@ -1385,7 +1385,7 @@ async function placeFlowTestCall({
         activeGateway = (userGatewayResult.rows as any[])[0];
       }
 
-      const gatewayName = activeGateway ? activeGateway.name.toLowerCase() : 'twilio';
+      const gatewayName = activeGateway ? activeGateway.name.trim().toLowerCase() : 'twilio';
 
       console.log(`📞 [Flow Test] Custom Voice Engine agent detected, fetching active ${gatewayName} phone number for Caller ID`);
 
@@ -1711,8 +1711,9 @@ async function placeFlowTestCall({
 
         const node = nodes[0];
 
-        // Let's create a session ID
-        const sessionUuid = nanoid();
+        // Let's create a valid UUID session ID so FreeSWITCH uses it as channel Unique-ID
+        const { randomUUID } = await import('crypto');
+        const sessionUuid = randomUUID();
 
         // Check if the agent exists in ve_voice_agents to satisfy foreign key constraint
         const checkAgentInVe = await db.execute(sql`
@@ -1788,8 +1789,8 @@ async function placeFlowTestCall({
           activeGateway = (userGatewayResult.rows as any[])[0];
         }
 
-        const gatewayName = activeGateway ? activeGateway.name.toLowerCase() : 'twilio';
-        const gatewayProxy = activeGateway ? activeGateway.proxy : 'testhr.pstn.twilio.com';
+        const gatewayName = activeGateway ? activeGateway.name.trim().toLowerCase() : 'twilio';
+        const gatewayProxy = activeGateway ? activeGateway.proxy : (process.env.TWILIO_SIP_PROXY || 'pstn.twilio.com');
 
         const formattedTo = !phoneNumber.startsWith('+') ? `+${phoneNumber}` : phoneNumber;
         const dialString = `sofia/gateway/${gatewayName}/${formattedTo}`;
@@ -1821,7 +1822,8 @@ async function placeFlowTestCall({
           effective_caller_id_number: callerId,
           effective_caller_id_name: callerId,
           sip_from_uri: `sip:${callerId}@${gatewayProxy}`,
-          ve_audio_ws_url: `ws://${containerIp}:${process.env.PORT || '5000'}/voice-engine/ws/audio`,
+          ve_audio_ws_url: `ws://${containerIp}:${process.env.PORT || '5000'}/voice-engine/ws/audio/${sessionUuid}`,
+          absolute_codec_string: 'PCMU,PCMA,telephone-event',
         };
 
         // Trigger originate

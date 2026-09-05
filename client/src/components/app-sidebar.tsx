@@ -14,7 +14,7 @@
  * Respect the author's rights and Envato licensing terms.
  * ============================================================
  */
-import { Users, BookOpen, Mic, Link as LinkIcon, Phone, Settings, ChevronsUpDown, Plus, BarChart3, Home, Target, LogOut, Coins, Shield, CreditCard, TrendingUp, UserCheck, Workflow, Webhook, ClipboardList, Calendar, Layout, FileText, Wrench, Globe, Bot, ContactRound, MessageSquare } from "lucide-react";
+import { Users, BookOpen, Mic, Link as LinkIcon, Phone, PhoneCall, Settings, ChevronsUpDown, Plus, BarChart3, Home, Target, LogOut, Coins, Shield, CreditCard, TrendingUp, UserCheck, Workflow, Webhook, ClipboardList, Calendar, Layout, FileText, Wrench, Globe, Bot, ContactRound, MessageSquare } from "lucide-react";
 import { usePluginStatus } from "@/hooks/use-plugin-status";
 import {
   Sidebar,
@@ -90,6 +90,7 @@ export function AppSidebar() {
     ...(isMessagingEnabled ? [{ title: t('nav.conversations', 'Conversations'), url: "/app/conversations", icon: MessageSquare, iconColor: "text-green-500" }] : []),
     { title: t('nav.calls'), url: "/app/calls", icon: Phone, iconColor: "text-blue-500" },
     { title: t('nav.analytics'), url: "/app/analytics", icon: BarChart3, iconColor: "text-purple-500" },
+    { title: t('nav.demo', 'Demo'), url: "/app/demo", icon: PhoneCall, iconColor: "text-amber-500" },
   ];
 
 
