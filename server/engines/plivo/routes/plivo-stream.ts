@@ -304,9 +304,11 @@ async function initializeSession(
       openaiApiKey = credential?.apiKey || null;
     }
     
-    // If no credential was reserved during call setup (shouldn't happen normally),
-    // the call cannot proceed - we should not reserve new slots here as they won't
-    // be properly tracked and released
+    if (!openaiApiKey && process.env.OPENAI_API_KEY) {
+      openaiApiKey = process.env.OPENAI_API_KEY;
+      logger.info(`Using process.env.OPENAI_API_KEY fallback for stream ${callUuid}`, undefined, 'PlivoStream');
+    }
+
     if (!openaiApiKey) {
       logger.error(`No OpenAI credential attached to call ${callUuid} - call was not properly set up`, undefined, 'PlivoStream');
       plivoWs.close();
@@ -337,16 +339,48 @@ async function initializeSession(
 
     // Fetch agent details early to determine if it's a flow or natural agent
     const callMetadata = call.metadata as Record<string, unknown> | null;
-    let flowAgent: typeof agents.$inferSelect | undefined;
-    let agent: typeof agents.$inferSelect | undefined;
+    let flowAgent: any;
+    let agent: any;
     if (call.agentId) {
       const [fetchedAgent] = await db
         .select()
         .from(agents)
         .where(eq(agents.id, call.agentId))
         .limit(1);
-      flowAgent = fetchedAgent;
-      agent = fetchedAgent;
+      if (fetchedAgent) {
+        flowAgent = fetchedAgent;
+        agent = fetchedAgent;
+      } else {
+        const veRes = await db.execute(sql`SELECT * FROM ve_voice_agents WHERE id = ${call.agentId} LIMIT 1`);
+        if (veRes.rows.length > 0) {
+          const row: any = veRes.rows[0];
+          agent = {
+            id: row.id,
+            userId: row.user_id,
+            name: row.name,
+            systemPrompt: row.system_prompt,
+            firstMessage: row.first_message,
+            language: row.language || 'en',
+            type: 'incoming',
+          };
+          flowAgent = agent;
+        } else {
+          const incRes = await db.execute(sql`SELECT * FROM incoming_agents WHERE id = ${call.agentId} LIMIT 1`);
+          if (incRes.rows.length > 0) {
+            const row: any = incRes.rows[0];
+            agent = {
+              id: row.id,
+              userId: row.user_id,
+              name: row.name,
+              systemPrompt: row.system_prompt,
+              firstMessage: row.first_message,
+              language: row.language || 'en',
+              type: 'incoming',
+            };
+            flowAgent = agent;
+          }
+        }
+      }
     }
 
     const isFlow = flowAgent?.type === 'flow';
