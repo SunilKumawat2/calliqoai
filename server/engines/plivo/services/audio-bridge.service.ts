@@ -558,9 +558,9 @@ IMPORTANT FUNCTION CALLING REQUIREMENTS:
             }
 
             // Send directly to Plivo WebSocket
-            // Plivo bidirectional streams use 'playAudio' event (not 'media' like Twilio)
+            // Send both 'playAudio' and 'media' event formats to ensure Plivo audio stream compatibility
             if (session.plivoWs && session.plivoWs.readyState === WebSocket.OPEN) {
-              const mediaMessage: Record<string, unknown> = {
+              const playAudioMessage = {
                 event: 'playAudio',
                 media: {
                   contentType: 'audio/x-mulaw',
@@ -568,6 +568,13 @@ IMPORTANT FUNCTION CALLING REQUIREMENTS:
                   payload: mulawBase64,
                 },
               };
+              const mediaMessage = {
+                event: 'media',
+                media: {
+                  payload: mulawBase64,
+                },
+              };
+              session.plivoWs.send(JSON.stringify(playAudioMessage));
               session.plivoWs.send(JSON.stringify(mediaMessage));
             }
           }
