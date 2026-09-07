@@ -580,6 +580,7 @@ export class PlivoPhoneService {
       // NOTE: Plivo SDK expects snake_case 'app_id', not camelCase 'appId'
       logger.info(`Assigning app ${appId} to number ${phoneRecord.plivoNumberId}`, undefined, 'PlivoPhone');
       const updateResult = await client.numbers.update(phoneRecord.plivoNumberId, {
+        app_id: appId,
         appId: appId,
       } as any);
       logger.info(`Number update result`, updateResult, 'PlivoPhone');

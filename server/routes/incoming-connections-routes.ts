@@ -341,6 +341,18 @@ router.post("/", authenticateHybrid, async (req: AuthRequest, res) => {
         UPDATE plivo_phone_numbers SET assigned_agent_id = ${agentId}, updated_at = NOW() WHERE id = ${phoneNumberId}
       `);
 
+      try {
+        const { PlivoPhoneService } = await import('../engines/plivo/services/plivo-phone.service');
+        const domain = getDomain();
+        const baseUrl = domain.startsWith('http://') || domain.startsWith('https://') 
+          ? domain 
+          : `https://${domain}`;
+        await PlivoPhoneService.configureWebhooks(phoneNumberId, baseUrl);
+        console.log(`[IncomingConnections] Configured Plivo webhooks for number ${plivoPhone.phone_number}`);
+      } catch (webhookErr: any) {
+        console.error(`[IncomingConnections] Failed to configure Plivo webhooks:`, webhookErr?.message || webhookErr);
+      }
+
       return res.status(201).json({
         id: `plivo-cve-${phoneNumberId}`,
         agentId,

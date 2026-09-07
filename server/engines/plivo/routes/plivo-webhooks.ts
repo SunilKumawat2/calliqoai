@@ -541,11 +541,49 @@ export function setupPlivoWebhooks(app: Express, baseUrl: string): void {
       }
 
       // Get agent configuration
-      const [agent] = await db
+      let [agent] = await db
         .select()
         .from(agents)
         .where(eq(agents.id, phoneNumber.assignedAgentId))
         .limit(1);
+
+      if (!agent) {
+        const veAgentResult = await db.execute(sql`
+          SELECT * FROM ve_voice_agents WHERE id = ${phoneNumber.assignedAgentId} LIMIT 1
+        `);
+        if (veAgentResult.rows.length > 0) {
+          const row: any = veAgentResult.rows[0];
+          agent = {
+            id: row.id,
+            userId: row.user_id,
+            name: row.name,
+            systemPrompt: row.system_prompt,
+            firstMessage: row.first_message,
+            elevenLabsVoiceId: row.tts_voice,
+            llmModel: row.llm_model || 'gpt-4o-mini',
+            language: row.language || 'en',
+            telephonyProvider: 'plivo'
+          } as any;
+        } else {
+          const incomingAgentResult = await db.execute(sql`
+            SELECT * FROM incoming_agents WHERE id = ${phoneNumber.assignedAgentId} LIMIT 1
+          `);
+          if (incomingAgentResult.rows.length > 0) {
+            const row: any = incomingAgentResult.rows[0];
+            agent = {
+              id: row.id,
+              userId: row.user_id,
+              name: row.name,
+              systemPrompt: row.system_prompt,
+              firstMessage: row.first_message,
+              elevenLabsVoiceId: row.eleven_labs_voice_id,
+              llmModel: row.llm_model || 'gpt-4o-mini',
+              language: row.language || 'en',
+              telephonyProvider: 'plivo'
+            } as any;
+          }
+        }
+      }
 
       if (!agent) {
         logger.error(`Agent not found: ${phoneNumber.assignedAgentId}`, undefined, 'PlivoWebhook');

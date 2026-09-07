@@ -995,21 +995,36 @@ export function createPlivoApiRoutes(): Router {
         return res.status(400).json({ error: 'Phone number already has an assigned agent' });
       }
 
-      // Verify agent belongs to user and is Plivo-based
+      // Verify agent belongs to user across all agent tables
+      let agentObj: any = null;
       const [agent] = await db
         .select()
         .from(agents)
         .where(
           and(
             eq(agents.id, agentId),
-            eq(agents.userId, req.userId!),
-            eq(agents.telephonyProvider, 'plivo')
+            eq(agents.userId, req.userId!)
           )
         )
         .limit(1);
 
-      if (!agent) {
-        return res.status(404).json({ error: 'Agent not found or not configured for Plivo' });
+      if (agent) {
+        agentObj = agent;
+      } else {
+        const { sql } = await import('drizzle-orm');
+        const veRes = await db.execute(sql`SELECT * FROM ve_voice_agents WHERE id = ${agentId} AND user_id = ${req.userId!} LIMIT 1`);
+        if (veRes.rows.length > 0) {
+          agentObj = veRes.rows[0];
+        } else {
+          const incRes = await db.execute(sql`SELECT * FROM incoming_agents WHERE id = ${agentId} AND user_id = ${req.userId!} LIMIT 1`);
+          if (incRes.rows.length > 0) {
+            agentObj = incRes.rows[0];
+          }
+        }
+      }
+
+      if (!agentObj) {
+        return res.status(404).json({ error: 'Agent not found' });
       }
 
       // Assign agent to phone number
