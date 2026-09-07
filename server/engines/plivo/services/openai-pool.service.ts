@@ -262,6 +262,27 @@ export class OpenAIPoolService {
         return this.mapRowToCredential(row);
       }
 
+      // Fallback: If no credential in pool, use process.env.OPENAI_API_KEY
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          const [inserted] = await db.insert(openaiCredentials).values({
+            name: 'System Default OpenAI Key',
+            apiKey: process.env.OPENAI_API_KEY,
+            isActive: true,
+            maxConcurrency: 50,
+            currentLoad: 1,
+            modelTier: tier || 'pro',
+            totalAssignedAgents: 0,
+          } as any).returning();
+          if (inserted) {
+            console.log(`[OpenAI Pool] Auto-created default credential from process.env.OPENAI_API_KEY`);
+            return this.mapRowToCredential(inserted);
+          }
+        } catch (e: any) {
+          console.error(`[OpenAI Pool] Failed to auto-create credential from env:`, e.message);
+        }
+      }
+
       console.log(`[OpenAI Pool] No available capacity${tier ? ` for tier ${tier}` : ''} - all credentials at max load or none configured`);
       return null;
     } catch (error) {

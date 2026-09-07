@@ -491,11 +491,18 @@ export function setupPlivoWebhooks(app: Express, baseUrl: string): void {
       
       logger.info(`Normalized To: ${normalizedTo}`, undefined, 'PlivoWebhook');
 
-      // Find the phone number and associated agent
+      // Find the phone number and associated agent (support +, without +, or exact match)
+      const last10Digits = normalizedTo.slice(-10);
       const [phoneNumber] = await db
         .select()
         .from(plivoPhoneNumbers)
-        .where(eq(plivoPhoneNumbers.phoneNumber, normalizedTo))
+        .where(
+          or(
+            eq(plivoPhoneNumbers.phoneNumber, normalizedTo),
+            eq(plivoPhoneNumbers.phoneNumber, `+${normalizedTo}`),
+            sql`REPLACE(REPLACE(${plivoPhoneNumbers.phoneNumber}, '+', ''), ' ', '') LIKE ${`%${last10Digits}`}`
+          )
+        )
         .limit(1);
 
       // Trigger inbound_call.received early if we have a phone record
