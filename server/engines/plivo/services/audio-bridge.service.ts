@@ -220,10 +220,10 @@ export class AudioBridgeService {
       const { agentConfig, callUuid } = session;
 
       let model = agentConfig.model;
-      if (model === 'gpt-realtime-1.5' || model === 'gpt-realtime' || model === 'gpt-4o-realtime-preview' || model === 'gpt-4o-realtime-preview-2024-10-01') {
-        model = 'gpt-realtime';
-      } else if (model === 'gpt-realtime-mini' || model === 'gpt-4o-mini-realtime-preview' || model === 'gpt-4o-mini-realtime-preview-2024-12-17') {
-        model = 'gpt-realtime-mini';
+      if (model === 'gpt-realtime-mini' || model === 'gpt-4o-mini-realtime-preview' || model === 'gpt-4o-mini-realtime-preview-2024-12-17') {
+        model = 'gpt-4o-mini-realtime-preview-2024-12-17';
+      } else {
+        model = 'gpt-4o-realtime-preview-2024-12-17';
       }
       const wsUrl = `${this.OPENAI_REALTIME_URL}?model=${model}`;
 
