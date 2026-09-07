@@ -648,6 +648,10 @@ export function setupPlivoWebhooks(app: Express, baseUrl: string): void {
           userId: agent.userId,
           openaiCredentialId: openaiCredential.id,
           plivoCredentialId: phoneNumber.plivoCredentialId || undefined,
+          voice: agent.elevenLabsVoiceId || agent.openaiVoice || agent.tts_voice || 'shimmer',
+          model: agent.llmModel || agent.openaiModel || 'gpt-4o-mini',
+          systemPrompt: agent.systemPrompt,
+          firstMessage: agent.firstMessage,
         });
       } catch (createError: any) {
         // Release the slot if call record creation fails

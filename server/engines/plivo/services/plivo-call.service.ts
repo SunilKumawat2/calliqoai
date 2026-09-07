@@ -1093,8 +1093,17 @@ export class PlivoCallService {
     userId?: string;
     openaiCredentialId?: string;
     plivoCredentialId?: string;
+    voice?: string;
+    model?: string;
+    systemPrompt?: string;
+    firstMessage?: string;
   }): Promise<PlivoCallRecord> {
     logger.info(`Creating incoming call record: ${params.fromNumber} -> ${params.toNumber}`, undefined, 'PlivoCall');
+
+    const metadata: Record<string, unknown> = {};
+    if (params.plivoCredentialId) metadata.plivoCredentialId = params.plivoCredentialId;
+    if (params.systemPrompt) metadata.systemPrompt = params.systemPrompt;
+    if (params.firstMessage) metadata.firstMessage = params.firstMessage;
 
     const [callRecord] = await db
       .insert(plivoCalls)
@@ -1106,12 +1115,12 @@ export class PlivoCallService {
         plivoCallUuid: params.plivoCallUuid,
         fromNumber: params.fromNumber,
         toNumber: params.toNumber,
-        openaiVoice: PlivoEngineConfig.defaults.voice,
-        openaiModel: PlivoEngineConfig.defaults.model,
+        openaiVoice: params.voice || PlivoEngineConfig.defaults.voice,
+        openaiModel: params.model || PlivoEngineConfig.defaults.model,
         status: 'ringing',
         callDirection: 'inbound',
         startedAt: new Date(),
-        metadata: params.plivoCredentialId ? { plivoCredentialId: params.plivoCredentialId } : null,
+        metadata: Object.keys(metadata).length > 0 ? metadata : null,
       } as InsertPlivoCall)
       .returning();
 
