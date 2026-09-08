@@ -159,12 +159,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 14px 24px;
+  gap: 10px !important;
+  padding: 10px 20px !important;
   background: var(--lime);
   color: #1C1C1C;
-  font-size: 14px;
-  font-weight: 800;
+  font-size: 14px !important;
+  font-weight: 600;
   text-decoration: none;
   border: 1px solid var(--lime);
   transition: all .25s ease;
@@ -180,6 +180,9 @@
 
 .calliqo-landing .button span {
   font-size: 14px;
+  color: #1C1C1C;
+  /* width: 20px; */
+  /* height: 20px; */
 }
 
 .calliqo-landing .button-small {
@@ -229,25 +232,29 @@
   box-shadow: 0 0 10px var(--lime);
 }
 
+.calliqo-landing .hero h1,
 .calliqo-landing h1 {
-  /* font-size: clamp(55px, 7.2vw, 95px); */
-  line-height: .96;
-  /* letter-spacing: -.065em; */
-  margin: 32px 0 30px;
-  font-size: 70px;
+  line-height: 1.05;
+  margin: 24px 0 24px;
+  font-size: clamp(28px, 5.5vw, 68px);
   font-weight: 700;
-  font-family: Manrope;
+  font-family: 'Manrope', sans-serif;
   color: #F2F5EF;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  hyphens: none !important;
 }
 
+.calliqo-landing .hero h1 span,
 .calliqo-landing h1 span,
 .calliqo-landing h2 span {
   color: #6B6B6B;
   font-weight: 700;
-  font-family: Manrope;
-  font-style: Bold;
-  font-size: 50px;
-  font-style: bold;
+  font-family: 'Manrope', sans-serif;
+  font-size: clamp(28px, 5.5vw, 68px);
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  hyphens: none !important;
 }
 
 .calliqo-landing .hero-copy {
@@ -329,9 +336,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font: 500 9px var(--mono);
+  /* font: 600 12px var(--mono); */
   letter-spacing: .1em;
-  color: #7f8980;
+  color: #6B6B6B !important;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Manrope';
 }
 
 .calliqo-landing .live {
@@ -405,16 +415,19 @@
 }
 
 .calliqo-landing .call-icon {
-  margin-left: auto;
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  color: #0c100a;
-  background: var(--lime);
-  font-size: 34px;
-  padding: -35px;
+  margin-left: auto !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #0c100a !important;
+  background: var(--lime) !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+  padding: 0 !important;
+  flex-shrink: 0 !important;
 }
 
 .calliqo-landing .wave {
@@ -709,15 +722,15 @@
 }
 
 .calliqo-landing .section h2 {
-  /* font-size: clamp(40px, 5vw, 66px); */
+  font-size: clamp(40px, 5vw, 66px) !important;
   line-height: 1.06;
-  /* letter-spacing: -.055em; */
+  letter-spacing: -.055em !important;
   margin: 18px 0 0;
-  font-size: 50px;
-  font-weight: 700;
-  font-family: 'Manrope';
-  width: 500px;
-  color: #F2F5EF;
+  font-size: 50px !important;
+  font-weight: 700 !important;
+  font-family: 'Manrope' !important;
+  width: 547px !important;
+  color: #F2F5EF !important;
 }
 
 .calliqo-landing .section-head p,
@@ -924,7 +937,7 @@
 }
 
 .calliqo-landing .flow-mini span {
-  font: 500 8px var(--mono);
+  font: 500 12px var(--mono);
   padding: 10px;
   border: 1px solid #354035;
   color: #aeb6af;
@@ -1003,9 +1016,10 @@
 }
 
 .calliqo-landing .use-row span {
-  font: 500 8px var(--mono);
+  font: 500 12px var(--mono);
   color: var(--lime);
   letter-spacing: .12em;
+  line-height: 16.08px;
 }
 
 .calliqo-landing .use-row h3 {
@@ -1257,699 +1271,210 @@
 }
 
 .calliqo-landing .workflow {
-  text-align: center;
   background: linear-gradient(#0b0f0c, #070908);
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
 
-.calliqo-landing .workflow h2 {
-  margin-top: 18px;
+.calliqo-landing .integration-header-figma {
+  text-align: center;
+  max-width: 750px;
+  margin: 0 auto 40px auto;
 }
 
-.calliqo-landing .workflow>div>p {
-  max-width: 600px;
-  margin: 25px auto;
+.calliqo-landing .kicker-green {
+  color: #1CD152;
+  font: 500 12px var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 12px;
 }
 
-.calliqo-landing .security {
-  display: grid;
-  grid-template-columns: .65fr 1.35fr;
-  gap: 80px;
-  align-items: center;
-}
-
-.calliqo-landing .security-copy {
-  text-align: left;
-}
-
-.calliqo-landing .security-copy h2 {
-  font-size: 48px;
-}
-
-.calliqo-landing .security-copy p {
-  margin-top: 20px;
-}
-
-.calliqo-landing .security-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-}
-
-.calliqo-landing .security-grid article {
-  border: 1px solid var(--line);
-  padding: 25px;
-  min-height: 220px;
-  text-align: left;
-}
-
-.calliqo-landing .security-grid span {
-  color: var(--lime);
-  font-size: 25px;
-}
-
-.calliqo-landing .security-grid h3 {
-  font-size: 14px;
-  margin-top: 55px;
-}
-
-.calliqo-landing .security-grid p {
-  font-size: 10px;
-  color: #7f8880;
-  line-height: 1.7;
-}
-
-.calliqo-landing .faq {
-  border-top: 1px solid var(--line);
-}
-
-.calliqo-landing .faq-layout {
-  display: grid;
-  grid-template-columns: .65fr 1.35fr;
-  gap: 100px;
-  margin-top: 18px;
-  text-align: left;
-}
-
-.calliqo-landing .faq-layout h2 {
+.calliqo-landing .title-white {
+  font-size: 50px !important;
+  font-weight: 700 !important;
+  font-family: 'Manrope' !important;
+  color: #FFFFFF !important;
   margin: 0;
+  line-height: 1.1;
+  text-align: center;
+  width: 600px !important;
 }
 
-.calliqo-landing .accordion details {
-  border-top: 1px solid #2a312b;
-  padding: 25px 0;
+.calliqo-landing .title-grey {
+  font-size: 50px !important;
+  font-weight: 700 !important;
+  font-family: 'Manrope' !important;
+  color: #79827a !important;
+  margin: 0 0 20px 0;
+  /* line-height: 1.1 !important; */
+  text-align: center;
+  width: 743px !important;
 }
 
-.calliqo-landing .accordion details:last-child {
-  border-bottom: 1px solid #2a312b;
-}
-
-.calliqo-landing .accordion summary {
-  list-style: none;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  display: flex;
-  justify-content: space-between;
-}
-
-.calliqo-landing .accordion summary::-webkit-details-marker {
-  display: none;
-}
-
-.calliqo-landing .accordion summary i {
-  font-style: normal;
-  color: var(--lime);
-  font-size: 18px;
-}
-
-.calliqo-landing .accordion p {
-  font-size: 11px;
-  color: #8e978f;
-  line-height: 1.8;
-  max-width: 650px;
-}
-
-.calliqo-landing .cta {
-  min-height: 480px;
-  background: var(--lime);
-  color: #0b1009;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
-  padding: 65px 75px;
-  overflow: hidden;
-  position: relative;
-  text-align: left;
-}
-
-.calliqo-landing .cta .kicker {
-  color: #33462a;
-}
-
-.calliqo-landing .cta h2 {
-  font-size: 68px;
-  line-height: 1;
-  letter-spacing: -.06em;
-  margin: 20px 0;
-}
-
-.calliqo-landing .cta p {
-  font-size: 13px;
-  max-width: 430px;
-  line-height: 1.7;
-}
-
-.calliqo-landing .button.light {
-  background: #0b1009;
-  color: #fff;
-  border-color: #0b1009;
-  margin-top: 16px;
-}
-
-.calliqo-landing .cta-orb {
-  justify-self: end;
-  width: 330px;
-  height: 330px;
-  border-radius: 50%;
-  border: 1px solid rgba(15, 20, 11, .25);
-  display: grid;
-  place-items: center;
-  position: relative;
-}
-
-.calliqo-landing .cta-orb .brand-mark {
-  transform: scale(2.8);
-}
-
-.calliqo-landing .cta-orb .brand-mark i {
-  background: #0c1109;
-}
-
-.calliqo-landing .ring {
-  position: absolute;
-  inset: 42px;
-  border: 1px solid rgba(15, 20, 11, .2);
-  border-radius: 50%;
-}
-
-.calliqo-landing .r2 {
-  inset: 85px;
-}
-
-.calliqo-landing .r3 {
-  inset: -45px;
-}
-
-.calliqo-landing footer {
-  padding-top: 90px;
-}
-
-.calliqo-landing .footer-top {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  align-items: start;
-  padding-bottom: 80px;
-  text-align: left;
-}
-
-.calliqo-landing .footer-top p {
-  margin: 0;
-  color: #89928a;
-  font-size: 12px;
-}
-
-.calliqo-landing .footer-top>div {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-}
-
-.calliqo-landing .footer-bottom {
-  border-top: 1px solid var(--line);
-  padding: 25px 0 40px;
-  display: flex;
-  justify-content: space-between;
-  font: 400 8px var(--mono);
-  color: #69716a;
-}
-
-.calliqo-landing .footer-bottom div {
-  display: flex;
-  gap: 25px;
-}
-
-.calliqo-landing .reveal {
-  opacity: 0;
-  transform: translateY(14px);
-  animation: rise .7s ease forwards;
-}
-
-.calliqo-landing .reveal:nth-of-type(2) {
-  animation-delay: .08s;
-}
-
-.calliqo-landing .reveal:nth-of-type(3) {
-  animation-delay: .16s;
-}
-
-.calliqo-landing .reveal:nth-of-type(4) {
-  animation-delay: .24s;
-}
-
-.calliqo-landing .signal-stage.reveal {
-  animation-delay: .35s;
-}
-
-@keyframes rise {
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media(max-width:900px) {
-  .calliqo-landing .nav-links {
-    display: none;
-  }
-
-  .calliqo-landing .menu {
-    display: block;
-  }
-
-  .calliqo-landing .nav>.button {
-    display: none;
-  }
-
-  .calliqo-landing .menu span {
-    display: block;
-    width: 24px;
-    height: 1px;
-    background: #fff;
-    margin: 6px;
-  }
-
-  .calliqo-landing .nav-links.open {
-    display: flex;
-    position: absolute;
-    top: 80px;
-    left: 0;
-    right: 0;
-    padding: 28px 24px;
-    background: #0a0d0b;
-    flex-direction: column;
-  }
-
-  .calliqo-landing .hero {
-    padding-top: 140px;
-  }
-
-  .calliqo-landing .signal-stage {
-    height: 720px;
-  }
-
-  .calliqo-landing .call-card {
-    width: 78%;
-  }
-
-  .calliqo-landing .intel-card {
-    width: 66%;
-    top: 300px;
-  }
-
-  .calliqo-landing .outcome {
-    bottom: 20px;
-    left: 10%;
-  }
-
-  .calliqo-landing .section-head,
-  .calliqo-landing .intelligence,
-  .calliqo-landing .security,
-  .calliqo-landing .faq-layout {
-    grid-template-columns: 1fr;
-    gap: 35px;
-  }
-
-  .calliqo-landing .cap-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .calliqo-landing .feature-large {
-    min-height: 570px;
-  }
-
-  .calliqo-landing .steps,
-  .calliqo-landing .use-row,
-  .calliqo-landing .security-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .calliqo-landing .steps article {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    min-height: 230px;
-  }
-
-  .calliqo-landing .step-icon {
-    margin: 30px 0;
-  }
-
-  .calliqo-landing .integration-map {
-    gap: 20px;
-  }
-
-  .calliqo-landing .cta {
-    grid-template-columns: 1fr;
-    padding: 55px;
-  }
-
-  .calliqo-landing .cta-orb {
-    display: none;
-  }
-
-  .calliqo-landing .trust-line>div {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 25px 15px;
-  }
-
-  .calliqo-landing .footer-top {
-    grid-template-columns: 1fr;
-    gap: 35px;
-  }
-}
-
-@media(max-width:600px) {
-  .calliqo-landing .container {
-    width: min(100% - 32px, 1180px);
-  }
-
-  .calliqo-landing .nav {
-    height: 70px;
-  }
-
-  .calliqo-landing .hero {
-    padding-top: 125px;
-  }
-
-  .calliqo-landing h1 {
-    font-size: 50px;
-  }
-
-  .calliqo-landing .hero-copy {
-    font-size: 15px;
-  }
-
-  .calliqo-landing .hero-actions {
-    flex-direction: column;
-  }
-
-  .calliqo-landing .signal-stage {
-    height: 680px;
-    margin-top: 60px;
-  }
-
-  .calliqo-landing .call-card {
-    width: 100%;
-    transform: none;
-  }
-
-  .calliqo-landing .intel-card {
-    width: 94%;
-    top: 330px;
-  }
-
-  .calliqo-landing .outcome {
-    display: none;
-  }
-
-  .calliqo-landing .trust-line {
-    padding: 30px 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-  }
-
-  .calliqo-landing .trust-line>span {
-    text-align: center;
-  }
-
-  .calliqo-landing .trust-line>div {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 25px 15px;
-    width: 100%;
-  }
-
-  .calliqo-landing .section {
-    padding: 90px 0;
-  }
-
-  .calliqo-landing .section h2,
-  .calliqo-landing .intel-copy h2 {
-    font-size: 40px;
-  }
-
-  .calliqo-landing .section-head {
-    margin-bottom: 40px;
-  }
-
-  .calliqo-landing .orbit {
-    width: 265px;
-    height: 265px;
-  }
-
-  .calliqo-landing .feature-large {
-    min-height: 500px;
-  }
-
-  .calliqo-landing .dashboard {
-    padding: 12px;
-    overflow: hidden;
-  }
-
-  .calliqo-landing .metrics strong {
-    font-size: 18px;
-  }
-
-  .calliqo-landing .dash-main {
-    grid-template-columns: 1fr;
-  }
-
-  .calliqo-landing .topics {
-    display: none;
-  }
-
-  .calliqo-landing .call-row {
-    grid-template-columns: 1fr auto;
-  }
-
-  .calliqo-landing .call-row>span:nth-of-type(2),
-  .calliqo-landing .call-row>b {
-    display: none;
-  }
-
-  .calliqo-landing .integration-map {
-    height: 420px;
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 20px;
-  }
-
-  .calliqo-landing .integration-map:before {
-    display: none;
-  }
-
-  .calliqo-landing .core {
-    grid-column: 2;
-    grid-row: 1/3;
-    width: 100px;
-    height: 100px;
-  }
-
-  .calliqo-landing .tool b {
-    width: 45px;
-    height: 45px;
-  }
-
-  .calliqo-landing .cta {
-    width: 100%;
-    min-height: 450px;
-    padding: 50px 30px;
-  }
-
-  .calliqo-landing .cta h2 {
-    font-size: 50px;
-  }
-
-  .calliqo-landing .footer-top {
-    padding-bottom: 50px;
-  }
-
-  .calliqo-landing .footer-bottom {
-    gap: 15px;
-    flex-direction: column;
-  }
-
-  .calliqo-landing .flow-mini {
-    gap: 5px;
-  }
-
-  .calliqo-landing .flow-mini span {
-    padding: 8px 5px;
-  }
-
-  .calliqo-landing .ambient {
-    display: none;
-  }
-
-  .calliqo-landing .stage-glow {
-    width: 100%;
-    left: 0;
-  }
+.calliqo-landing .subtitle-text {
+  font-size: 14px !important;
+  color: #F2F5EF !important;
+  line-height: 1.6 !important;
+  /* max-width: 736px; */
+  margin: 0 auto !important;
+  font-family: 'Manrope' !important;
 }
 
 .calliqo-landing .integration-canvas {
-  height: 390px;
+  width: 100%;
+  height: 360px;
   position: relative;
-  margin: 55px 0 10px;
-  border: 1px solid #202720;
-  background: radial-gradient(circle at 55% 50%, rgba(185, 255, 102, .08), transparent 34%), linear-gradient(150deg, #0d120e, #080b09);
+  margin: 35px 0 0;
+  border: 1px solid #1c241e;
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 50%, rgba(28, 209, 82, 0.05), transparent 65%), linear-gradient(180deg, #0b100d 0%, #060907 100%);
   overflow: hidden;
 }
 
 .calliqo-landing .connector-lines {
   position: absolute;
-  inset: 35px 0 0;
+  inset: 0;
   width: 100%;
-  height: 330px;
+  height: 100%;
+  pointer-events: none;
 }
 
 .calliqo-landing .connector-lines path {
   fill: none;
-  stroke: #596559;
-  stroke-width: 1.4;
-  stroke-dasharray: 4 5;
+  stroke: #253127;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 6;
 }
 
 .calliqo-landing .integration-node {
   position: absolute;
   text-align: center;
-  z-index: 2;
+  z-index: 3;
+  transform: translate(-50%, -50%);
 }
 
-.calliqo-landing .integration-node b {
+.calliqo-landing .node-icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #FFFFFF !important;
+  border: 1px solid rgba(255, 255, 255, 0.9);
   display: grid;
   place-items: center;
-  width: 58px;
-  height: 58px;
-  border-radius: 16px;
-  background: #f3f5f1;
-  color: #101410;
-  border: 5px solid #161d17;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, .3);
-  font-size: 23px;
+  margin: 0 auto;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.calliqo-landing .node-icon-box:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
 }
 
 .calliqo-landing .integration-node span {
   display: block;
-  font: 500 8px var(--mono);
-  color: #8d978e;
+  font: 500 10px 'Manrope', sans-serif;
+  color: #F2F5EF;
   margin-top: 8px;
+  white-space: nowrap;
 }
 
-.calliqo-landing .integration-node.n1 {
-  left: 5%;
-  top: 215px;
+/* Figma exact Node absolute positions */
+.calliqo-landing .node-zapier {
+  left: 14%;
+  top: 235px;
 }
 
-.calliqo-landing .integration-node.n2 {
-  left: 17%;
-  top: 145px;
+.calliqo-landing .node-openai {
+  left: 25%;
+  top: 165px;
 }
 
-.calliqo-landing .integration-node.n3 {
-  left: 31%;
-  top: 86px;
-}
-
-.calliqo-landing .integration-node.n4 {
-  left: 42%;
-  top: 150px;
-}
-
-.calliqo-landing .integration-node.n5 {
-  left: 59%;
-  top: 177px;
-}
-
-.calliqo-landing .integration-node.n6 {
-  left: 70%;
-  top: 74px;
-}
-
-.calliqo-landing .integration-node.n7 {
-  right: 14%;
-  top: 145px;
-}
-
-.calliqo-landing .integration-node.n8 {
-  right: 4%;
-  top: 67px;
-}
-
-.calliqo-landing .logo-salesforce {
-  color: #0a9fe5 !important;
-}
-
-.calliqo-landing .logo-slack {
-  color: #36c5f0 !important;
-}
-
-.calliqo-landing .logo-zapier {
-  color: #ff4f00 !important;
-}
-
-.calliqo-landing .logo-openai {
-  color: #10a37f !important;
-}
-
-.calliqo-landing .logo-hubspot {
-  color: #ff5c35 !important;
-}
-
-.calliqo-landing .logo-twilio {
-  color: #e31f46 !important;
-}
-
-.calliqo-landing .integration-core {
-  position: absolute;
-  z-index: 3;
-  left: 51%;
+.calliqo-landing .node-twilio {
+  left: 36%;
   top: 95px;
-  width: 98px;
-  height: 98px;
-  border-radius: 50%;
+}
+
+.calliqo-landing .node-restapi {
+  left: 31%;
+  top: 255px;
+}
+
+.calliqo-landing .node-plivo {
+  left: 45%;
+  top: 200px;
+}
+
+.calliqo-landing .node-slack {
+  left: 67%;
+  top: 110px;
+}
+
+.calliqo-landing .node-webhooks {
+  left: 60%;
+  top: 250px;
+}
+
+.calliqo-landing .node-hubspot {
+  left: 76%;
+  top: 185px;
+}
+
+.calliqo-landing .node-salesforce {
+  left: 85%;
+  top: 110px;
+}
+
+/* Figma Center Core */
+.calliqo-landing .integration-core-figma {
+  position: absolute;
+  left: 52%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #111811;
-  border: 2px solid var(--lime);
-  box-shadow: 0 0 55px rgba(185, 255, 102, .24);
 }
 
-.calliqo-landing .integration-core strong {
-  font-size: 9px;
-  margin-top: 5px;
-}
-
-.calliqo-landing .integration-core small {
-  font: 500 6px var(--mono);
-  color: var(--lime);
-}
-
-.calliqo-landing .integration-foot {
+.calliqo-landing .core-inner {
+  width: 94px;
+  height: 94px;
+  border-radius: 50%;
+  background: #080D09;
+  border: 2.5px solid #1CD152;
   display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  box-shadow: 0 0 35px rgba(28, 209, 82, 0.5), inset 0 0 15px rgba(28, 209, 82, 0.3);
+  position: relative;
+  z-index: 2;
 }
 
-.calliqo-landing .integration-foot span {
-  font: 500 8px var(--mono);
-  letter-spacing: .08em;
-  color: #909a91;
-  padding: 9px 14px;
-  border: 1px solid #273027;
-  background: #0d110e;
+.core-inner-images {
+  width: 40px;
+  height: 42px;
 }
 
-.calliqo-landing .pricing {
+.calliqo-landing .core-glow-ring {
+  position: absolute;
+  width: 115px;
+  height: 115px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(28, 209, 82, 0.35) 0%, rgba(28, 209, 82, 0) 70%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.calliqo-landing .core-brand-mark {
+  height: 25px;
+}
+
+/* .calliqo-landing .pricing {
   border-bottom: 1px solid var(--line);
-}
+} */
 
 .calliqo-landing .pricing-head {
   display: grid;
@@ -1961,9 +1486,11 @@
 }
 
 .calliqo-landing .pricing-head p {
-  color: #929b93;
-  font-size: 13px;
+  color: #F2F5EF;
+  font-size: 14px;
   line-height: 1.8;
+  font-family: 'Manrope';
+  font-style: Regular;
 }
 
 .calliqo-landing .billing {
@@ -2039,16 +1566,21 @@
 }
 
 .calliqo-landing .plan-top>span {
-  font: 500 9px var(--mono);
+  font: 500 12px var(--mono);
   color: var(--lime);
   letter-spacing: .14em;
+  font-style: SemiBold;
+  font-family: 'Manrope';
+  line-height: 23.03px;
 }
 
 .calliqo-landing .plan-top h3 {
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.45;
   min-height: 50px;
-  margin: 20px 0 35px;
+  margin: 20px 0 15px;
+  font-weight: 600;
+  color: #F2F5EF;
 }
 
 .calliqo-landing .price {
@@ -2058,18 +1590,22 @@
 }
 
 .calliqo-landing .price strong {
-  font: 500 46px var(--mono);
+  font: 42.98px var(--mono);
   letter-spacing: -.06em;
+  font-family: 'Manrope';
+  font-weight: 500;
 }
 
 .calliqo-landing .price small {
-  font: 400 9px var(--mono);
+  font: 400 12px var(--mono);
   color: #7b847c;
+  font-family: 'Manrope';
 }
 
 .calliqo-landing .plan-top>p {
-  font-size: 9px;
+  font-size: 12px;
   color: #707971;
+  font-family: 'Manrope';
 }
 
 .calliqo-landing .price-grid ul {
@@ -2081,9 +1617,10 @@
 }
 
 .calliqo-landing .price-grid li {
-  font-size: 11px;
-  color: #a4ada5;
+  font-size: 12px;
+  color: #F2F5EF;
   margin: 15px 0;
+  font-weight: 400;
 }
 
 .calliqo-landing .price-grid li:before {
@@ -2097,12 +1634,15 @@
   justify-content: space-between;
   align-items: center;
   text-decoration: none;
-  color: #e8ece7;
-  border: 1px solid #384038;
+  color: #6B6B6B;
+  border: 1px solid #6B6B6B;
   padding: 15px;
   font-size: 11px;
   font-weight: 700;
   transition: all 0.2s ease;
+  background: #131A12;
+  font-size: 16px;
+  text-align: center;
 }
 
 .calliqo-landing .price-button:hover {
@@ -2113,7 +1653,9 @@
 .calliqo-landing .price-button.primary {
   background: var(--lime);
   border-color: var(--lime);
-  color: #10140e;
+  color: #10140E;
+  font-weight: 500;
+  font-family: 'Manrope';
 }
 
 .calliqo-landing .price-button.primary:hover {
@@ -2124,9 +1666,10 @@
 
 .calliqo-landing .pricing-note {
   text-align: center;
-  font: 400 8px var(--mono);
-  color: #727b73;
+  font: 400 12px var(--mono);
+  color: #6B6B6B;
   margin: 25px 0 0;
+  font-family: 'Manrope';
 }
 
 .calliqo-landing .price-flash {
@@ -4203,5 +3746,672 @@
   .calliqo-landing .demo-console {
     height: 70vh !important;
     min-height: 480px;
+  }
+}
+
+/* Figma Section 06 / BUILT FOR TRUST */
+.calliqo-landing .security {
+  display: block !important;
+  text-align: left !important;
+  margin: 100px auto !important;
+}
+
+.calliqo-landing .security-copy {
+  text-align: left !important;
+  margin-bottom: 50px !important;
+  max-width: 580px !important;
+}
+
+.calliqo-landing .security-title {
+  font-size: 50px !important;
+  font-weight: 700 !important;
+  font-family: 'Manrope', sans-serif !important;
+  color: #FFFFFF !important;
+  margin: 16px 0 18px 0 !important;
+  line-height: 1.08 !important;
+  text-align: left !important;
+}
+
+.calliqo-landing .security-subtitle {
+  font-size: 14px !important;
+  color: #8E978F !important;
+  line-height: 1.6 !important;
+  max-width: 480px !important;
+  margin: 0 !important;
+  font-family: 'Manrope', sans-serif !important;
+  font-weight: 400 !important;
+  text-align: left !important;
+}
+
+.calliqo-landing .security-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 20px !important;
+  width: 100% !important;
+}
+
+.calliqo-landing .security-card {
+  border: 1px solid #1c241e !important;
+  background: #080C09 !important;
+  border-radius: 14px !important;
+  padding: 32px 28px !important;
+  min-height: 210px !important;
+  text-align: left !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4) !important;
+  transition: transform 0.2s ease, border-color 0.2s ease !important;
+}
+
+.calliqo-landing .security-card:hover {
+  transform: translateY(-4px) !important;
+  border-color: #2a382c !important;
+}
+
+.calliqo-landing .security-icon-badge {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 10px !important;
+  background: rgba(28, 209, 82, 0.08) !important;
+  border: 1px solid rgba(28, 209, 82, 0.25) !important;
+  display: grid !important;
+  place-items: center !important;
+  margin-bottom: 28px !important;
+  flex-shrink: 0 !important;
+}
+
+.calliqo-landing .security-card h3 {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  font-family: 'Manrope', sans-serif !important;
+  color: #FFFFFF !important;
+  margin: 0 0 10px 0 !important;
+  line-height: 1.3 !important;
+}
+
+.calliqo-landing .security-card p {
+  font-size: 13px !important;
+  color: #6B6B6B !important;
+  line-height: 1.6 !important;
+  font-family: 'Manrope', sans-serif !important;
+  margin: 0 !important;
+  font-weight: 400 !important;
+}
+
+
+/* Figma Section 07 / FAQ */
+.calliqo-landing .faq {
+  border-top: 1px solid #1c241e !important;
+  padding-top: 80px !important;
+  margin-top: 80px !important;
+  margin-bottom: 100px !important;
+}
+
+.calliqo-landing .faq-layout {
+  display: grid !important;
+  grid-template-columns: 0.7fr 1.3fr !important;
+  gap: 80px !important;
+  align-items: start !important;
+  text-align: left !important;
+}
+
+.calliqo-landing .faq-head-col {
+  text-align: left !important;
+}
+
+.calliqo-landing .accordion {
+  width: 100% !important;
+}
+
+.calliqo-landing .accordion details {
+  border-bottom: 1px solid #1c241e !important;
+  padding: 22px 0 !important;
+}
+
+.calliqo-landing .accordion details:first-child {
+  border-top: 1px solid #1c241e !important;
+}
+
+.calliqo-landing .accordion summary {
+  list-style: none !important;
+  cursor: pointer !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  font-size: 16px !important;
+  font-weight: 500 !important;
+  color: #FFFFFF !important;
+  font-family: 'Manrope', sans-serif !important;
+}
+
+.calliqo-landing .accordion summary::-webkit-details-marker,
+.calliqo-landing .accordion summary::marker {
+  display: none !important;
+  content: "" !important;
+}
+
+.calliqo-landing .faq-toggle {
+  color: #1CD152 !important;
+  font-size: 22px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  font-family: var(--mono), monospace !important;
+}
+
+.calliqo-landing .accordion p {
+  font-size: 13px !important;
+  color: #8E978F !important;
+  line-height: 1.7 !important;
+  max-width: 620px !important;
+  margin-top: 14px !important;
+  margin-bottom: 0 !important;
+  font-family: 'Manrope', sans-serif !important;
+  font-weight: 400 !important;
+}
+
+
+/* Figma Section 08 / Get Started CTA Banner (101% Match #55FF8B to #1CD152) */
+.calliqo-landing .section.cta {
+  background: linear-gradient(115deg, #55FF8B 0%, #29E865 50%, #1CD152 100%) !important;
+  /* border-radius: 24px !important; */
+  padding: 72px 80px !important;
+  margin-top: 60px !important;
+  margin-bottom: 100px !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  position: relative !important;
+  overflow: hidden !important;
+  box-shadow: 0 20px 50px rgba(28, 209, 82, 0.15) !important;
+  border: none !important;
+}
+
+.calliqo-landing .section.cta .cta-content {
+  max-width: 540px !important;
+  z-index: 2 !important;
+  text-align: left !important;
+}
+
+.calliqo-landing .section.cta .kicker {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 1.24px !important;
+  color: #1C1C1C !important;
+  text-transform: uppercase !important;
+  display: block !important;
+  margin-bottom: 16px !important;
+  font-family: 'Manrope', sans-serif !important;
+}
+
+.calliqo-landing .section.cta h2 {
+  font-size: clamp(38px, 4.5vw, 54px) !important;
+  line-height: 1.08 !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.045em !important;
+  color: #0B0F0E !important;
+  margin: 0 0 20px 0 !important;
+  font-family: 'Manrope', sans-serif !important;
+  width: auto !important;
+}
+
+.calliqo-landing .section.cta p {
+  font-size: 15px !important;
+  line-height: 1.55 !important;
+  color: #112A18 !important;
+  margin: 0 0 36px 0 !important;
+  font-family: 'Manrope', sans-serif !important;
+  font-weight: 400 !important;
+  max-width: 440px !important;
+}
+
+.calliqo-landing .section.cta .button.light,
+.calliqo-landing .section.cta a.button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  /* gap: 10px !important; */
+  background: #1C1C1C !important;
+  color: #FFFFFF !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  padding: 14px 28px !important;
+  /* border-radius: 8px !important; */
+  /* text-decoration: none !important; */
+  /* transition: all 0.2s ease !important; */
+  /* border: none !important; */
+  /* box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2) !important; */
+  width: -moz-fit-content !important;
+  /* width: fit-content !important; */
+}
+
+.calliqo-landing .section.cta .button.light:hover,
+.calliqo-landing .section.cta a.button:hover {
+  background: #000000 !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3) !important;
+}
+
+.calliqo-landing .section.cta .button.light span,
+.calliqo-landing .section.cta a.button span {
+  font-size: 16px !important;
+  color: #FFFFFF !important;
+}
+
+.calliqo-landing .section.cta .cta-orb {
+  position: relative !important;
+  width: 380px !important;
+  height: 380px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  z-index: 1 !important;
+  margin-right: -20px !important;
+}
+
+/* Concentric rings in CTA orb */
+.calliqo-landing .cta-orb .ring {
+  position: absolute !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(11, 15, 14, 0.18) !important;
+  pointer-events: none !important;
+}
+
+.calliqo-landing .cta-orb .ring.r1 {
+  width: 150px !important;
+  height: 150px !important;
+}
+
+.calliqo-landing .cta-orb .ring.r2 {
+  width: 230px !important;
+  height: 230px !important;
+}
+
+.calliqo-landing .cta-orb .ring.r3 {
+  width: 310px !important;
+  height: 310px !important;
+}
+
+.calliqo-landing .cta-orb .ring.r4 {
+  width: 380px !important;
+  height: 380px !important;
+}
+
+.calliqo-landing .cta-orb .cta-logo-mark {
+  position: relative !important;
+  z-index: 2 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+@media (max-width: 991px) {
+  .calliqo-landing .section.cta {
+    flex-direction: column !important;
+    padding: 48px 32px !important;
+    text-align: center !important;
+  }
+
+  .calliqo-landing .section.cta .cta-content {
+    max-width: 100% !important;
+    text-align: center !important;
+    margin-bottom: 40px !important;
+  }
+
+  .calliqo-landing .section.cta p {
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .calliqo-landing .section.cta .button.light {
+    margin: 0 auto !important;
+  }
+
+  .calliqo-landing .section.cta .cta-orb {
+    margin-right: 0 !important;
+    width: 280px !important;
+    height: 280px !important;
+  }
+
+  .calliqo-landing .cta-orb .ring.r4 {
+    width: 280px !important;
+    height: 280px !important;
+  }
+}
+
+
+/* Figma Footer Component (101% Match) */
+.calliqo-landing footer {
+  background: #070908 !important;
+  border-top: 1px solid #1C241E !important;
+  padding-top: 60px !important;
+  padding-bottom: 40px !important;
+  width: 100% !important;
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+.calliqo-landing .footer-top {
+  display: grid !important;
+  grid-template-columns: 1.2fr 2fr 1.5fr !important;
+  align-items: start !important;
+  gap: 40px !important;
+  padding-bottom: 50px !important;
+  border-bottom: 1px solid #1C241E !important;
+}
+
+.calliqo-landing .footer-brand-col {
+  display: flex !important;
+  align-items: center !important;
+}
+
+.calliqo-landing .footer-brand-col .brand {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  text-decoration: none !important;
+}
+
+.calliqo-landing .footer-brand-col .brand-name {
+  font-size: 20px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.04em !important;
+  color: #FFFFFF !important;
+  font-family: 'Manrope', sans-serif !important;
+}
+
+.calliqo-landing .footer-brand-col .brand-ai {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #1CD152 !important;
+  font-family: var(--mono), monospace !important;
+  font-style: normal !important;
+}
+
+.calliqo-landing .footer-tagline-col p {
+  color: #AEB5AE !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  margin: 4px 0 0 0 !important;
+  font-family: 'Manrope', sans-serif !important;
+}
+
+.calliqo-landing .footer-nav-grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 40px !important;
+}
+
+.calliqo-landing .footer-nav-col {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+}
+
+.calliqo-landing .footer-nav-col a {
+  color: #AEB5AE !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+  font-family: 'Manrope', sans-serif !important;
+  transition: color 0.2s ease !important;
+}
+
+.calliqo-landing .footer-nav-col a:hover {
+  color: #1CD152 !important;
+}
+
+.calliqo-landing .footer-bottom {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding-top: 30px !important;
+}
+
+.calliqo-landing .footer-bottom .copyright {
+  color: #6B7280 !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  font-family: 'Manrope', sans-serif !important;
+}
+
+.calliqo-landing .footer-legal-links {
+  display: flex !important;
+  gap: 36px !important;
+}
+
+.calliqo-landing .footer-legal-links a {
+  color: #9CA3AF !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  text-decoration: none !important;
+  font-family: 'Manrope', sans-serif !important;
+  transition: color 0.2s ease !important;
+}
+
+.calliqo-landing .footer-legal-links a:hover {
+  color: #FFFFFF !important;
+}
+
+@media (max-width: 991px) {
+  .calliqo-landing .footer-top {
+    grid-template-columns: 1fr !important;
+    gap: 30px !important;
+  }
+
+  .calliqo-landing .footer-nav-grid {
+    gap: 24px !important;
+  }
+
+  .calliqo-landing .footer-bottom {
+    flex-direction: column !important;
+    gap: 16px !important;
+    text-align: center !important;
+  }
+}
+
+
+/* ---------------------------------------------------- */
+/* FULL RESPONSIVE MEDIA QUERIES (Hero & Navbar)        */
+/* ---------------------------------------------------- */
+
+/* Desktop fluid typography for Hero heading */
+.calliqo-landing h1,
+.calliqo-landing h1 span {
+  font-size: clamp(34px, 5.5vw, 70px) !important;
+  line-height: 1.05 !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+}
+
+@media (max-width: 991px) {
+  .calliqo-landing .container {
+    width: calc(100% - 32px) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .calliqo-landing .nav {
+    height: 70px !important;
+  }
+
+  .calliqo-landing .menu {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 4px !important;
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 8px !important;
+    background: #0D140E !important;
+    border: 1px solid rgba(28, 209, 82, 0.4) !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    margin-left: auto !important;
+    z-index: 100 !important;
+  }
+
+  .calliqo-landing .menu span {
+    display: block !important;
+    width: 18px !important;
+    height: 2px !important;
+    background: #1CD152 !important;
+    border-radius: 2px !important;
+    transition: all 0.3s ease !important;
+  }
+
+  .calliqo-landing .menu.open span:nth-child(1) {
+    transform: translateY(6px) rotate(45deg) !important;
+  }
+
+  .calliqo-landing .menu.open span:nth-child(2) {
+    opacity: 0 !important;
+  }
+
+  .calliqo-landing .menu.open span:nth-child(3) {
+    transform: translateY(-6px) rotate(-45deg) !important;
+  }
+
+  .calliqo-landing .nav-links {
+    position: fixed !important;
+    top: 70px !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: rgba(7, 9, 8, 0.96) !important;
+    backdrop-filter: blur(20px) !important;
+    padding: 30px 24px !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 20px !important;
+    border-bottom: 1px solid #1C241E !important;
+    transform: translateY(-150%) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: all 0.3s ease !important;
+    z-index: 90 !important;
+  }
+
+  .calliqo-landing .nav-links.open {
+    transform: translateY(0) !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  .calliqo-landing .nav-links a {
+    font-size: 16px !important;
+    font-weight: 500 !important;
+    color: #F2F5EF !important;
+    width: 100% !important;
+    padding: 8px 0 !important;
+  }
+
+  .calliqo-landing .nav .button-small {
+    display: none !important;
+  }
+
+  /* Hero Banner Responsive */
+  .calliqo-landing .hero {
+    padding-top: 110px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .calliqo-landing .eyebrow {
+    font-size: 11px !important;
+    padding: 6px 12px !important;
+    letter-spacing: 0.8px !important;
+  }
+
+  .calliqo-landing .hero h1,
+  .calliqo-landing .hero h1 span,
+  .calliqo-landing h1,
+  .calliqo-landing h1 span {
+    font-size: clamp(26px, 7vw, 38px) !important;
+    line-height: 1.12 !important;
+    margin: 20px 0 16px 0 !important;
+    letter-spacing: -0.03em !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    hyphens: none !important;
+  }
+
+  .calliqo-landing .hero-copy {
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+    padding: 0 8px !important;
+    max-width: 100% !important;
+  }
+
+  .calliqo-landing .hero-actions {
+    flex-direction: row !important;
+    gap: 10px !important;
+    justify-content: center !important;
+    align-items: center !important;
+    margin-top: 24px !important;
+    width: 100% !important;
+  }
+
+  .calliqo-landing .hero-actions .button {
+    background: #1CD152 !important;
+    color: #0C100A !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    padding: 10px 16px !important;
+    border-radius: 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+  }
+
+  .calliqo-landing .hero-actions .text-link {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: #F2F5EF !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 10px 16px !important;
+    border-radius: 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .calliqo-landing .eyebrow {
+    font-size: 10px !important;
+    padding: 5px 10px !important;
+  }
+
+  .calliqo-landing .hero h1,
+  .calliqo-landing .hero h1 span,
+  .calliqo-landing h1,
+  .calliqo-landing h1 span {
+    font-size: 26px !important;
+    line-height: 1.14 !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    hyphens: none !important;
+  }
+
+  .calliqo-landing .hero-actions {
+    flex-direction: row !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .calliqo-landing .hero-actions .button,
+  .calliqo-landing .hero-actions .text-link {
+    font-size: 12px !important;
+    padding: 10px 12px !important;
+    border-radius: 4px !important;
+    white-space: nowrap !important;
+    max-width: none !important;
+    width: auto !important;
   }
 }

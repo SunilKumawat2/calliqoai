@@ -414,21 +414,11 @@ export default function LoginPage() {
 
           <header className="auth-header">
             <Link href="/" className="brand" aria-label="CALLIQO AI home">
-              {(currentLogo || "/images/dark_logo.svg") ? (
-                <img
-                  src={currentLogo || "/images/dark_logo.svg"}
-                  alt={branding.app_name || "CALLIQO AI"}
-                  style={{ height: "32px", width: "auto", objectFit: "contain" }}
-                />
-              ) : (
-                <>
-                  <span className="brand-mark">
-                    <i></i><i></i><i></i><i></i><i></i>
-                  </span>
-                  <span>CALLIQO</span>
-                  <em>AI</em>
-                </>
-              )}
+              <img
+                src={currentLogo || "/images/dark_logo.svg"}
+                alt={branding.app_name || "CALLIQO AI"}
+                style={{ height: "32px", width: "auto", objectFit: "contain" }}
+              />
             </Link>
             <Link href="/" className="back-link">← Back to website</Link>
           </header>
