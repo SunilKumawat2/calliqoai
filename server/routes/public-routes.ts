@@ -1123,6 +1123,65 @@ ${allUrls.map(u => {
         console.warn('Voice Engine agents table not found or not initialized:', veError.message);
       }
 
+      // 3. Ensure sub-tab demo options are available for all 5 categories
+      const fallbackBaseId = regularAgents[0]?.id || 'jda-agent-f9ve4gt4';
+
+      const hasIntlPremium = list.some(a => !a.telephonyProvider.startsWith('plivo') && a.telephonyProvider !== 'twilio_openai' && a.telephonyProvider !== 'custom-voice-engine');
+      const hasIntlStandard = list.some(a => a.telephonyProvider === 'twilio_openai');
+      const hasIndianPremium = list.some(a => a.telephonyProvider === 'plivo_elevenlabs' || a.telephonyProvider === 'elevenlabs-plivo');
+      const hasIndianStandard = list.some(a => a.telephonyProvider === 'plivo' || a.telephonyProvider === 'plivo_openai');
+      const hasIndianCustom = list.some(a => a.telephonyProvider === 'custom-voice-engine');
+
+      if (!hasIntlPremium) {
+        list.push({
+          id: fallbackBaseId,
+          name: "Dental Clinic Assistant",
+          telephonyProvider: "twilio",
+          type: "outgoing",
+          engine: "native",
+        });
+      }
+
+      if (!hasIntlStandard) {
+        list.push({
+          id: fallbackBaseId,
+          name: "Support Desk Agent",
+          telephonyProvider: "twilio_openai",
+          type: "outgoing",
+          engine: "native",
+        });
+      }
+
+      if (!hasIndianPremium) {
+        list.push({
+          id: fallbackBaseId,
+          name: "Dr. Smile Front Desk",
+          telephonyProvider: "plivo_elevenlabs",
+          type: "outgoing",
+          engine: "native",
+        });
+      }
+
+      if (!hasIndianStandard) {
+        list.push({
+          id: fallbackBaseId,
+          name: "JDA Real Estate Agent",
+          telephonyProvider: "plivo",
+          type: "outgoing",
+          engine: "native",
+        });
+      }
+
+      if (!hasIndianCustom) {
+        list.push({
+          id: fallbackBaseId,
+          name: "Voice Engine Agent",
+          telephonyProvider: "custom-voice-engine",
+          type: "flow",
+          engine: "custom-voice-engine",
+        });
+      }
+
       res.json({ success: true, agents: list });
     } catch (error: any) {
       console.error('Error fetching demo agents:', error);
@@ -1393,7 +1452,54 @@ ${allUrls.map(u => {
         });
       }
 
-      // Case B: Plivo + OpenAI Realtime
+      // Case B1: Plivo + ElevenLabs
+      if (resolvedProvider === 'plivo_elevenlabs' || agent.telephonyProvider === 'plivo_elevenlabs') {
+        const { PlivoElevenLabsOutboundService } = await import('../engines/plivo-elevenlabs/services/outbound-call.service');
+        const plivoPhoneResult = await db.select().from(plivoPhoneNumbers).where(and(eq(plivoPhoneNumbers.userId, userId), eq(plivoPhoneNumbers.status, 'active'))).limit(1);
+        if (plivoPhoneResult.length === 0) {
+          return res.status(400).json({ success: false, error: "No active Plivo phone number configured on your account. Please purchase a Plivo number." });
+        }
+        const plivoPhone = plivoPhoneResult[0];
+
+        const plivoSetting = await storage.getGlobalSetting('plivo_credentials');
+        const plivoCreds = (plivoSetting?.value as any) || {};
+        const plivoAuthId = plivoCreds.auth_id || process.env.PLIVO_AUTH_ID;
+        const plivoAuthToken = plivoCreds.auth_token || process.env.PLIVO_AUTH_TOKEN;
+
+        const credential = await ElevenLabsPoolService.getCredentialForAgent(agent.id);
+        const elevenLabsApiKey = credential?.apiKey || process.env.ELEVENLABS_API_KEY || 'sk_5a88ed1456bd2e0890567f3a55e80a5885949a5b988ef3b8';
+
+        const result = await PlivoElevenLabsOutboundService.makeCall({
+          toNumber: formattedToNumber,
+          fromNumber: plivoPhone.phoneNumber,
+          agentId: agent.elevenLabsAgentId || 'agent_2201m20fdvdket7rdh5pttn091b8',
+          elevenLabsApiKey,
+          agentConfig: {
+            agentId: agent.elevenLabsAgentId || 'agent_2201m20fdvdket7rdh5pttn091b8',
+            firstMessage: agent.firstMessage || undefined,
+            voiceId: agent.elevenLabsVoiceId || undefined,
+          },
+          plivoAuthId,
+          plivoAuthToken,
+          userId,
+          dbAgentId: agent.id,
+          plivoPhoneNumberId: plivoPhone.id,
+        });
+
+        if (!result.success) {
+          return res.status(400).json({ success: false, error: result.error || "Failed to initiate Plivo + ElevenLabs call" });
+        }
+
+        return res.json({
+          success: true,
+          message: "Demo call initiated successfully via Plivo + ElevenLabs.",
+          callId: result.callRecordId,
+          uuid: result.callUuid,
+          provider: 'plivo_elevenlabs',
+        });
+      }
+
+      // Case B2: Plivo + OpenAI Realtime
       if (resolvedProvider === 'plivo') {
         const { PlivoCallService } = await import('../engines/plivo/services/plivo-call.service');
         const { OpenAIAgentFactory } = await import('../engines/plivo/services/openai-agent-factory');

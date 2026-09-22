@@ -218,6 +218,9 @@ export default function DemoPage() {
   const [agentsList, setAgentsList] = useState<DemoAgent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [selectedProvider, setSelectedProvider] = useState<string>("twilio");
+  const [intlSubTab, setIntlSubTab] = useState<'premium' | 'standard'>('premium');
+  const [indianSubTab, setIndianSubTab] = useState<'premium' | 'standard' | 'custom'>('premium');
+
   const [phoneNumber, setPhoneNumber] = useState<string>("");
   const [countryPrefix, setCountryPrefix] = useState<string>("+1");
   const [selectedCountry, setSelectedCountry] = useState<string>("CA");
@@ -240,14 +243,49 @@ export default function DemoPage() {
   const selectedAgent = agentsList.find(a => a.id === selectedAgentId);
   const agentProvider = selectedAgent?.telephonyProvider || "";
 
-  // Filter agents list based on selected provider route:
-  // - "plivo" (Indian Number) -> Only Plivo + OpenAI agents
-  // - "twilio" (International Number) -> Twilio + ElevenLabs / OpenAI agents
-  const filteredAgents = agentsList.filter(agent => {
-    if (selectedProvider === "plivo") {
-      return agent.telephonyProvider.startsWith("plivo");
+  // Helper to categorize an agent by provider & sub-tab
+  const getAgentSubTab = (agent: DemoAgent): { provider: 'twilio' | 'plivo'; subTab: string } => {
+    const p = (agent.telephonyProvider || '').toLowerCase();
+    if (p === 'custom-voice-engine') {
+      return { provider: 'plivo', subTab: 'custom' };
     }
-    return !agent.telephonyProvider.startsWith("plivo");
+    if (p === 'plivo_elevenlabs' || p === 'elevenlabs-plivo') {
+      return { provider: 'plivo', subTab: 'premium' };
+    }
+    if (p.startsWith('plivo')) {
+      return { provider: 'plivo', subTab: 'standard' };
+    }
+    if (p === 'twilio_openai' || p === 'twilio-openai') {
+      return { provider: 'twilio', subTab: 'standard' };
+    }
+    return { provider: 'twilio', subTab: 'premium' };
+  };
+
+  // Helper to auto-select matching agent when tab/sub-tab changes
+  const autoSelectAgentForTab = (provider: 'twilio' | 'plivo', targetSubTab: string, list: DemoAgent[] = agentsList) => {
+    const matchingAgent = list.find(agent => {
+      const info = getAgentSubTab(agent);
+      return info.provider === provider && info.subTab === targetSubTab;
+    });
+
+    if (matchingAgent) {
+      setSelectedAgentId(matchingAgent.id);
+    } else {
+      const providerFallback = list.find(agent => getAgentSubTab(agent).provider === provider);
+      if (providerFallback) {
+        setSelectedAgentId(providerFallback.id);
+      }
+    }
+  };
+
+  // Filter agents list based on active selected provider & sub-tab
+  const filteredAgents = agentsList.filter(agent => {
+    const { provider, subTab } = getAgentSubTab(agent);
+    if (selectedProvider === "twilio") {
+      return provider === "twilio" && subTab === intlSubTab;
+    } else {
+      return provider === "plivo" && subTab === indianSubTab;
+    }
   });
 
   // Fetch public demo agents and providers
@@ -259,20 +297,11 @@ export default function DemoPage() {
         if (result.success && result.agents) {
           setAgentsList(result.agents);
           if (result.agents.length > 0) {
-            // Default to International route or first available agent
-            const firstIntl = result.agents.find((a: DemoAgent) => !a.telephonyProvider.startsWith("plivo"));
-            const defaultAgent = firstIntl || result.agents[0];
-            setSelectedAgentId(defaultAgent.id);
-
-            const isPlivo = defaultAgent.telephonyProvider.startsWith("plivo");
-            setSelectedProvider(isPlivo ? "plivo" : "twilio");
-            if (isPlivo) {
-              setCountryPrefix("+91");
-              setSelectedCountry("IN");
-            } else {
-              setCountryPrefix("+1");
-              setSelectedCountry("CA");
-            }
+            // Default auto selection for initial load (Twilio Premium)
+            autoSelectAgentForTab('twilio', 'premium', result.agents);
+            setSelectedProvider("twilio");
+            setCountryPrefix("+1");
+            setSelectedCountry("CA");
           }
         }
       } catch (error) {
@@ -331,17 +360,18 @@ export default function DemoPage() {
     setSelectedAgentId(value);
     const agent = agentsList.find(a => a.id === value);
     if (agent) {
-      const isPlivo = agent.telephonyProvider.startsWith("plivo");
-      const mappedProvider = isPlivo ? "plivo" : "twilio";
-      setSelectedProvider(mappedProvider);
-      if (mappedProvider === "plivo") {
-        setCountryPrefix("+91");
-        setSelectedCountry("IN");
-      } else {
+      const { provider, subTab } = getAgentSubTab(agent);
+      setSelectedProvider(provider);
+      if (provider === "twilio") {
+        setIntlSubTab(subTab as 'premium' | 'standard');
         setCountryPrefix("+1");
         setSelectedCountry("CA");
+      } else {
+        setIndianSubTab(subTab as 'premium' | 'standard' | 'custom');
+        setCountryPrefix("+91");
+        setSelectedCountry("IN");
       }
-      addLog("info", `Selected agent: ${agent.name} (${isPlivo ? 'National Call - PLIVO' : 'International Call - TWILIO'})`);
+      addLog("info", `Selected agent: ${agent.name} (${provider.toUpperCase()} - ${subTab.toUpperCase()})`);
     }
   };
 
@@ -350,21 +380,31 @@ export default function DemoPage() {
     if (provider === "plivo") {
       setCountryPrefix("+91");
       setSelectedCountry("IN");
-      // Auto-select first Plivo agent if current agent is not Plivo
-      const plivoAgents = agentsList.filter(a => a.telephonyProvider.startsWith("plivo"));
-      if (plivoAgents.length > 0 && !plivoAgents.some(a => a.id === selectedAgentId)) {
-        setSelectedAgentId(plivoAgents[0].id);
-      }
+      autoSelectAgentForTab('plivo', indianSubTab);
+      addLog("info", `Switched route to Indian Number (${indianSubTab.toUpperCase()})`);
     } else {
       setCountryPrefix("+1");
       setSelectedCountry("CA");
-      // Auto-select first International agent if current agent is Plivo
-      const intlAgents = agentsList.filter(a => !a.telephonyProvider.startsWith("plivo"));
-      if (intlAgents.length > 0 && !intlAgents.some(a => a.id === selectedAgentId)) {
-        setSelectedAgentId(intlAgents[0].id);
-      }
+      autoSelectAgentForTab('twilio', intlSubTab);
+      addLog("info", `Switched route to International Number (${intlSubTab.toUpperCase()})`);
     }
-    addLog("info", `Switched route to ${provider === 'twilio' ? 'International Number (Twilio + ElevenLabs/OpenAI)' : 'Indian Number (Plivo + OpenAI)'}`);
+  };
+
+  const handleSubTabChange = (provider: "twilio" | "plivo", subTab: string) => {
+    if (provider === "twilio") {
+      const typedSub = subTab as 'premium' | 'standard';
+      setIntlSubTab(typedSub);
+      autoSelectAgentForTab('twilio', typedSub);
+      addLog("info", `Switched International mode: ${typedSub === 'premium' ? 'Premium (Twilio + ElevenLabs)' : 'Standard (Twilio + OpenAI)'}`);
+    } else {
+      const typedSub = subTab as 'premium' | 'standard' | 'custom';
+      setIndianSubTab(typedSub);
+      autoSelectAgentForTab('plivo', typedSub);
+      let label = 'Standard (Plivo + OpenAI)';
+      if (typedSub === 'premium') label = 'Premium (Plivo + ElevenLabs)';
+      if (typedSub === 'custom') label = 'Custom (Plivo + Custom Voice Engine)';
+      addLog("info", `Switched Indian mode: ${label}`);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -706,6 +746,56 @@ export default function DemoPage() {
                           Indian Number
                         </button>
                       </div>
+
+                      {selectedProvider === 'twilio' && (
+                        <div className="subtab-toggle-buttons">
+                          <button
+                            type="button"
+                            className={`subtab-btn ${intlSubTab === 'premium' ? 'active' : ''}`}
+                            onClick={() => handleSubTabChange('twilio', 'premium')}
+                          >
+                            <span className="subtab-badge premium">Premium</span>
+                            Twilio + ElevenLabs
+                          </button>
+                          <button
+                            type="button"
+                            className={`subtab-btn ${intlSubTab === 'standard' ? 'active' : ''}`}
+                            onClick={() => handleSubTabChange('twilio', 'standard')}
+                          >
+                            <span className="subtab-badge standard">Standard</span>
+                            Twilio + OpenAI
+                          </button>
+                        </div>
+                      )}
+
+                      {selectedProvider === 'plivo' && (
+                        <div className="subtab-toggle-buttons">
+                          <button
+                            type="button"
+                            className={`subtab-btn ${indianSubTab === 'premium' ? 'active' : ''}`}
+                            onClick={() => handleSubTabChange('plivo', 'premium')}
+                          >
+                            <span className="subtab-badge premium">Premium</span>
+                            Plivo + ElevenLabs
+                          </button>
+                          <button
+                            type="button"
+                            className={`subtab-btn ${indianSubTab === 'standard' ? 'active' : ''}`}
+                            onClick={() => handleSubTabChange('plivo', 'standard')}
+                          >
+                            <span className="subtab-badge standard">Standard</span>
+                            Plivo + OpenAI
+                          </button>
+                          <button
+                            type="button"
+                            className={`subtab-btn ${indianSubTab === 'custom' ? 'active' : ''}`}
+                            onClick={() => handleSubTabChange('plivo', 'custom')}
+                          >
+                            <span className="subtab-badge custom">Custom</span>
+                            Plivo + Custom
+                          </button>
+                        </div>
+                      )}
                     </label>
 
                     <label>
@@ -752,8 +842,8 @@ export default function DemoPage() {
                     </label>
 
                     <button className="call-start" type="submit" disabled={isLoading || agentsList.length === 0}>
-                      <b>{isLoading ? "Initiating Call..." : "Start Demo Call"}</b>
-                      <i>→</i>
+                      <b>{isLoading ? "Initiating Call → ..." : "Start Demo Call →"}</b>
+                      {/* <i></i> */}
                     </button>
                   </form>
 
