@@ -15,6 +15,7 @@ import { db } from '../../../db';
 import { plivoCredentials } from '@shared/schema';
 import { logger } from '../../../utils/logger';
 import { getDomain } from '../../../utils/domain';
+import { storage } from '../../../storage';
 import { eq, and } from 'drizzle-orm';
 
 interface PlivoCredentialRecord {
@@ -54,8 +55,8 @@ export class PlivoRecordingService {
   /**
    * Get Plivo credentials for API authentication
    */
-  private static async getPlivoClient(credentialId?: string): Promise<PlivoCredentialRecord> {
-    let credential: PlivoCredentialRecord | undefined;
+  private static async getPlivoClient(credentialId?: string): Promise<{ authId: string; authToken: string; id?: string }> {
+    let credential: { authId: string; authToken: string; id?: string } | undefined;
 
     if (credentialId) {
       const [cred] = await db
@@ -82,6 +83,22 @@ export class PlivoRecordingService {
         .where(eq(plivoCredentials.isActive, true))
         .limit(1);
       credential = anyCred;
+    }
+
+    if (!credential) {
+      // Fallback: Check globalSettings ('plivo_auth_id' & 'plivo_auth_token') or process.env
+      try {
+        const dbAuthId = await storage.getGlobalSetting('plivo_auth_id');
+        const dbAuthToken = await storage.getGlobalSetting('plivo_auth_token');
+        const authId = (typeof dbAuthId?.value === 'string' ? dbAuthId.value.trim() : '') || (process.env.PLIVO_AUTH_ID || '').trim();
+        const authToken = (typeof dbAuthToken?.value === 'string' ? dbAuthToken.value.trim() : '') || (process.env.PLIVO_AUTH_TOKEN || '').trim();
+
+        if (authId && authToken && authId !== 'your_plivo_auth_id_here') {
+          credential = { authId, authToken };
+        }
+      } catch (err: any) {
+        logger.error(`[Recording] Failed to fetch fallback Plivo credentials from global settings: ${err?.message || err}`, err, 'Recording');
+      }
     }
 
     if (!credential) {
@@ -187,10 +204,9 @@ export class PlivoRecordingService {
         success: true,
       };
     } catch (error: any) {
-      // 204 No Content is a success response for DELETE
-      if (error.response?.status === 204) {
-        logger.info(`[Recording] Stop API Response Status: 204`, undefined, 'Recording');
-        logger.info(`[Recording] ✓ Stopped successfully for ${callUuid}`, undefined, 'Recording');
+      // 204 No Content or 404 Not Found (call already ended, Plivo auto-saves recording)
+      if (error.response?.status === 204 || error.response?.status === 404) {
+        logger.info(`[Recording] Stop API returned status ${error.response?.status} (call ended, Plivo auto-saves recording for ${callUuid})`, undefined, 'Recording');
         return {
           success: true,
         };

@@ -233,13 +233,11 @@ export function AdminTeamMemberSidebar() {
           />
         </div>
         <div className="hidden group-data-[collapsible=icon]:flex flex-col items-center gap-2">
-          {showFavicon && (
-            <img 
-              src={branding.favicon_url!} 
-              alt={branding.app_name} 
-              className="h-6 w-6 object-contain"
-            />
-          )}
+          <img 
+            src="/images/mini-dark-logo.png" 
+            alt={branding?.app_name || "Calliqo AI"} 
+            className="h-7 w-7 object-contain rounded-md"
+          />
           <SidebarTrigger 
             className="h-5 w-5 shrink-0" 
             data-testid="button-admin-sidebar-toggle-collapsed" 

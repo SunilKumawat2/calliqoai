@@ -12,7 +12,8 @@
 import { ElevenLabsBridgeService, CreateBridgeSessionParams } from './elevenlabs-bridge.service';
 import { getSipWebhookUrl } from '../config/config';
 import { db } from '../../../db';
-import { plivoCalls, type InsertPlivoCall } from '@shared/schema';
+import { plivoCalls, plivoCredentials, type InsertPlivoCall } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
 
 export interface OutboundCallParams {
   toNumber: string;
@@ -96,13 +97,24 @@ export class PlivoElevenLabsOutboundService {
       console.error(`[Plivo-ElevenLabs Outbound] Failed to insert call record for ${callUuid}:`, dbErr?.message || dbErr);
     }
 
+    let finalFromNumber = fromNumber;
+    if (!finalFromNumber || finalFromNumber.includes('12495010039') || finalFromNumber.startsWith('+1249')) {
+      const [activePlivo] = await db.select().from(plivoPhoneNumbers).where(eq(plivoPhoneNumbers.status, 'active')).limit(1);
+      if (activePlivo) {
+        finalFromNumber = activePlivo.phoneNumber;
+      }
+    }
+    if (finalFromNumber && !finalFromNumber.startsWith('+')) {
+      finalFromNumber = '+' + finalFromNumber;
+    }
+
     try {
       const sessionParams: CreateBridgeSessionParams = {
         callUuid,
         agentId: agentConfig?.agentId || agentId,
         elevenLabsApiKey,
         agentConfig,
-        fromNumber,
+        fromNumber: finalFromNumber,
         toNumber,
         direction: 'outbound',
       };
@@ -116,7 +128,7 @@ export class PlivoElevenLabsOutboundService {
       const plivoClient = await this.getPlivoClient(plivoAuthId, plivoAuthToken);
       
       const response = await plivoClient.calls.create(
-        fromNumber,
+        finalFromNumber,
         toNumber,
         answerUrl,
         {
@@ -149,10 +161,43 @@ export class PlivoElevenLabsOutboundService {
   }
   
   /**
-   * Get Plivo client instance
+   * Get Plivo client instance with fallbacks
    */
-  private static async getPlivoClient(authId: string, authToken: string): Promise<any> {
+  private static async getPlivoClient(authId?: string, authToken?: string): Promise<any> {
+    let finalAuthId = authId || process.env.PLIVO_AUTH_ID;
+    let finalAuthToken = authToken || process.env.PLIVO_AUTH_TOKEN;
+
+    if (!finalAuthId || !finalAuthToken) {
+      try {
+        const [primaryCred] = await db
+          .select()
+          .from(plivoCredentials)
+          .where(and(eq(plivoCredentials.isPrimary, true), eq(plivoCredentials.isActive, true)))
+          .limit(1);
+        if (primaryCred) {
+          finalAuthId = primaryCred.authId;
+          finalAuthToken = primaryCred.authToken;
+        } else {
+          const [anyCred] = await db
+            .select()
+            .from(plivoCredentials)
+            .where(eq(plivoCredentials.isActive, true))
+            .limit(1);
+          if (anyCred) {
+            finalAuthId = anyCred.authId;
+            finalAuthToken = anyCred.authToken;
+          }
+        }
+      } catch (err) {
+        console.error('[Plivo-ElevenLabs Outbound] Error fetching Plivo credentials from DB:', err);
+      }
+    }
+
+    if (!finalAuthId || !finalAuthToken) {
+      throw new Error("Plivo credentials not found. Please configure Plivo credentials in settings.");
+    }
+
     const plivo = await import('plivo');
-    return new plivo.Client(authId, authToken);
+    return new plivo.Client(finalAuthId, finalAuthToken);
   }
 }

@@ -215,19 +215,21 @@ export class AudioBridgeService {
   /**
    * Connect to OpenAI Realtime API WebSocket
    */
-  private static async connectToOpenAI(session: AudioBridgeSession, apiKey: string): Promise<void> {
+  private static async connectToOpenAI(session: AudioBridgeSession, apiKey: string, modelOverride?: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const { agentConfig, callUuid } = session;
 
-      let model = agentConfig.model;
-      if (model === 'gpt-realtime-mini' || model === 'gpt-4o-mini-realtime-preview' || model === 'gpt-4o-mini-realtime-preview-2024-12-17') {
-        model = 'gpt-4o-mini-realtime-preview-2024-12-17';
+      let model = modelOverride || agentConfig.model;
+      if (model === 'gpt-realtime-mini' || model === 'gpt-4o-mini-realtime-preview' || model === 'gpt-4o-mini-realtime-preview-2024-12-17' || model === 'gpt-4o-mini') {
+        model = 'gpt-realtime-mini';
       } else {
-        model = 'gpt-4o-realtime-preview-2024-12-17';
+        model = 'gpt-realtime';
       }
       const wsUrl = `${this.OPENAI_REALTIME_URL}?model=${model}`;
 
       logger.info(`Connecting to OpenAI Realtime: ${model} (mapped from ${agentConfig.model})`, undefined, 'AudioBridge');
+
+      let isResolved = false;
 
       const ws = new WebSocket(wsUrl, {
         headers: {
@@ -237,9 +239,19 @@ export class AudioBridgeService {
 
       session.openaiWs = ws;
 
+      const connectionTimeoutId = setTimeout(() => {
+        if (!isResolved && session.status === 'connecting') {
+          isResolved = true;
+          ws.close();
+          reject(new Error('OpenAI WebSocket connection timeout'));
+        }
+      }, 10000);
+
       ws.on('open', () => {
+        clearTimeout(connectionTimeoutId);
         logger.info(`OpenAI WebSocket connected for ${callUuid}`, undefined, 'AudioBridge');
         session.status = 'connected';
+        isResolved = true;
 
         // Register connection with the pool manager
         openaiPoolManager.addConnection(
@@ -263,11 +275,35 @@ export class AudioBridgeService {
         logger.error(`OpenAI WebSocket error for ${callUuid}`, error, 'AudioBridge');
         session.status = 'error';
         openaiPoolManager.removeConnection(session.callUuid);
-        reject(error);
+        if (!isResolved) {
+          isResolved = true;
+          clearTimeout(connectionTimeoutId);
+          reject(error);
+        }
       });
 
       ws.on('close', async (code, reason) => {
-        logger.info(`OpenAI WebSocket closed for ${callUuid}: ${code} ${reason}`, undefined, 'AudioBridge');
+        const reasonStr = reason ? reason.toString() : '';
+        logger.info(`OpenAI WebSocket closed for ${callUuid}: ${code} ${reasonStr}`, undefined, 'AudioBridge');
+
+        // Check if model not found error occurred before connection was established
+        if (!isResolved && (reasonStr.includes('model_not_found') || reasonStr.includes('does not exist') || code === 4004)) {
+          clearTimeout(connectionTimeoutId);
+          openaiPoolManager.removeConnection(session.callUuid);
+
+          if (model !== 'gpt-realtime-mini') {
+            logger.warn(`Model ${model} failed for ${callUuid}, trying fallback model gpt-realtime-mini`, undefined, 'AudioBridge');
+            try {
+              await AudioBridgeService.connectToOpenAI(session, apiKey, 'gpt-realtime-mini');
+              isResolved = true;
+              return resolve();
+            } catch (fallbackErr) {
+              isResolved = true;
+              return reject(fallbackErr);
+            }
+          }
+        }
+
         session.status = 'disconnected';
         openaiPoolManager.removeConnection(session.callUuid);
 
@@ -278,13 +314,6 @@ export class AudioBridgeService {
           session.onEndCallback();
         }
       });
-
-      // Timeout for connection
-      setTimeout(() => {
-        if (session.status === 'connecting') {
-          reject(new Error('OpenAI WebSocket connection timeout'));
-        }
-      }, 10000);
     });
   }
 
@@ -340,15 +369,16 @@ export class AudioBridgeService {
 
 IMPORTANT FLOW EXECUTION & TOOL RULES:
 1. STRICT SEQUENTIAL FLOW: You MUST ask all questions in the conversation states strictly step-by-step (State 1 -> State 2 -> State 3 -> End State). Do NOT skip any question state.
-2. NO PREMATURE HANGUP: Do NOT call end_call during intermediate questions (Question 1, Question 2, Question 3, etc.) even if the caller says "thank you", "dhanyawad", "ji", "thik hai", or gives a long answer. Listen to their response, acknowledge it briefly, and move to the NEXT question.
-3. END STATE FAREWELL REQUIREMENT: When you reach the End State, FIRST speak your complete thank-you farewell message out loud to the caller word-for-word.
-4. ONLY AFTER you have completely spoken the entire farewell message out loud, invoke the end_call tool in the next turn to hang up.`
+2. NO PREMATURE HANGUP: Do NOT call end_call during intermediate questions (Question 1, Question 2, Question 3, etc.) even if the caller says "thank you", "dhanyawad", "ji", "thik hai", or gives a short answer. Listen to their response, acknowledge it briefly, and move to the NEXT question.
+3. END STATE CLOSING REQUIREMENT: When reaching the end of the survey or conversation, you MUST speak your complete closing statement from your prompt out loud to the caller word-for-word (e.g. "ठीक है, आपका समय देने और अपनी राय साझा करने के लिए धन्यवाद। आपका दिन शुभ रहे।").
+4. ONLY AFTER you have completely finished speaking the entire closing message out loud, invoke the end_call tool to disconnect.`
       : `
 
-IMPORTANT FUNCTION CALLING REQUIREMENTS:
-1. After collecting all form information from the user, you MUST call the submit_form function with the collected data.
-2. When the user explicitly asks to disconnect or end the call ("call cut kar do", "khatam karo"), FIRST speak a brief goodbye message out loud, and then call the end_call function.
-3. When ending the call, ALWAYS speak your full farewell message out loud FIRST before invoking end_call.`;
+IMPORTANT FUNCTION CALLING & CLOSING RULES:
+1. MANDATORY CLOSING STATEMENT: When the conversation concludes or the user wants to end the call, you MUST speak your full closing statement from your prompt out loud to the caller word-for-word FIRST (e.g. "ठीक है, आपका समय देने और अपनी राय साझा करने के लिए धन्यवाद। आपका दिन शुभ रहे।").
+2. DO NOT call end_call before completely speaking your closing statement out loud.
+3. After collecting all form information from the user, you MUST call the submit_form function with the collected data.
+4. When the user explicitly asks to disconnect or end the call ("call cut kar do", "khatam karo", "baad me karte hai"), FIRST speak your closing message out loud, and then call the end_call function.`;
 
     const enhancedInstructions = agentConfig.systemPrompt + functionCallingRequirements;
 
@@ -941,25 +971,25 @@ IMPORTANT FUNCTION CALLING REQUIREMENTS:
             logger.info('Ignoring end_call - session already disconnecting/transferring', undefined, 'AudioBridge');
             result = { ignored: true, reason: 'Session already disconnecting or transfer in progress' };
           } else {
-            logger.info(`End call requested for ${session.callUuid}. Triggering mandatory farewell speech and 15s delayed hangup...`, undefined, 'AudioBridge');
+            logger.info(`End call requested for ${session.callUuid}. Initiating clean hangup...`, undefined, 'AudioBridge');
             
-            // Mark session as isEnding to prevent sending further user audio, but keep status connected so farewell audio streams to Plivo
+            // Mark session as isEnding to prevent sending further user audio
             session.isEnding = true;
 
             setTimeout(async () => {
               try {
                 session.status = 'disconnected';
                 const hangupResult = await AudioBridgeService.executeHangup(session);
-                logger.info(`Delayed hangup completed for ${session.callUuid}: ${JSON.stringify(hangupResult)}`, undefined, 'AudioBridge');
+                logger.info(`Hangup completed for ${session.callUuid}: ${JSON.stringify(hangupResult)}`, undefined, 'AudioBridge');
               } catch (err: any) {
-                logger.error(`Error in delayed hangup for ${session.callUuid}: ${err.message}`, err, 'AudioBridge');
+                logger.error(`Error in hangup for ${session.callUuid}: ${err.message}`, err, 'AudioBridge');
               }
-            }, 15000);
+            }, 2500);
 
             result = {
               action: 'end_call',
               hangupSuccess: true,
-              message: 'Call ending acknowledged. Speak farewell message now.'
+              message: 'Call ended.'
             };
           }
         }
@@ -979,7 +1009,7 @@ IMPORTANT FUNCTION CALLING REQUIREMENTS:
    * 
    * OpenAI Realtime API tool call handshake:
    * 1. Send `conversation.item.create` with type `function_call_output`, `call_id`, and `output`
-   * 2. Send `response.create` to resume the assistant's response generation
+   * 2. Send `response.create` to resume the assistant's response generation (unless call is ending)
    */
   private static sendToolResult(session: AudioBridgeSession, callId: string, result: unknown): void {
     const { openaiWs } = session;
@@ -997,16 +1027,8 @@ IMPORTANT FUNCTION CALLING REQUIREMENTS:
 
     const isEndCall = (result as any)?.action === 'end_call' || (result as any)?.hangupSuccess;
 
-    // Step 2: Trigger response.create to resume assistant after tool execution
-    if (isEndCall) {
-      logger.info(`Sending mandatory farewell speech instruction to OpenAI Realtime for call ${session.callUuid}`, undefined, 'AudioBridge');
-      openaiWs.send(JSON.stringify({
-        type: 'response.create',
-        response: {
-          instructions: `CRITICAL MANDATORY INSTRUCTION: Speak your final thank-you farewell message out loud to the caller in pure HINDI ("आपकी बहुमूल्य राय और समय देने के लिए आपका बहुत-बहुत धन्यवाद! आपका दिन शुभ हो।"). Absolutely DO NOT use Punjabi language or Punjabi words. Speak in pure HINDI ONLY, and then stop speaking.`,
-        },
-      }));
-    } else {
+    // Step 2: Trigger response.create only if NOT ending call (prevents generating duplicate/unwanted farewell speech)
+    if (!isEndCall) {
       openaiWs.send(JSON.stringify({
         type: 'response.create',
       }));
@@ -1931,12 +1953,7 @@ IMPORTANT FUNCTION CALLING REQUIREMENTS:
     return this.activeSessions.size;
   }
 
-  /**
-   * Get session by call UUID
-   */
-  static getSession(callUuid: string): AudioBridgeSession | undefined {
-    return this.activeSessions.get(callUuid);
-  }
+
 
   /**
    * Check if session is active

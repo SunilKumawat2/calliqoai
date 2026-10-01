@@ -21,8 +21,8 @@ class VadDetector {
       this.lastEnergyValues.shift();
     }
     const smoothedEnergy = this.lastEnergyValues.reduce((a, b) => a + b, 0) / this.lastEnergyValues.length;
-    const threshold = isPlayingTts ? 0.15 : this.config.energyThreshold;
-    const requiredSpeechMs = isPlayingTts ? 350 : this.config.speechThresholdMs;
+    const threshold = isPlayingTts ? Math.max(0.035, this.config.energyThreshold * 1.25) : this.config.energyThreshold;
+    const requiredSpeechMs = isPlayingTts ? 180 : this.config.speechThresholdMs;
     const isSpeech = smoothedEnergy > threshold;
     const now = Date.now();
     let isSpeechStart = false;

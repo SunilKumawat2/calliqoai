@@ -62,6 +62,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
       // can find it by `plivo_call_uuid`. The row was inserted at dial time
       // with `metadata.internalId = callId` (the synthetic id from the URL).
       if (CallUUID && callId) {
+        ElevenLabsBridgeService.aliasSession(callId, CallUUID);
         try {
           await db
             .update(plivoCalls)
@@ -80,13 +81,14 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
         }
       }
 
-      const streamUrl = getSipStreamUrl(CallUUID);
+      const streamUrl = getSipStreamUrl(CallUUID || callId);
       
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
     ${streamUrl}
   </Stream>
+  <Wait length="3600"/>
 </Response>`;
       
       res.set('Content-Type', 'text/xml');

@@ -525,7 +525,6 @@ export class PlivoCallService {
       }
 
       // Update the pre-created calls table record (created by campaign-executor for UI tracking).
-      // Plivo engine tracks calls in plivoCalls; those records are never linked to the calls table.
       if (call.campaignId && call.contactId) {
         try {
           const terminalCallStatus = status === 'completed' ? 'completed' : 'failed';
@@ -543,6 +542,21 @@ export class PlivoCallService {
         } catch (callsUpdateErr: any) {
           logger.error(`Failed to sync calls table for contact ${call.contactId}: ${callsUpdateErr.message}`, undefined, 'PlivoCall');
         }
+      }
+
+      // ALWAYS sync the main calls table record (which powers the /app/calls UI dashboard)
+      try {
+        const uiStatus = status === 'completed' ? 'completed' : ['busy', 'failed', 'no-answer', 'canceled'].includes(status) ? 'failed' : status;
+        await db
+          .update(calls)
+          .set({
+            status: uiStatus,
+            duration: updateData.duration ?? (durationSeconds || null),
+            endedAt: updateData.endedAt || new Date(),
+          })
+          .where(eq(calls.id, call.id));
+      } catch (uiSyncErr: any) {
+        logger.warn(`Failed to sync calls table for UI tracking: ${uiSyncErr.message}`, undefined, 'PlivoCall');
       }
 
       if (call.campaignId) {

@@ -65,11 +65,13 @@ class SarvamTtsProvider extends BaseTtsProvider {
           inputs: [text],
           target_language_code: this.mapLanguage(language),
           speaker,
-          model,
-          pace: config.speed || 1.05,
-          // Natural human speech pace for clear Hindi pronunciation
-          speech_sample_rate: 16e3,
-          // Request 16kHz high-fidelity audio from Sarvam
+          pitch: config.pitch || 0,
+          pace: config.speed || 1.48,
+          // Fast crisp pace (~1.48x) for active phone conversation
+          loudness: 2.2,
+          // Boosted loudness (2.2) for maximum volume clarity and presence on phone calls
+          speech_sample_rate: 8e3,
+          // Native 8kHz telephone audio rate (matches FreeSWITCH 8kHz playback 1:1)
           enable_preprocessing: true
         },
         {

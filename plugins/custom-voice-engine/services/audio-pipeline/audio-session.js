@@ -65,6 +65,10 @@ class AudioSession extends EventEmitter {
   demoLimitTimeoutId = null;
   isCallAnswered = false;
   firstMessageTriggered = false;
+  isPlayingGreeting = false;
+  // Blocks barge-in during initial greeting
+  hasQueuedQuestionInTurn = false;
+  sentenceCountInTurn = 0;
   callAnsweredTime = 0;
   lastIncomingWriteEnd = 0;
   lastOutgoingWriteEnd = 0;
@@ -170,25 +174,20 @@ class AudioSession extends EventEmitter {
       const voiceCallRules = `
 
 ---
-**MANDATORY VOICE CALL & CONVERSATION RULES (ALWAYS FOLLOW):**
-1. CONTEXT RETENTION & SITE VISIT RESPECT:
-   - Always retain customer preferences shared during the call (budget, location, BHK type, purpose).
-   - If the customer requests property details/images/location on WhatsApp or email, or explicitly states they do NOT want a site visit right now, IMMEDIATELY acknowledge their request ("Bilkul, main WhatsApp par saari details share kar deti hoon"), confirm WhatsApp delivery, and NEVER ask or push for a site visit again in that call!
-2. INFORMATION CAPTURE & NO CONFUSION FALLBACKS:
-   - Never output generic confusion phrases like "Aap kya keh rahe hain", "samajh nahi paa rahi hoon", or "Mujhe samajh nahi aaya".
-   - If a customer utterance is short or partially noisy, state what you already understood (e.g. "Aapne 1 BHK Gurugram budget 30-40 Lakh bataya tha...") and politely ask only for the specific missing detail.
-3. DYNAMIC RESPONSES & NO REPETITIVE FILLERS:
-   - NEVER start consecutive responses with repetitive filler words like "Achha", "Achha, samajh rahi hoon", "Sahi hai", or "Okay". Use natural, contextually rich, varied sentence openings.
-4. GENDER & RESPECTFUL ADDRESS:
-   - Always address the customer using polite respectful plural verbs (e.g. "dekh rahe hain", "chahte hain", "karenge"). Avoid gender-specific singular forms (like "dekh rahi hain", "karengi").
-5. STRICT RESPONSE FORMAT & SHORT SENTENCES:
-   - Reply in MAXIMUM 1 SHORT SENTENCE (max 10-12 words) per turn. NO LONG PARAGRAPHS. NO BULLET POINTS.
-   - Never combine multiple sentences or questions into one reply.
-6. ONE QUESTION PER TURN & MANDATORY LISTENING:
-   - Ask EXACTLY ONE question per response turn.
-   - After asking ONE question, STOP speaking immediately and WAIT for the customer's answer.
-7. AFFIRMATION HANDLING ("Haan" / "Ji" / "Acha"):
-   - If the customer says "Haan", "Ji", "Haan ji", or "Acha", acknowledge politely and smoothly advance the conversation by asking the next relevant question about their property preferences (e.g. location, budget, or 2BHK/3BHK). Never repeat "Ji bilkul, batayein!" in a loop.`;
+**CRITICAL VOICE CALL RULES (STRICTLY ENFORCED ON EVERY TURN):**
+1. NATURAL TWO-WAY VOICE CONVERSATION:
+   - Listen carefully and patiently to what the caller says before replying.
+   - Answer the caller's specific questions or statements directly, following your core persona and system prompt instructions.
+   - Do NOT ignore what the caller said or invent user responses.
+2. CONCISE PHONE RESPONSES:
+   - Keep all spoken responses short, natural, and conversational (1 to 2 short sentences maximum).
+   - Never output long monologues, lists, or multi-paragraph essays on a phone call.
+3. NO REPETITION / NO ECHOING:
+   - Do NOT repeat or quote back the user's answer verbatim.
+4. NO UNNECESSARY FILLER WORDS:
+   - Do NOT start sentences with repetitive filler words like "Ji", "Samajh gayi", "Noted", or "Thik hai ji".
+5. TURN ENDING & WAITING FOR CALLER:
+   - End your response with a single clear question or helpful response, then IMMEDIATELY STOP speaking and wait for the caller to respond.`;
       const finalPromptContent = this.llmConfig.systemPrompt ? baseSystemPrompt + voiceCallRules : baseSystemPrompt + dateContext + voiceCallRules;
       this.conversationMessages.push({
         role: "system",
@@ -278,7 +277,19 @@ class AudioSession extends EventEmitter {
     const greetingStart = Date.now();
     const isCached = this.greetingCacheText === this.agentConfig.firstMessage && !!this.greetingAudioCache;
     console.log(`[AudioSession:${this.id}] triggerFirstMessage - speaking first message as single stream: "${this.agentConfig.firstMessage}" (cached=${isCached})`);
-    await this.speakText(this.agentConfig.firstMessage);
+    this.isPlayingGreeting = true;
+    try {
+      await this.speakText(this.agentConfig.firstMessage);
+    } finally {
+      this.isPlayingGreeting = false;
+      this.pendingTranscript = "";
+      this.accumulatedUserUtterance = "";
+      if (this.finalTranscriptTimer) {
+        clearTimeout(this.finalTranscriptTimer);
+        this.finalTranscriptTimer = null;
+      }
+      console.log(`[AudioSession:${this.id}] Greeting complete \u2014 cleared any buffered user speech`);
+    }
     this.conversationMessages.push({
       role: "assistant",
       content: this.agentConfig.firstMessage
@@ -356,7 +367,7 @@ class AudioSession extends EventEmitter {
     this.mixAudioAtOffset(chunk, startOffset);
     this.lastIncomingWriteEnd = startOffset + chunk.length;
     const timeSinceLastTts = Date.now() - this.lastTtsEndTime;
-    const isWithinEchoGuardWindow = timeSinceLastTts < 200;
+    const isWithinEchoGuardWindow = timeSinceLastTts < 350;
     const vadResult = this.vadDetector.processChunk(chunk, this.isPlayingTts);
     if (vadResult.isSpeechEnd) {
       console.log(`[AudioSession:${this.id}] VAD isSpeechEnd, provider=${this.sttProvider?.name}, hasFlush=${typeof this.sttProvider?.flush === "function"}, playingTts=${this.isPlayingTts}`);
@@ -364,8 +375,15 @@ class AudioSession extends EventEmitter {
     if (vadResult.isSpeechStart) {
       this.clearIdleTimeout();
       this.silenceWarningCount = 0;
-      if (this.isPlayingTts) {
-        console.log(`[AudioSession:${this.id}] Speech start detected during TTS playback \u2014 preserving full TTS playback`);
+      if (this.isPlayingGreeting) {
+        console.log(`[AudioSession:${this.id}] Speech detected during greeting \u2014 suppressing barge-in to protect greeting`);
+      } else if (this.isPlayingTts) {
+        if (this.agentConfig.interruptible !== false) {
+          console.log(`[AudioSession:${this.id}] User started speaking during TTS playback \u2014 interrupting TTS`);
+          this.handleInterruption();
+        } else {
+          console.log(`[AudioSession:${this.id}] Speech start detected during TTS playback \u2014 agent configured as non-interruptible`);
+        }
       }
     }
     if (vadResult.isSpeechEnd && this.sttProvider?.flush) {
@@ -387,7 +405,7 @@ class AudioSession extends EventEmitter {
       }
       this.processUserUtterance(text);
     }
-    const canSendAudio = !this.isPlayingTts;
+    const canSendAudio = !this.isPlayingTts && !this.isPlayingGreeting;
     let sttDebugCount = this._sttDebugCount || 0;
     sttDebugCount++;
     this._sttDebugCount = sttDebugCount;
@@ -395,7 +413,9 @@ class AudioSession extends EventEmitter {
       console.log(`[AudioSession:${this.id}] STT check #${sttDebugCount}: canSendAudio=${canSendAudio}, playingTts=${this.isPlayingTts}, isWithinEchoGuard=${isWithinEchoGuardWindow}, sttConnected=${this.sttProvider?.isConnected()}`);
     }
     if (canSendAudio) {
-      this.bargeInPreBuffer = Buffer.alloc(0);
+      if (this.bargeInPreBuffer && this.bargeInPreBuffer.length > 0) {
+        this.bargeInPreBuffer = Buffer.alloc(0);
+      }
       if (!isWithinEchoGuardWindow && this.sttProvider?.isConnected()) {
         if (sttDebugCount % 100 === 1) {
           console.log(`[AudioSession:${this.id}] -> Calling sttProvider.sendAudio for chunk of size ${chunk.length}`);
@@ -607,6 +627,10 @@ class AudioSession extends EventEmitter {
     this.lastTranscriptTime = Date.now();
     this.pendingTranscript = "";
     if (!text.trim()) return;
+    if (this.isPlayingGreeting) {
+      console.log(`[AudioSession:${this.id}] Discarding transcript during greeting: "${text}"`);
+      return;
+    }
     this.lastUserActivityTime = Date.now();
     this.clearIdleTimeout();
     if (this.finalTranscriptTimer) {
@@ -622,7 +646,7 @@ class AudioSession extends EventEmitter {
     const incompleteConnectors = ["lekin", "ya", "aur", "ki", "toh", "bhi", "me", "par", "ke", "ko", "taaki", "agar", "waise", "kya"];
     const lastWord = trimmedCurrent.split(/\s+/).pop() || "";
     const isIncomplete = incompleteConnectors.includes(lastWord) || trimmedCurrent.endsWith(",");
-    const debounceMs = isIncomplete ? 1800 : 1200;
+    const debounceMs = isIncomplete ? 2e3 : 1400;
     this.finalTranscriptTimer = setTimeout(() => {
       const fullText = (this.accumulatedUserUtterance || "").trim();
       this.accumulatedUserUtterance = "";
@@ -744,8 +768,12 @@ class AudioSession extends EventEmitter {
   }
   async processUserUtterance(text) {
     if (this.destroyed) return;
+    if (!text || !text.trim()) {
+      console.log(`[AudioSession:${this.id}] processUserUtterance - skipped empty/whitespace text`);
+      return;
+    }
     this.ttsQueue.length = 0;
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    this.lastTranscriptText = "";
     if (this.destroyed) return;
     this.isProcessingLlm = true;
     this.turnGeneration++;
@@ -1193,9 +1221,9 @@ class AudioSession extends EventEmitter {
       }
       resampled = this.resamplePcm16(audio, actualSampleRate, 8e3);
     }
-    return this.normalizeAudioVolume(resampled, 0.92);
+    return this.normalizeAudioVolume(resampled, 0.95);
   }
-  normalizeAudioVolume(audio, targetPeakRatio = 0.92) {
+  normalizeAudioVolume(audio, targetPeakRatio = 0.95) {
     if (audio.length < 2) return audio;
     let maxAbs = 0;
     for (let i = 0; i < audio.length - 1; i += 2) {

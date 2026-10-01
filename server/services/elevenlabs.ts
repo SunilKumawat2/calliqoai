@@ -569,6 +569,11 @@ export class ElevenLabsService {
               const mergedToolIds = [...(payload.conversation_config.agent.prompt.tool_ids || []), ...currentToolIds];
               payload.conversation_config.agent.prompt.tool_ids = Array.from(new Set(cleanToolIds(mergedToolIds)));
               
+              // ElevenLabs API rejects payloads that contain both non-empty tools AND tool_ids
+              if (payload.conversation_config.agent.prompt.tools && payload.conversation_config.agent.prompt.tools.length > 0) {
+                payload.conversation_config.agent.prompt.tool_ids = [];
+              }
+              
               // Clean knowledge_base
               const cleanKb = (kbArray: any[]) => kbArray.filter(
                 (kb: any) => !brokenIds.has(kb.id)
@@ -1698,6 +1703,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
         updatePayload.conversation_config.agent.prompt = {};
       }
       updatePayload.conversation_config.agent.prompt.tools = allPromptTools;
+      updatePayload.conversation_config.agent.prompt.tool_ids = [];
     }
 
     // CRITICAL: Set ignore_default_personality UNCONDITIONALLY for flow agents

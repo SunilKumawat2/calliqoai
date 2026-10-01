@@ -632,8 +632,8 @@ export function createAgentRoutes(ctx: RouteContext): Router {
         voiceSimilarityBoost: (type === 'incoming' || type === 'flow') ? (voiceSimilarityBoost ?? 0.85) : null,
         voiceSpeed: (type === 'incoming' || type === 'flow') ? (voiceSpeed ?? 0.92) : null,
         turnTimeout: (type === 'incoming' || type === 'flow') ? (turnTimeout ?? 1.5) : null,
-        // Telephony provider: preserve SIP providers, OpenAI providers, Custom Voice Engine, otherwise default to twilio
-        telephonyProvider: (isSipProvider || isOpenAIProvider || isCustomVoiceEngine) ? telephonyProvider : 'twilio',
+        // Telephony provider: preserve SIP providers, OpenAI providers, Custom Voice Engine, Plivo ElevenLabs, otherwise default to twilio
+        telephonyProvider: (isSipProvider || isOpenAIProvider || isCustomVoiceEngine || telephonyProvider === 'plivo_elevenlabs' || telephonyProvider === 'elevenlabs-plivo') ? telephonyProvider : 'twilio',
         openaiVoice: isCustomVoiceEngine ? (openaiVoice || 'aura-asteria-en') : (isOpenAIProvider ? (openaiVoice || 'alloy') : null),
       });
 
@@ -938,7 +938,7 @@ export function createAgentRoutes(ctx: RouteContext): Router {
           'voiceStability', 'voiceSimilarityBoost', 'voiceSpeed', 'turnTimeout',
           'transferPhoneNumber', 'transferEnabled', 'detectLanguageEnabled',
           'endConversationEnabled', 'knowledgeBaseIds', 'maxDurationSeconds',
-          'flowId', 'config'
+          'flowId', 'config', 'telephonyProvider', 'openaiVoice'
         ];
 
         for (const field of fieldsToCheck) {

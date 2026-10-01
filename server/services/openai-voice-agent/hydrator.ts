@@ -906,9 +906,11 @@ export function hydrateCompiledTools(
   const tools: AgentTool[] = [];
   
   for (const compiledTool of compiledTools) {
-    const toolName = compiledTool.function.name;
-    const description = compiledTool.function.description;
-    const parameters = compiledTool.function.parameters;
+    if (!compiledTool) continue;
+    const toolName = compiledTool.function?.name || (compiledTool as any).name;
+    if (!toolName) continue;
+    const description = compiledTool.function?.description || (compiledTool as any).description || '';
+    const parameters = compiledTool.function?.parameters || (compiledTool as any).parameters || { type: 'object', properties: {} };
     
     let handler: (params: Record<string, unknown>) => Promise<unknown>;
     

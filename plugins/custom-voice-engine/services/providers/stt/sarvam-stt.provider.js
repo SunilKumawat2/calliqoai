@@ -93,9 +93,9 @@ class SarvamSttProvider extends BaseSttProvider {
       return;
     }
     const { sampleRate: flushSampleRate = 8e3, channels: flushChannels = 1 } = this.format || {};
-    const minBufferSize = force && this.closed ? 320 : Math.round(flushSampleRate * flushChannels * 2 * 0.5);
+    const minBufferSize = force || this.closed ? 320 : Math.round(flushSampleRate * flushChannels * 2 * 1.5);
     if (this.totalBufferSize < minBufferSize) {
-      console.log(`[STT:Sarvam] flushBuffer skipped: buffer ${this.totalBufferSize}B < min ${minBufferSize}B (force=${force})`);
+      console.log(`[STT:Sarvam] flushBuffer skipped: buffer ${this.totalBufferSize}B < min ${minBufferSize}B (force=${force}, closed=${this.closed})`);
       return;
     }
     if (this.totalBufferSize === 0) {

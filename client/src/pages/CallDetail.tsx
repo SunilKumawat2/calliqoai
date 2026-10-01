@@ -76,6 +76,8 @@ export default function CallDetail() {
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [recordingBlobUrl, setRecordingBlobUrl] = useState<string | null>(null);
+  const [isRecordingLoading, setIsRecordingLoading] = useState<boolean>(false);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
   const [playbackRate, setPlaybackRate] = useState(1);
   const waveformRef = useRef<HTMLDivElement | null>(null);
 
@@ -161,13 +163,16 @@ export default function CallDetail() {
     const abortController = new AbortController();
     let fetchedBlobUrl: string | null = null;
     
-    // Fetch recording if we have either a recordingUrl OR an elevenLabsConversationId
-    // Skip OpenAI widget calls - they use WebRTC and don't have server-side recordings
     if (call?.engine !== 'openai' && (call?.recordingUrl || call?.elevenLabsConversationId || call?.twilioSid || call?.plivoCallUuid || call?.engine === 'custom-voice-engine') && id) {
+      setIsRecordingLoading(true);
+      setRecordingError(null);
+
       const fetchRecording = async () => {
         try {
           if (!AuthStorage.isAuthenticated()) {
             console.error('No authentication token found');
+            setIsRecordingLoading(false);
+            setRecordingError('Authentication required');
             return;
           }
           
@@ -186,46 +191,44 @@ export default function CallDetail() {
           if (response.ok) {
             const blob = await response.blob();
             
-            // Check if this fetch was aborted before creating blob URL
             if (!abortController.signal.aborted) {
               fetchedBlobUrl = URL.createObjectURL(blob);
               
-              // Revoke old blob URL before setting new one
               setRecordingBlobUrl((prevUrl) => {
                 if (prevUrl) {
                   URL.revokeObjectURL(prevUrl);
                 }
                 return fetchedBlobUrl;
               });
+              setIsRecordingLoading(false);
+              setRecordingError(null);
             }
           } else {
             console.error('Failed to fetch recording:', response.statusText);
+            if (!abortController.signal.aborted) {
+              setIsRecordingLoading(false);
+              setRecordingError('Recording not available or still processing.');
+            }
           }
         } catch (error: any) {
-          // Ignore abort errors
           if (error.name !== 'AbortError') {
             console.error('Failed to fetch recording:', error);
+            setIsRecordingLoading(false);
+            setRecordingError('Recording not available.');
           }
         }
       };
       
       fetchRecording();
+    } else {
+      setIsRecordingLoading(false);
     }
     
-    // Cleanup: abort in-flight request and revoke any blob URLs
     return () => {
       abortController.abort();
-      
       if (audioRef.current) {
         audioRef.current.pause();
       }
-      
-      // Revoke the blob URL created by this effect instance
-      if (fetchedBlobUrl) {
-        URL.revokeObjectURL(fetchedBlobUrl);
-      }
-      
-      // Clear state on unmount
       setRecordingBlobUrl((prevUrl) => {
         if (prevUrl) {
           URL.revokeObjectURL(prevUrl);
@@ -233,7 +236,7 @@ export default function CallDetail() {
         return null;
       });
     };
-  }, [call?.engine, call?.recordingUrl, call?.elevenLabsConversationId, call?.twilioSid, call?.plivoCallUuid, id]);
+  }, [id, call?.engine, call?.recordingUrl, call?.elevenLabsConversationId, call?.twilioSid, call?.plivoCallUuid]);
 
   if (callLoading) {
     return (
@@ -506,12 +509,14 @@ export default function CallDetail() {
           </div>
           <div className="bg-white/80 dark:bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-sky-100/50 dark:border-sky-800/30">
             <div className="flex items-center gap-2">
-              {hasRecording ? (
+              {hasRecording && recordingBlobUrl ? (
                 <Volume2 className="h-4 w-4 text-sky-600 dark:text-sky-400" />
               ) : (
                 <XCircle className="h-4 w-4 text-slate-400" />
               )}
-              <div className="text-lg font-bold text-sky-700 dark:text-sky-300">{hasRecording ? "Available" : "None"}</div>
+              <div className="text-lg font-bold text-sky-700 dark:text-sky-300">
+                {hasRecording && recordingBlobUrl ? "Available" : isRecordingLoading ? "Loading..." : "None"}
+              </div>
             </div>
             <div className="text-sky-600/70 dark:text-sky-400/70 text-sm">Recording</div>
           </div>
@@ -618,25 +623,24 @@ export default function CallDetail() {
                     </span>
                     
                     {/* Playback speed selector */}
-                    <div className="flex items-center gap-1 bg-slate-800/40 rounded-full px-2.5 py-0.5 border border-slate-700/30">
-                      <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">Speed:</span>
-                      {[1, 1.25, 1.5, 2].map((rate) => (
+                    <div className="flex items-center gap-1 bg-slate-800/80 rounded-lg p-1 border border-slate-700/50">
+                      {[0.75, 1, 1.25, 1.5, 2].map((speed) => (
                         <button
-                          key={rate}
-                          onClick={() => setPlaybackRate(rate)}
-                          className={`text-xs font-semibold px-2 py-0.5 rounded-full transition-all ${
-                            playbackRate === rate 
-                              ? 'bg-blue-600 text-white shadow-sm' 
+                          key={speed}
+                          onClick={() => setPlaybackRate(speed)}
+                          className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${
+                            playbackRate === speed
+                              ? 'bg-blue-600 text-white font-bold'
                               : 'text-slate-400 hover:text-slate-200'
                           }`}
                         >
-                          {rate}x
+                          {speed}x
                         </button>
                       ))}
                     </div>
 
-                    <span className="text-sm font-mono text-slate-500">
-                      {formatDuration(call.duration)}
+                    <span className="text-sm font-mono text-slate-400">
+                      {formatDuration(call.duration || 0)}
                     </span>
                   </div>
                 </div>
@@ -660,10 +664,15 @@ export default function CallDetail() {
                   }}
                 />
               </div>
-            ) : (
+            ) : isRecordingLoading ? (
               <div className="flex items-center gap-3 py-4">
                 <Loader2 className="h-5 w-5 animate-spin text-blue-400" />
                 <span className="text-sm text-slate-400">Loading recording...</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 py-3 px-4 bg-slate-800/40 rounded-xl border border-slate-700/50 text-amber-300/90 text-sm">
+                <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                <span>{recordingError || "Recording unavailable for this call."}</span>
               </div>
             )}
           </div>

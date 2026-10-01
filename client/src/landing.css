@@ -2740,7 +2740,6 @@
   display: grid;
   grid-template-columns: .85fr 1.15fr;
   gap: 14px;
-  height: 70vh;
   min-height: 520px;
 }
 
@@ -2750,25 +2749,23 @@
 }
 
 .calliqo-landing .demo-config {
-  padding: clamp(20px, 2.5vw, 30px);
+  padding: clamp(14px, 1.8vw, 20px);
   border: 1px solid rgba(28, 209, 82, 0.25);
-  /* border-radius: 12px; */
   box-shadow:
     5px 5px 20px 0 rgba(28, 209, 82, 0.40),
     -5px -5px 20px 0 rgba(28, 209, 82, 0.40);
   background: #070908 !important;
-  height: 70vh;
   min-height: 520px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  overflow-y: auto;
+  overflow: hidden !important;
 }
 
 .calliqo-landing .demo-section-head {
   display: flex;
   gap: 14px;
-  padding-bottom: clamp(14px, 2vh, 24px);
+  padding-bottom: clamp(10px, 1.2vh, 16px);
   border-bottom: 1px solid #293029
 }
 
@@ -2958,8 +2955,8 @@
 
 .calliqo-landing .demo-config form {
   display: grid;
-  gap: clamp(12px, 1.5vh, 19px);
-  padding-top: clamp(14px, 2vh, 23px);
+  gap: clamp(8px, 1.2vh, 12px);
+  padding-top: clamp(8px, 1.2vh, 14px);
 }
 
 .calliqo-landing .demo-config label {
@@ -3127,8 +3124,8 @@
 .calliqo-landing .demo-console {
   display: flex;
   flex-direction: column;
-  height: 70vh;
   min-height: 520px;
+  height: 100%;
   gap: 12px;
 }
 
@@ -3503,7 +3500,7 @@
 /* Sub-Tab Styles */
 .calliqo-landing .subtab-toggle-buttons {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   margin-top: 10px;
 }
@@ -3511,64 +3508,35 @@
 .calliqo-landing .subtab-btn {
   flex: 1;
   height: 38px;
-  background: #141614;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #a0a5ab;
-  font-size: 12px;
+  background: #1c1c1c;
+  border: 1px solid transparent;
+  color: #e6e6f0;
+  font-size: 13px;
   font-weight: 500;
-  border-radius: 12px;
+  border-radius: 20px;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 0 8px;
+  padding: 0 12px;
 }
 
 .calliqo-landing .subtab-btn:hover {
-  background: #1c221e;
-  border-color: rgba(28, 209, 82, 0.4);
+  border-color: #1CD152;
   color: #fff;
 }
 
 .calliqo-landing .subtab-btn.active {
-  background: rgba(28, 209, 82, 0.08);
   border: 1px solid #1CD152;
+  background: none;
   color: #1CD152;
   font-weight: 600;
-  box-shadow: 0 0 12px rgba(28, 209, 82, 0.15);
-}
-
-.calliqo-landing .subtab-badge {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-weight: 700;
-}
-
-.calliqo-landing .subtab-badge.premium {
-  background: rgba(255, 191, 63, 0.15);
-  color: #ffbf3f;
-  border: 1px solid rgba(255, 191, 63, 0.3);
-}
-
-.calliqo-landing .subtab-badge.standard {
-  background: rgba(56, 189, 248, 0.15);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.3);
-}
-
-.calliqo-landing .subtab-badge.custom {
-  background: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.3);
+  box-shadow: 0 0 10px rgba(185, 255, 102, 0.1);
 }
 
 .calliqo-landing .flag-select-wrap {
-  width: 68px;
+  min-width: 95px;
   height: 100%;
   position: relative;
   display: flex;
@@ -3577,12 +3545,13 @@
   border-right: 1px solid #303932;
   background: #090c0a;
   cursor: pointer;
-  padding-right: 14px;
+  padding: 0 22px 0 10px;
 }
 
 .calliqo-landing .flag-icon-display {
   display: flex;
   align-items: center;
+  gap: 6px;
   pointer-events: none;
 }
 
@@ -3591,6 +3560,14 @@
   height: 15px;
   object-fit: cover;
   border-radius: 2px;
+}
+
+.calliqo-landing .flag-prefix-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1CD152;
+  font-family: "Manrope", sans-serif;
+  white-space: nowrap;
 }
 
 .calliqo-landing .flag-select {
@@ -3609,7 +3586,7 @@
 .calliqo-landing .flag-select-wrap:after {
   content: '⌄';
   position: absolute;
-  right: 12px;
+  right: 8px;
   top: 13px;
   color: #798279;
   pointer-events: none;

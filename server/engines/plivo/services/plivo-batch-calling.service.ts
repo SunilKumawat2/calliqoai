@@ -135,11 +135,37 @@ export class PlivoBatchCallingService {
         throw new Error('Campaign has no agent configured');
       }
 
-      // Use campaign.plivoPhoneNumberId directly (stored as a column, not in config)
-      const plivoPhoneNumberId = campaign.plivoPhoneNumberId;
+      let phoneNumber: any = null;
+      if (campaign.plivoPhoneNumberId) {
+        const [pn] = await db
+          .select()
+          .from(plivoPhoneNumbers)
+          .where(eq(plivoPhoneNumbers.id, campaign.plivoPhoneNumberId))
+          .limit(1);
+        phoneNumber = pn;
+      }
 
-      if (!plivoPhoneNumberId) {
-        throw new Error('Campaign has no Plivo phone number configured. Please select a Plivo phone number.');
+      if (!phoneNumber && campaign.phoneNumberId) {
+        const [pn] = await db
+          .select()
+          .from(phoneNumbers)
+          .where(eq(phoneNumbers.id, campaign.phoneNumberId))
+          .limit(1);
+        phoneNumber = pn;
+      }
+
+      if (!phoneNumber) {
+        const [plivoPn] = await db.select().from(plivoPhoneNumbers).limit(1);
+        phoneNumber = plivoPn;
+      }
+
+      if (!phoneNumber) {
+        const [twilioPn] = await db.select().from(phoneNumbers).limit(1);
+        phoneNumber = twilioPn;
+      }
+
+      if (!phoneNumber) {
+        throw new Error('No phone number found for campaign');
       }
 
       const [agent] = await db
@@ -150,16 +176,6 @@ export class PlivoBatchCallingService {
 
       if (!agent) {
         throw new Error('Agent not found');
-      }
-
-      const [phoneNumber] = await db
-        .select()
-        .from(plivoPhoneNumbers)
-        .where(eq(plivoPhoneNumbers.id, plivoPhoneNumberId))
-        .limit(1);
-
-      if (!phoneNumber) {
-        throw new Error('Plivo phone number not found');
       }
 
       if (phoneNumber.status !== 'active') {
@@ -227,7 +243,7 @@ export class PlivoBatchCallingService {
         campaignId,
         userId: campaign.userId,
         agentId: campaign.agentId,
-        phoneNumberId: plivoPhoneNumberId,
+        phoneNumberId: phoneNumber.id,
         maxConcurrentCalls: concurrencyLimit,
         callDelayMs: callDelay,
       };

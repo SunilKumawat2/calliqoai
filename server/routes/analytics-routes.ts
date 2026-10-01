@@ -222,15 +222,25 @@ export function createAnalyticsRoutes(ctx: RouteContext): Router {
         });
       }
 
-      // Handle Plivo+OpenAI calls - fetch recording from Plivo API or stored URL
+      // Handle Plivo+OpenAI calls - fetch recording from stored URL or Plivo API
       if (callWithDetails.engine === 'plivo-openai') {
         console.log(`🎙️ [Recording] Fetching Plivo+OpenAI recording for call ${callWithDetails.id}`);
         
-        // Get plivoCallUuid directly or from metadata
+        // 1. Try stored recording URL first (for server-side recorded files)
+        if (callWithDetails.recordingUrl) {
+          const urlResult = await recordingService.fetchPlivoRecordingByUrl(callWithDetails.recordingUrl);
+          if (urlResult) {
+            res.setHeader('Content-Type', urlResult.contentType);
+            res.setHeader('Content-Disposition', `inline; filename="call-recording-${callWithDetails.id}.wav"`);
+            res.setHeader('Cache-Control', 'no-cache');
+            return res.send(urlResult.audioBuffer);
+          }
+        }
+
+        // 2. Fallback: Try fetching from Plivo API using call UUID
         const plivoCallUuid = callWithDetails.plivoCallUuid || (callWithDetails.metadata as any)?.plivoCallUuid;
         const plivoCredentialId = (callWithDetails.metadata as any)?.plivoCredentialId;
         
-        // Try fetching from Plivo API using call UUID first (most reliable)
         if (plivoCallUuid) {
           const plivoResult = await recordingService.fetchPlivoRecordingByCallUuid(plivoCallUuid, plivoCredentialId);
           if (plivoResult) {
@@ -238,17 +248,6 @@ export function createAnalyticsRoutes(ctx: RouteContext): Router {
             res.setHeader('Content-Disposition', `inline; filename="call-recording-${callWithDetails.id}.mp3"`);
             res.setHeader('Cache-Control', 'no-cache');
             return res.send(plivoResult.audioBuffer);
-          }
-        }
-        
-        // Fallback: Try stored recording URL
-        if (callWithDetails.recordingUrl) {
-          const urlResult = await recordingService.fetchPlivoRecordingByUrl(callWithDetails.recordingUrl);
-          if (urlResult) {
-            res.setHeader('Content-Type', urlResult.contentType);
-            res.setHeader('Content-Disposition', `inline; filename="call-recording-${callWithDetails.id}.mp3"`);
-            res.setHeader('Cache-Control', 'no-cache');
-            return res.send(urlResult.audioBuffer);
           }
         }
         

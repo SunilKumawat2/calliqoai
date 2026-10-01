@@ -591,10 +591,10 @@ export class AudioWebSocketServer {
           const wavBuffer = Buffer.concat([wavHeader, audio]);
           const tempDir = process.platform === 'win32' 
             ? 'C:\\tmp' 
-            : '/home/calliqoai/htdocs/calliqoai.com/client/public/uploads/recordings';
+            : '/tmp/calliqoai-tts';
           if (!fs.existsSync(tempDir)) {
             try {
-              fs.mkdirSync(tempDir, { recursive: true });
+              fs.mkdirSync(tempDir, { recursive: true, mode: 0o777 });
             } catch (err: any) {
               console.warn(`[AudioWS] Failed to create temp directory ${tempDir}:`, err.message);
             }
@@ -606,9 +606,9 @@ export class AudioWebSocketServer {
           // call's audio processing. Writing asynchronously keeps the loop free.
           await fs.promises.writeFile(filePath, wavBuffer);
           try {
-            await fs.promises.chmod(filePath, 0o644); // Make world-readable for FreeSWITCH
+            await fs.promises.chmod(filePath, 0o666); // Make world-readable/writable for FreeSWITCH
           } catch (chmodErr: any) {
-            console.warn(`[AudioWS] Failed to chmod ${filePath}:`, chmodErr.message);
+            // Ignore chmod error if already accessible
           }
           console.log(`[AudioWS] Wrote TTS audio to ${filePath} (${wavBuffer.length} bytes), playing via ESL uuid_broadcast...`);
 
@@ -1518,7 +1518,7 @@ You MUST speak ONLY in ${languageName}. From the very first word you say, speak 
         sarvamSpeaker: resolvedSarvamSpeaker,
         outputFormat: {
           encoding: 'linear16',
-          sampleRate: effectiveTtsProvider === 'sarvam' ? 16000 : 8000,
+          sampleRate: 8000,
           channels: 1,
           bitDepth: 16,
         },

@@ -140,6 +140,11 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
             .update(plivoCalls)
             .set({ transcript: result.transcript })
             .where(eq(plivoCalls.id, call.id));
+          await db
+            .update(calls)
+            .set({ transcript: result.transcript })
+            .where(eq(calls.id, call.id))
+            .catch(() => {});
           logger.info(`Saved transcript for call ${call.id}`, undefined, 'PlivoStream');
         }
         
@@ -174,6 +179,15 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
                     nextActions: insights.nextActions || null,
                   })
                   .where(eq(plivoCalls.id, call.id));
+                await db
+                  .update(calls)
+                  .set({
+                    aiSummary: insights.aiSummary,
+                    sentiment: insights.sentiment,
+                    userSentiment: insights.sentiment,
+                  })
+                  .where(eq(calls.id, call.id))
+                  .catch(() => {});
                 logger.info(`Generated AI insights for call ${call.id}: sentiment=${insights.sentiment}, classification=${insights.classification}`, undefined, 'PlivoStream');
               }
             } else {
@@ -193,34 +207,11 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
           logger.info(`Set answeredAt for incoming call ${call.id}`, undefined, 'PlivoStream');
         }
         
-        // Trigger call completion which handles credit deduction
-        // This is essential for incoming calls that don't receive status callbacks
-        if (!['completed', 'busy', 'failed', 'no-answer', 'canceled'].includes(call.status)) {
-          // If call is still 'initiated' or 'pending', query Plivo API for actual status
-          if (call.status === 'initiated' || call.status === 'pending') {
-            logger.info(`Call ${call.id} still at '${call.status}', querying Plivo API for actual status`, undefined, 'PlivoStream');
-            const plivoStatus = await PlivoCallService.getCallStatusFromPlivo(call.id);
-            
-            if (plivoStatus) {
-              logger.info(`Plivo API returned status '${plivoStatus.status}' for call ${call.id}`, undefined, 'PlivoStream');
-              await PlivoCallService.handleCallStatus(
-                call.id,
-                plivoStatus.status,
-                { source: 'stream_close_plivo_fallback', hangupCause: plivoStatus.hangupCause },
-                plivoStatus.duration || result.duration
-              );
-            } else {
-              // Fallback: if Plivo API fails, use session duration and mark completed
-              logger.info(`Plivo API failed, using session data for call ${call.id}`, undefined, 'PlivoStream');
-              await PlivoCallService.handleCallStatus(
-                call.id,
-                result.duration > 0 ? 'completed' : 'failed',
-                { source: 'stream_close_fallback' },
-                result.duration
-              );
-            }
-          } else {
-            logger.info(`Triggering call completion for ${call.id} with duration ${result.duration}s`, undefined, 'PlivoStream');
+        // Trigger call completion which handles credit deduction and calls table UI sync
+        // Triggered if call was inbound, answered, OR if session produced audio stream duration > 0!
+        if (call.callDirection === 'inbound' || call.answeredAt || result.duration > 0) {
+          if (!['completed', 'busy', 'failed', 'no-answer', 'canceled'].includes(call.status)) {
+            logger.info(`Triggering call completion for call ${call.id} with duration ${result.duration}s`, undefined, 'PlivoStream');
             await PlivoCallService.handleCallStatus(
               call.id, 
               'completed', 
@@ -228,6 +219,8 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
               result.duration
             );
           }
+        } else {
+          logger.info(`Early stream closed for unanswered outbound call ${call.id} - leaving call in '${call.status}' state`, undefined, 'PlivoStream');
         }
         
         // Update flow execution status if this call has an associated flow execution

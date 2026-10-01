@@ -98,7 +98,26 @@ function handleTwilioStreamConnection(ws: WebSocket, callSid: string): void {
         console.log(`[TwilioOpenAI Stream] Stream started: ${streamSid}`);
         
         // Check if session already exists (outbound calls create session before call)
-        const existingSession = TwilioOpenAIAudioBridge.getSession(callSid);
+        let existingSession = TwilioOpenAIAudioBridge.getSession(callSid);
+        if (!existingSession) {
+          try {
+            const [callRecord] = await db
+              .select({ id: twilioOpenaiCalls.id })
+              .from(twilioOpenaiCalls)
+              .where(eq(twilioOpenaiCalls.twilioCallSid, callSid))
+              .limit(1);
+            if (callRecord) {
+              existingSession = TwilioOpenAIAudioBridge.getSession(callRecord.id);
+              if (existingSession) {
+                TwilioOpenAIAudioBridge.remapSession(callRecord.id, callSid);
+                console.log(`[TwilioOpenAI Stream] Race condition resolved: found session by internal callId ${callRecord.id}, remapped to ${callSid}`);
+              }
+            }
+          } catch (err: any) {
+            console.warn(`[TwilioOpenAI Stream] Error looking up session by DB callId: ${err.message}`);
+          }
+        }
+
         if (existingSession) {
           // Outbound call - session already exists, just set the WebSocket
           TwilioOpenAIAudioBridge.setTwilioWebSocket(callSid, ws, streamSid);
@@ -325,9 +344,47 @@ async function initializeSession(
 
     // Get agent config from call metadata (stored during webhook)
     const metadata = callRecord.metadata as Record<string, unknown> | null;
-    
+
+    // Fetch agent from DB upfront to guarantee systemPrompt, firstMessage, voice and model are populated
+    let dbAgentPrompt: string | undefined = undefined;
+    let dbAgentFirstMessage: string | undefined = undefined;
+    let dbAgentVoice: string | undefined = undefined;
+    let dbAgentModel: string | undefined = undefined;
+    let dbAgentType: string | null = null;
+
+    if (callRecord.agentId) {
+      try {
+        const [agentRecord] = await db
+          .select({
+            type: agents.type,
+            systemPrompt: agents.systemPrompt,
+            firstMessage: agents.firstMessage,
+            openaiVoice: agents.openaiVoice,
+            openaiModel: agents.openaiModel,
+          })
+          .from(agents)
+          .where(eq(agents.id, callRecord.agentId))
+          .limit(1);
+
+        if (agentRecord) {
+          dbAgentType = agentRecord.type;
+          dbAgentPrompt = agentRecord.systemPrompt || undefined;
+          dbAgentFirstMessage = agentRecord.firstMessage || undefined;
+          dbAgentVoice = agentRecord.openaiVoice || undefined;
+          dbAgentModel = agentRecord.openaiModel || undefined;
+        }
+      } catch (err: any) {
+        logger.warn(`[TwilioOpenAI Stream] Failed to query agent details: ${err.message}`, undefined, 'TwilioOpenAI Stream');
+      }
+    }
+
+    const effectiveSystemPrompt = (metadata?.systemPrompt as string) || dbAgentPrompt || 'You are a helpful AI assistant.';
+    const effectiveFirstMessage = (metadata?.firstMessage as string) || dbAgentFirstMessage || undefined;
+    const effectiveVoice = (callRecord.openaiVoice as OpenAIVoice) || (dbAgentVoice as OpenAIVoice) || TWILIO_OPENAI_CONFIG.defaultVoice;
+    const effectiveModel = (callRecord.openaiModel as OpenAIRealtimeModel) || (dbAgentModel as OpenAIRealtimeModel) || TWILIO_OPENAI_CONFIG.openaiRealtimeModel as OpenAIRealtimeModel;
+
     // Check if this is a flow agent with pre-compiled tools
-    const isFlowAgent = metadata?.isFlowAgent === true;
+    const isFlowAgent = metadata?.isFlowAgent === true || dbAgentType === 'flow';
     const compiledTools = metadata?.compiledTools as CompiledFunctionTool[] | undefined;
     
     let agentConfig;
@@ -347,10 +404,10 @@ async function initializeSession(
       
       // Build agent config with hydrated flow tools, using factory for tier-validated model
       const flowConfig = OpenAIAgentFactory.createAgentConfig({
-        voice: (callRecord.openaiVoice as OpenAIVoice) || TWILIO_OPENAI_CONFIG.defaultVoice,
-        model: (callRecord.openaiModel as OpenAIRealtimeModel) || TWILIO_OPENAI_CONFIG.openaiRealtimeModel,
-        systemPrompt: (metadata?.systemPrompt as string) || 'You are a helpful AI assistant.',
-        firstMessage: (metadata?.firstMessage as string) || undefined,
+        voice: effectiveVoice,
+        model: effectiveModel,
+        systemPrompt: effectiveSystemPrompt,
+        firstMessage: effectiveFirstMessage,
         temperature: (metadata?.temperature as number) ?? 0.7,
         userTier,
       });
@@ -374,10 +431,10 @@ async function initializeSession(
     } else {
       // Natural agent - build agent config from scratch
       agentConfig = OpenAIAgentFactory.createAgentConfig({
-        voice: (callRecord.openaiVoice as OpenAIVoice) || TWILIO_OPENAI_CONFIG.defaultVoice,
-        model: (callRecord.openaiModel as OpenAIRealtimeModel) || TWILIO_OPENAI_CONFIG.openaiRealtimeModel as OpenAIRealtimeModel,
-        systemPrompt: (metadata?.systemPrompt as string) || 'You are a helpful AI assistant.',
-        firstMessage: (metadata?.firstMessage as string) || undefined,
+        voice: effectiveVoice,
+        model: effectiveModel,
+        systemPrompt: effectiveSystemPrompt,
+        firstMessage: effectiveFirstMessage,
         temperature: (metadata?.temperature as number) ?? 0.7,
         userTier,
         toolContext: {
@@ -464,28 +521,11 @@ async function initializeSession(
       }
     }
 
-    // Fetch agent from DB to check if it's a flow agent
-    let dbAgentType: string | null = null;
-    if (callRecord.agentId) {
-      try {
-        const [agentRecord] = await db
-          .select({ type: agents.type })
-          .from(agents)
-          .where(eq(agents.id, callRecord.agentId))
-          .limit(1);
-        if (agentRecord) {
-          dbAgentType = agentRecord.type;
-        }
-      } catch (err: any) {
-        logger.warn(`[TwilioOpenAI Stream] Failed to query agent type: ${err.message}`, undefined, 'TwilioOpenAI Stream');
-      }
-    }
-
     // ALWAYS ensure end_call tool is available for flow agents
     // This ensures the agent can properly end calls after completing conversations
     const hasFlowPrompt = metadata?.systemPrompt && (metadata.systemPrompt as string).includes('Conversation States');
     const isFlow = isFlowAgent || dbAgentType === 'flow' || hasFlowPrompt;
-    if (isFlow && !agentConfig.tools?.some((t: AgentTool) => t.name === 'end_call')) {
+    if (isFlow && !agentConfig.tools?.some((t: AgentTool) => t?.name === 'end_call')) {
       agentConfig = OpenAIAgentFactory.addEndCallTool(agentConfig);
       logger.info(`Added end_call tool to flow agent for ${callSid}`, undefined, 'TwilioOpenAI Stream');
     }

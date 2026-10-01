@@ -90,7 +90,7 @@ export function AppSidebar() {
     ...(isMessagingEnabled ? [{ title: t('nav.conversations', 'Conversations'), url: "/app/conversations", icon: MessageSquare, iconColor: "text-green-500" }] : []),
     { title: t('nav.calls'), url: "/app/calls", icon: Phone, iconColor: "text-blue-500" },
     { title: t('nav.analytics'), url: "/app/analytics", icon: BarChart3, iconColor: "text-purple-500" },
-    { title: t('nav.demo', 'Demo'), url: "/app/demo", icon: PhoneCall, iconColor: "text-amber-500" },
+    { title: t('nav.demo') || 'Demo Playground', url: "/app/demo", icon: PhoneCall, iconColor: "text-amber-500" },
   ];
 
 
@@ -147,15 +147,13 @@ export function AppSidebar() {
             data-testid="button-sidebar-toggle" 
           />
         </div>
-        {/* When collapsed: Favicon + toggle stacked */}
+        {/* When collapsed: Favicon/Mini logo + toggle stacked */}
         <div className="hidden group-data-[collapsible=icon]:flex flex-col items-center gap-2">
-          {showFavicon && (
-            <img 
-              src={branding.favicon_url!} 
-              alt={branding.app_name} 
-              className="h-6 w-6 object-contain"
-            />
-          )}
+          <img 
+            src="/images/mini-dark-logo.png" 
+            alt={branding?.app_name || "Calliqo AI"} 
+            className="h-7 w-7 object-contain rounded-md"
+          />
           <SidebarTrigger 
             className="h-5 w-5 shrink-0" 
             data-testid="button-sidebar-toggle-collapsed" 

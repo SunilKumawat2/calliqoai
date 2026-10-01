@@ -99,6 +99,9 @@ export class AudioSession extends EventEmitter {
   private demoLimitTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private isCallAnswered = false;
   private firstMessageTriggered = false;
+  private isPlayingGreeting = false; // Blocks barge-in during initial greeting
+  private hasQueuedQuestionInTurn = false;
+  private sentenceCountInTurn = 0;
   private callAnsweredTime = 0;
   private lastIncomingWriteEnd = 0;
   private lastOutgoingWriteEnd = 0;
@@ -239,25 +242,20 @@ export class AudioSession extends EventEmitter {
       const voiceCallRules = `
 
 ---
-**MANDATORY VOICE CALL & CONVERSATION RULES (ALWAYS FOLLOW):**
-1. CONTEXT RETENTION & SITE VISIT RESPECT:
-   - Always retain customer preferences shared during the call (budget, location, BHK type, purpose).
-   - If the customer requests property details/images/location on WhatsApp or email, or explicitly states they do NOT want a site visit right now, IMMEDIATELY acknowledge their request ("Bilkul, main WhatsApp par saari details share kar deti hoon"), confirm WhatsApp delivery, and NEVER ask or push for a site visit again in that call!
-2. INFORMATION CAPTURE & NO CONFUSION FALLBACKS:
-   - Never output generic confusion phrases like "Aap kya keh rahe hain", "samajh nahi paa rahi hoon", or "Mujhe samajh nahi aaya".
-   - If a customer utterance is short or partially noisy, state what you already understood (e.g. "Aapne 1 BHK Gurugram budget 30-40 Lakh bataya tha...") and politely ask only for the specific missing detail.
-3. DYNAMIC RESPONSES & NO REPETITIVE FILLERS:
-   - NEVER start consecutive responses with repetitive filler words like "Achha", "Achha, samajh rahi hoon", "Sahi hai", or "Okay". Use natural, contextually rich, varied sentence openings.
-4. GENDER & RESPECTFUL ADDRESS:
-   - Always address the customer using polite respectful plural verbs (e.g. "dekh rahe hain", "chahte hain", "karenge"). Avoid gender-specific singular forms (like "dekh rahi hain", "karengi").
-5. STRICT RESPONSE FORMAT & SHORT SENTENCES:
-   - Reply in MAXIMUM 1 SHORT SENTENCE (max 10-12 words) per turn. NO LONG PARAGRAPHS. NO BULLET POINTS.
-   - Never combine multiple sentences or questions into one reply.
-6. ONE QUESTION PER TURN & MANDATORY LISTENING:
-   - Ask EXACTLY ONE question per response turn.
-   - After asking ONE question, STOP speaking immediately and WAIT for the customer's answer.
-7. AFFIRMATION HANDLING ("Haan" / "Ji" / "Acha"):
-   - If the customer says "Haan", "Ji", "Haan ji", or "Acha", acknowledge politely and smoothly advance the conversation by asking the next relevant question about their property preferences (e.g. location, budget, or 2BHK/3BHK). Never repeat "Ji bilkul, batayein!" in a loop.`;
+**CRITICAL VOICE CALL RULES (STRICTLY ENFORCED ON EVERY TURN):**
+1. NATURAL TWO-WAY VOICE CONVERSATION:
+   - Listen carefully and patiently to what the caller says before replying.
+   - Answer the caller's specific questions or statements directly, following your core persona and system prompt instructions.
+   - Do NOT ignore what the caller said or invent user responses.
+2. CONCISE PHONE RESPONSES:
+   - Keep all spoken responses short, natural, and conversational (1 to 2 short sentences maximum).
+   - Never output long monologues, lists, or multi-paragraph essays on a phone call.
+3. NO REPETITION / NO ECHOING:
+   - Do NOT repeat or quote back the user's answer verbatim.
+4. NO UNNECESSARY FILLER WORDS:
+   - Do NOT start sentences with repetitive filler words like "Ji", "Samajh gayi", "Noted", or "Thik hai ji".
+5. TURN ENDING & WAITING FOR CALLER:
+   - End your response with a single clear question or helpful response, then IMMEDIATELY STOP speaking and wait for the caller to respond.`;
 
       const finalPromptContent = this.llmConfig.systemPrompt
         ? baseSystemPrompt + voiceCallRules
@@ -370,7 +368,23 @@ export class AudioSession extends EventEmitter {
     const greetingStart = Date.now();
     const isCached = this.greetingCacheText === this.agentConfig.firstMessage && !!this.greetingAudioCache;
     console.log(`[AudioSession:${this.id}] triggerFirstMessage - speaking first message as single stream: "${this.agentConfig.firstMessage}" (cached=${isCached})`);
-    await this.speakText(this.agentConfig.firstMessage);
+
+    // Block barge-in during greeting — user saying hello should NOT interrupt the intro
+    this.isPlayingGreeting = true;
+    try {
+      await this.speakText(this.agentConfig.firstMessage);
+    } finally {
+      this.isPlayingGreeting = false;
+      // Drain any utterances that were buffered during the greeting — discard them
+      // so the agent doesn't re-process "hello" / "haan" as a new turn
+      this.pendingTranscript = '';
+      this.accumulatedUserUtterance = '';
+      if (this.finalTranscriptTimer) {
+        clearTimeout(this.finalTranscriptTimer);
+        this.finalTranscriptTimer = null;
+      }
+      console.log(`[AudioSession:${this.id}] Greeting complete — cleared any buffered user speech`);
+    }
 
     this.conversationMessages.push({
       role: 'assistant',
@@ -463,7 +477,7 @@ export class AudioSession extends EventEmitter {
 
     // Check if we are within the echo guard window (to prevent trailing echo from being transcribed)
     const timeSinceLastTts = Date.now() - this.lastTtsEndTime;
-    const isWithinEchoGuardWindow = timeSinceLastTts < 200; // 200ms guard window
+    const isWithinEchoGuardWindow = timeSinceLastTts < 350; // 350ms guard window
 
     // VAD processing runs continuously on all chunks to track speech start/end accurately
     const vadResult = this.vadDetector.processChunk(chunk, this.isPlayingTts);
@@ -477,9 +491,18 @@ export class AudioSession extends EventEmitter {
       this.clearIdleTimeout();
       this.silenceWarningCount = 0;
 
-      // Do NOT interrupt active TTS playback mid-sentence on telephony calls so greetings and responses play 100% complete
-      if (this.isPlayingTts) {
-        console.log(`[AudioSession:${this.id}] Speech start detected during TTS playback — preserving full TTS playback`);
+      // Never interrupt the initial greeting — user saying "hello" during greeting
+      // should NOT restart the conversation flow
+      if (this.isPlayingGreeting) {
+        console.log(`[AudioSession:${this.id}] Speech detected during greeting — suppressing barge-in to protect greeting`);
+      } else if (this.isPlayingTts) {
+        // Only allow barge-in on regular TTS responses (not the greeting)
+        if (this.agentConfig.interruptible !== false) {
+          console.log(`[AudioSession:${this.id}] User started speaking during TTS playback — interrupting TTS`);
+          this.handleInterruption();
+        } else {
+          console.log(`[AudioSession:${this.id}] Speech start detected during TTS playback — agent configured as non-interruptible`);
+        }
       }
     }
 
@@ -507,8 +530,10 @@ export class AudioSession extends EventEmitter {
       this.processUserUtterance(text);
     }
 
-    // Send audio to STT only when not playing TTS to prevent speaker echo feedback loops
-    const canSendAudio = !this.isPlayingTts;
+    // Send audio to STT only when not playing TTS or greeting
+    // Blocking during greeting prevents the user's "hello" from being forwarded to STT
+    // which would cause the LLM to restart the conversation from scratch
+    const canSendAudio = !this.isPlayingTts && !this.isPlayingGreeting;
     let sttDebugCount = (this as any)._sttDebugCount || 0;
     sttDebugCount++;
     (this as any)._sttDebugCount = sttDebugCount;
@@ -518,7 +543,13 @@ export class AudioSession extends EventEmitter {
     }
 
     if (canSendAudio) {
-      this.bargeInPreBuffer = Buffer.alloc(0); // Clear pre-buffer when not playing TTS
+      if (this.bargeInPreBuffer && this.bargeInPreBuffer.length > 0) {
+        // Clear pre-buffer when TTS finishes normally without user barge-in.
+        // During TTS playback, line static and speaker leakage accumulate in bargeInPreBuffer.
+        // Forwarding this to STT after TTS completes causes fake transcripts and self-talking loops.
+        // Real barge-in immediately flushes pre-buffer via handleInterruption().
+        this.bargeInPreBuffer = Buffer.alloc(0);
+      }
       if (!isWithinEchoGuardWindow && this.sttProvider?.isConnected()) {
         if (sttDebugCount % 100 === 1) {
           console.log(`[AudioSession:${this.id}] -> Calling sttProvider.sendAudio for chunk of size ${chunk.length}`);
@@ -799,6 +830,13 @@ export class AudioSession extends EventEmitter {
 
     if (!text.trim()) return;
 
+    // Triple-layer greeting protection: discard any transcript that arrived during greeting playback
+    // (STT gate should already block this, but handle edge cases where STT is async)
+    if (this.isPlayingGreeting) {
+      console.log(`[AudioSession:${this.id}] Discarding transcript during greeting: "${text}"`);
+      return;
+    }
+
     // User spoke — track activity time and cancel the old timeout
     // (a fresh timeout starts after the agent finishes speaking, not here)
     this.lastUserActivityTime = Date.now();
@@ -823,7 +861,7 @@ export class AudioSession extends EventEmitter {
     const incompleteConnectors = ['lekin', 'ya', 'aur', 'ki', 'toh', 'bhi', 'me', 'par', 'ke', 'ko', 'taaki', 'agar', 'waise', 'kya'];
     const lastWord = trimmedCurrent.split(/\s+/).pop() || '';
     const isIncomplete = incompleteConnectors.includes(lastWord) || trimmedCurrent.endsWith(',');
-    const debounceMs = isIncomplete ? 1800 : 1200;
+    const debounceMs = isIncomplete ? 2000 : 1400;
 
     this.finalTranscriptTimer = setTimeout(() => {
       const fullText = (this.accumulatedUserUtterance || '').trim();
@@ -962,12 +1000,16 @@ export class AudioSession extends EventEmitter {
 
   private async processUserUtterance(text: string): Promise<void> {
     if (this.destroyed) return;
+    if (!text || !text.trim()) {
+      console.log(`[AudioSession:${this.id}] processUserUtterance - skipped empty/whitespace text`);
+      return;
+    }
     
-    // Clear any queued TTS without sending uuid_break to FreeSWITCH so active audio plays complete
+    // Clear any queued TTS
     this.ttsQueue.length = 0;
+    // Reset deduplication state so user saying the same word (e.g. "Haan") on consecutive turns is accepted
+    this.lastTranscriptText = '';
 
-    // Wait 1.5s turn pause after user finishes speaking for natural 2-3s conversation gap
-    await new Promise((resolve) => setTimeout(resolve, 1500));
     if (this.destroyed) return;
 
     this.isProcessingLlm = true;
@@ -1559,10 +1601,10 @@ export class AudioSession extends EventEmitter {
       }
       resampled = this.resamplePcm16(audio, actualSampleRate, 8000);
     }
-    return this.normalizeAudioVolume(resampled, 0.92);
+    return this.normalizeAudioVolume(resampled, 0.95);
   }
 
-  private normalizeAudioVolume(audio: Buffer, targetPeakRatio = 0.92): Buffer {
+  private normalizeAudioVolume(audio: Buffer, targetPeakRatio = 0.95): Buffer {
     if (audio.length < 2) return audio;
     let maxAbs = 0;
     for (let i = 0; i < audio.length - 1; i += 2) {

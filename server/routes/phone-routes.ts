@@ -87,21 +87,19 @@ export function createPhoneRoutes(ctx: RouteContext): Router {
     try {
       const userPhoneNumbers = await storage.getUserPhoneNumbers(req.userId!);
       
-      const user = await storage.getUser(req.userId!);
+      const systemPoolNumbers = await db
+        .select()
+        .from(phoneNumbers)
+        .where(
+          and(
+            eq(phoneNumbers.isSystemPool, true),
+            eq(phoneNumbers.status, 'active')
+          )
+        );
       
-      let allPhoneNumbers = [...userPhoneNumbers];
-      if (user && user.planType === 'free') {
-        const systemPoolNumbers = await db
-          .select()
-          .from(phoneNumbers)
-          .where(
-            and(
-              eq(phoneNumbers.isSystemPool, true),
-              isNull(phoneNumbers.userId)
-            )
-          );
-        allPhoneNumbers = [...allPhoneNumbers, ...systemPoolNumbers];
-      }
+      const map = new Map<string, any>();
+      [...userPhoneNumbers, ...systemPoolNumbers].forEach(p => map.set(p.id, p));
+      const allPhoneNumbers = Array.from(map.values());
       
       res.json(allPhoneNumbers);
     } catch (error: any) {

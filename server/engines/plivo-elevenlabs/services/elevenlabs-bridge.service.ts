@@ -99,6 +99,8 @@ export class ElevenLabsBridgeService {
       toNumber,
       direction,
       transcript: [],
+      initialAudioQueue: [],
+      isPlivoReady: false,
     };
     
     this.activeSessions.set(sessionKey, session);
@@ -142,20 +144,35 @@ export class ElevenLabsBridgeService {
         
         const initMessage: any = {
           type: 'conversation_initiation_client_data',
-          conversation_config_override: {
-            agent: {
-              first_message: agentConfig?.firstMessage,
-              language: agentConfig?.language || 'en',
-            },
-            tts: {
-              voice_id: agentConfig?.voiceId,
-            },
-          },
         };
         
-        if (agentConfig?.dynamicData && Object.keys(agentConfig.dynamicData).length > 0) {
-          initMessage.dynamic_data = agentConfig.dynamicData;
-          logger.info(`Sending dynamic_data with ${Object.keys(agentConfig.dynamicData).length} variables`, undefined, 'PlivoElevenLabsBridge');
+        const configOverride: any = {};
+        const agentOverride: any = {};
+
+        if (agentConfig?.firstMessage) {
+          agentOverride.first_message = agentConfig.firstMessage;
+          logger.info(`Setting ElevenLabs first_message override: "${agentConfig.firstMessage.substring(0, 60)}..."`, undefined, 'PlivoElevenLabsBridge');
+        }
+
+        if (agentConfig?.systemPrompt) {
+          agentOverride.prompt = { prompt: agentConfig.systemPrompt };
+          logger.info(`Setting ElevenLabs prompt override`, undefined, 'PlivoElevenLabsBridge');
+        }
+
+        if (agentConfig?.language) {
+          agentOverride.language = agentConfig.language;
+        }
+
+        if (Object.keys(agentOverride).length > 0) {
+          configOverride.agent = agentOverride;
+          initMessage.conversation_config_override = configOverride;
+        }
+        
+        // Pass dynamic_variables if provided (e.g. company_name, name, phone)
+        const dynamicVars = agentConfig?.dynamicData || {};
+        if (Object.keys(dynamicVars).length > 0) {
+          initMessage.dynamic_variables = dynamicVars;
+          logger.info(`Sending dynamic_variables with ${Object.keys(dynamicVars).length} variables`, undefined, 'PlivoElevenLabsBridge');
         }
         
         ws.send(JSON.stringify(initMessage));
@@ -173,7 +190,7 @@ export class ElevenLabsBridgeService {
       });
       
       ws.on('close', (code, reason) => {
-        logger.info(`ElevenLabs WebSocket closed: ${code}`, undefined, 'PlivoElevenLabsBridge');
+        logger.info(`ElevenLabs WebSocket closed: ${code} ${reason?.toString() || ''}`, undefined, 'PlivoElevenLabsBridge');
         session.status = 'disconnected';
         session.endedAt = new Date();
       });
@@ -195,39 +212,51 @@ export class ElevenLabsBridgeService {
       
       switch (message.type) {
         case 'conversation_initiation_metadata':
-          session.conversationId = message.conversation_id;
-          logger.info(`Conversation started: ${message.conversation_id}`, undefined, 'PlivoElevenLabsBridge');
+          session.conversationId = (message as any).conversation_initiation_metadata_event?.conversation_id || message.conversation_id;
+          logger.info(`Conversation started: ${session.conversationId}`, undefined, 'PlivoElevenLabsBridge');
           break;
           
         case 'audio':
-          if (message.audio?.chunk) {
-            const pcmBuffer = AudioConverter.decodeBase64(message.audio.chunk);
+          const audioChunk = (message as any).audio_event?.audio_base_64 || message.audio?.chunk;
+          if (audioChunk) {
+            const pcmBuffer = AudioConverter.decodeBase64(audioChunk);
             const mulawBuffer = AudioConverter.pcm16ToMulaw(pcmBuffer);
             const mulawBase64 = AudioConverter.encodeBase64(mulawBuffer);
             
-            this.sendToPlivoStream(session, mulawBase64);
+            if (!session.isPlivoReady || !session.plivoWs || (session.plivoWs as any).readyState !== WebSocket.OPEN) {
+              if (!session.initialAudioQueue) session.initialAudioQueue = [];
+              if (session.initialAudioQueue.length < 100) {
+                session.initialAudioQueue.push(mulawBase64);
+              }
+            } else {
+              this.sendToPlivoStream(session, mulawBase64);
+            }
           }
           break;
           
         case 'user_transcript':
-          if (message.user_transcript?.is_final) {
+          const userText = (message as any).user_transcription_event?.user_transcript || message.user_transcript?.text;
+          const isUserFinal = (message as any).user_transcription_event?.is_final ?? message.user_transcript?.is_final ?? true;
+          if (userText && isUserFinal) {
             session.transcript.push({
               role: 'user',
-              text: message.user_transcript.text,
+              text: userText,
               timestamp: new Date(),
             });
-            logger.info(`User: "${message.user_transcript.text.substring(0, 80)}..."`, undefined, 'PlivoElevenLabsBridge');
+            logger.info(`User: "${userText.substring(0, 80)}..."`, undefined, 'PlivoElevenLabsBridge');
           }
           break;
           
         case 'agent_response':
-          if (message.agent_response?.is_final) {
+          const agentText = (message as any).agent_response_event?.agent_response || message.agent_response?.text;
+          const isAgentFinal = (message as any).agent_response_event?.is_final ?? message.agent_response?.is_final ?? true;
+          if (agentText && isAgentFinal) {
             session.transcript.push({
               role: 'agent',
-              text: message.agent_response.text,
+              text: agentText,
               timestamp: new Date(),
             });
-            logger.info(`Agent: "${message.agent_response.text.substring(0, 80)}..."`, undefined, 'PlivoElevenLabsBridge');
+            logger.info(`Agent: "${agentText.substring(0, 80)}..."`, undefined, 'PlivoElevenLabsBridge');
           }
           break;
           
@@ -263,15 +292,20 @@ export class ElevenLabsBridgeService {
       return;
     }
     
-    const mediaMessage = {
-      event: 'media',
-      streamSid: session.streamSid,
+    const playAudioMessage = {
+      event: 'playAudio',
       media: {
+        contentType: 'audio/x-mulaw',
+        sampleRate: 8000,
         payload: audioBase64,
       },
     };
     
-    (session.plivoWs as any).send(JSON.stringify(mediaMessage));
+    try {
+      (session.plivoWs as any).send(JSON.stringify(playAudioMessage));
+    } catch (e: any) {
+      logger.warn(`Error sending audio to Plivo stream: ${e?.message || e}`, undefined, 'PlivoElevenLabsBridge');
+    }
   }
   
   /**
@@ -315,6 +349,20 @@ export class ElevenLabsBridgeService {
       session.plivoWs = plivoWs as any;
       session.streamSid = streamSid;
       logger.info(`Plivo WebSocket set for ${callUuid}, streamSid: ${streamSid}`, undefined, 'PlivoElevenLabsBridge');
+
+      // Wait 450ms for Plivo RTP media bridge to stabilize on caller's phone line
+      setTimeout(() => {
+        session.isPlivoReady = true;
+
+        if (session.initialAudioQueue && session.initialAudioQueue.length > 0) {
+          logger.info(`Flushing ${session.initialAudioQueue.length} queued initial audio chunks to Plivo stream`, undefined, 'PlivoElevenLabsBridge');
+          const queue = [...session.initialAudioQueue];
+          session.initialAudioQueue = [];
+          for (const mulawChunk of queue) {
+            this.sendToPlivoStream(session, mulawChunk);
+          }
+        }
+      }, 450);
     } else {
       logger.warn(`No session found for ${callUuid} when setting Plivo WebSocket`, undefined, 'PlivoElevenLabsBridge');
     }
@@ -328,6 +376,20 @@ export class ElevenLabsBridgeService {
     return this.activeSessions.get(sessionKey);
   }
   
+  /**
+   * Alias a session under a secondary key (e.g. Plivo CallUUID -> synthetic callUuid)
+   */
+  static aliasSession(oldUuid: string, newUuid: string): void {
+    if (!oldUuid || !newUuid || oldUuid === newUuid) return;
+    const oldKey = this.getSessionKey(oldUuid);
+    const session = this.activeSessions.get(oldKey);
+    if (session) {
+      const newKey = this.getSessionKey(newUuid);
+      this.activeSessions.set(newKey, session);
+      logger.info(`Aliased bridge session ${oldUuid} -> ${newUuid}`, undefined, 'PlivoElevenLabsBridge');
+    }
+  }
+
   /**
    * Check if a session exists
    */

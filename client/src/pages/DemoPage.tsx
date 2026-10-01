@@ -419,14 +419,14 @@ export default function DemoPage() {
       return;
     }
 
-    let cleanPhoneInput = phoneNumber.trim().replace(/[^0-9]/g, "");
+    let rawDigits = phoneNumber.trim().replace(/[^0-9]/g, "");
     let prefixDigits = countryPrefix.replace(/[^0-9]/g, "");
 
     let cleanPhone = "";
-    if (cleanPhoneInput.startsWith(prefixDigits)) {
-      cleanPhone = `+${cleanPhoneInput}`;
+    if (rawDigits.length > 10 && rawDigits.startsWith(prefixDigits)) {
+      cleanPhone = `+${rawDigits}`;
     } else {
-      cleanPhone = `+${prefixDigits}${cleanPhoneInput}`;
+      cleanPhone = `+${prefixDigits}${rawDigits}`;
     }
 
     if (cleanPhone.length < 10) {
@@ -754,16 +754,14 @@ export default function DemoPage() {
                             className={`subtab-btn ${intlSubTab === 'premium' ? 'active' : ''}`}
                             onClick={() => handleSubTabChange('twilio', 'premium')}
                           >
-                            <span className="subtab-badge premium">Premium</span>
-                            Twilio + ElevenLabs
+                            Premium
                           </button>
                           <button
                             type="button"
                             className={`subtab-btn ${intlSubTab === 'standard' ? 'active' : ''}`}
                             onClick={() => handleSubTabChange('twilio', 'standard')}
                           >
-                            <span className="subtab-badge standard">Standard</span>
-                            Twilio + OpenAI
+                            Standard
                           </button>
                         </div>
                       )}
@@ -775,24 +773,21 @@ export default function DemoPage() {
                             className={`subtab-btn ${indianSubTab === 'premium' ? 'active' : ''}`}
                             onClick={() => handleSubTabChange('plivo', 'premium')}
                           >
-                            <span className="subtab-badge premium">Premium</span>
-                            Plivo + ElevenLabs
+                            Premium
                           </button>
                           <button
                             type="button"
                             className={`subtab-btn ${indianSubTab === 'standard' ? 'active' : ''}`}
                             onClick={() => handleSubTabChange('plivo', 'standard')}
                           >
-                            <span className="subtab-badge standard">Standard</span>
-                            Plivo + OpenAI
+                            Standard
                           </button>
                           <button
                             type="button"
                             className={`subtab-btn ${indianSubTab === 'custom' ? 'active' : ''}`}
                             onClick={() => handleSubTabChange('plivo', 'custom')}
                           >
-                            <span className="subtab-badge custom">Custom</span>
-                            Plivo + Custom
+                            Custom
                           </button>
                         </div>
                       )}
@@ -818,9 +813,9 @@ export default function DemoPage() {
                             }}
                             className="flag-select"
                           >
-                            <option value="CA">Canada</option>
-                            <option value="US">United States</option>
-                            <option value="IN">India</option>
+                            <option value="CA">Canada (+1)</option>
+                            <option value="US">United States (+1)</option>
+                            <option value="IN">India (+91)</option>
                             {sortedCountries
                               .filter(c => !["CA", "US", "IN"].includes(c.code))
                               .map(c => (
@@ -829,10 +824,13 @@ export default function DemoPage() {
                             }
                           </select>
                         </div>
+                        <span className="phone-prefix-tag" style={{ display: "flex", alignItems: "center", padding: "0 10px", color: "#10B981", fontWeight: 600, fontSize: "14px", borderRight: "1px solid #303831" }}>
+                          {countryPrefix}
+                        </span>
                         <input
                           id="phone"
                           type="tel"
-                          placeholder={countryPrefix === "+91" ? "+91 98765-43210" : `${countryPrefix} 123-456-7890`}
+                          placeholder={countryPrefix === "+91" ? "7023088303" : "9876543210"}
                           autoComplete="tel"
                           value={phoneNumber}
                           onChange={(e) => setPhoneNumber(e.target.value)}

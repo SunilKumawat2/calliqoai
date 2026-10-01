@@ -346,16 +346,17 @@ router.post('/voice/answer', async (req: Request, res: Response) => {
       })
       .where(eq(twilioOpenaiCalls.id, callRecord.id));
 
-    const session = TwilioOpenAIAudioBridge.getSession(CallSid);
+    let session = TwilioOpenAIAudioBridge.getSession(CallSid);
+    if (!session && callRecord.id) {
+      session = TwilioOpenAIAudioBridge.getSession(callRecord.id);
+      if (session) {
+        TwilioOpenAIAudioBridge.remapSession(callRecord.id, CallSid);
+        logger.info(`Remapped session from ${callRecord.id} to ${CallSid} during answer webhook`, undefined, 'TwilioOpenAI');
+      }
+    }
+
     if (!session) {
-      logger.info(`No session found for: ${CallSid}`, undefined, 'TwilioOpenAI');
-      res.type('text/xml');
-      res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say>Session not found. Goodbye.</Say>
-  <Hangup/>
-</Response>`);
-      return;
+      logger.info(`No active session in memory for ${CallSid}, stream handler will initialize session on WS start`, undefined, 'TwilioOpenAI');
     }
 
     // Recording is initiated in the WebSocket stream 'start' event handler

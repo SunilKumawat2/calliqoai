@@ -548,11 +548,19 @@ app.use((req, res, next) => {
     next();
   });
   
-  if (!isProduction) {
-    const devModule = "./vite";
-    const { setupVite } = await import(/* @vite-ignore */ devModule);
-    await setupVite(app, server);
-  } else {
+  let isDevMode = !isProduction;
+  if (isDevMode) {
+    try {
+      const devModule = "./vite";
+      const { setupVite } = await import(/* @vite-ignore */ devModule);
+      await setupVite(app, server);
+    } catch (e) {
+      log("Vite dev module not available, falling back to static production serving.");
+      isDevMode = false;
+    }
+  }
+  
+  if (!isDevMode) {
     // Set NODE_ENV to production for proper middleware behavior
     process.env.NODE_ENV = "production";
     app.set("env", "production");

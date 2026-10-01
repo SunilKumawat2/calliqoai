@@ -141,8 +141,9 @@ const agents = pgTable("agents", {
   // 'twilio_openai' = Twilio telephony + OpenAI Realtime API
   // 'elevenlabs-sip' = ElevenLabs native SIP (user's own SIP trunk)
   // 'openai-sip' = OpenAI Realtime API with SIP (incoming only)
+  // 'plivo_elevenlabs' = ElevenLabs Conversational AI with Plivo telephony
   telephonyProvider: text("telephony_provider").default("twilio"),
-  // 'twilio' | 'plivo' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip' | 'custom-voice-engine'
+  // 'twilio' | 'plivo' | 'plivo_elevenlabs' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip' | 'custom-voice-engine'
   // SIP Trunk Configuration (used when telephonyProvider='elevenlabs-sip' or 'openai-sip')
   sipTrunkId: varchar("sip_trunk_id"),
   // References sip_trunks.id for SIP-based engines

@@ -18,7 +18,7 @@
 
 import { Router, Request, Response } from 'express';
 import { RouteContext, AuthRequest } from './common';
-import { sql, eq, and } from 'drizzle-orm';
+import { sql, eq, and, desc } from 'drizzle-orm';
 import { users, calls, campaigns, twilioCountries, agents, phoneNumbers, plivoPhoneNumbers } from '@shared/schema';
 import { ElevenLabsPoolService } from '../services/elevenlabs-pool';
 import bcrypt from 'bcrypt';
@@ -1263,7 +1263,7 @@ ${allUrls.map(u => {
       if (twilioOwnerResult.length > 0 && twilioOwnerResult[0].userId) {
         userId = twilioOwnerResult[0].userId;
       } else {
-        const plivoOwnerResult = await db.select({ userId: plivoPhoneNumbers.userId }).from(plivoPhoneNumbers).where(eq(plivoPhoneNumbers.status, 'active')).limit(1);
+        const plivoOwnerResult = await db.select({ userId: plivoPhoneNumbers.userId }).from(plivoPhoneNumbers).where(eq(plivoPhoneNumbers.status, 'active')).orderBy(desc(plivoPhoneNumbers.createdAt)).limit(1);
         if (plivoOwnerResult.length > 0 && plivoOwnerResult[0].userId) {
           userId = plivoOwnerResult[0].userId;
         }
@@ -1455,7 +1455,10 @@ ${allUrls.map(u => {
       // Case B1: Plivo + ElevenLabs
       if (resolvedProvider === 'plivo_elevenlabs' || agent.telephonyProvider === 'plivo_elevenlabs') {
         const { PlivoElevenLabsOutboundService } = await import('../engines/plivo-elevenlabs/services/outbound-call.service');
-        const plivoPhoneResult = await db.select().from(plivoPhoneNumbers).where(and(eq(plivoPhoneNumbers.userId, userId), eq(plivoPhoneNumbers.status, 'active'))).limit(1);
+        let plivoPhoneResult = await db.select().from(plivoPhoneNumbers).where(and(eq(plivoPhoneNumbers.userId, userId), eq(plivoPhoneNumbers.status, 'active'))).orderBy(desc(plivoPhoneNumbers.createdAt)).limit(1);
+        if (plivoPhoneResult.length === 0) {
+          plivoPhoneResult = await db.select().from(plivoPhoneNumbers).where(eq(plivoPhoneNumbers.status, 'active')).orderBy(desc(plivoPhoneNumbers.createdAt)).limit(1);
+        }
         if (plivoPhoneResult.length === 0) {
           return res.status(400).json({ success: false, error: "No active Plivo phone number configured on your account. Please purchase a Plivo number." });
         }
@@ -1504,7 +1507,10 @@ ${allUrls.map(u => {
         const { PlivoCallService } = await import('../engines/plivo/services/plivo-call.service');
         const { OpenAIAgentFactory } = await import('../engines/plivo/services/openai-agent-factory');
 
-        const plivoPhoneResult = await db.select().from(plivoPhoneNumbers).where(and(eq(plivoPhoneNumbers.userId, userId), eq(plivoPhoneNumbers.status, 'active'))).limit(1);
+        let plivoPhoneResult = await db.select().from(plivoPhoneNumbers).where(and(eq(plivoPhoneNumbers.userId, userId), eq(plivoPhoneNumbers.status, 'active'))).orderBy(desc(plivoPhoneNumbers.createdAt)).limit(1);
+        if (plivoPhoneResult.length === 0) {
+          plivoPhoneResult = await db.select().from(plivoPhoneNumbers).where(eq(plivoPhoneNumbers.status, 'active')).orderBy(desc(plivoPhoneNumbers.createdAt)).limit(1);
+        }
         if (plivoPhoneResult.length === 0) {
           return res.status(400).json({ success: false, error: "No active Plivo phone number configured on your account. Please purchase a Plivo number." });
         }

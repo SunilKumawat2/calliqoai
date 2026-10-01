@@ -724,21 +724,19 @@ export default function PhoneNumbers() {
                         <Badge variant={number.status === "active" ? "default" : "secondary"}>
                           {number.status === "active" ? t('common.active') : number.status}
                         </Badge>
-                        {twilioKycRequired && !number.isSystemPool && (
-                          <Badge 
-                            variant="outline"
-                            className={`cursor-pointer transition-colors ${
-                              currentUser?.kycStatus === 'approved'
-                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                                : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/20'
-                            }`}
-                            onClick={() => setLocation('/app/settings')}
-                            data-testid={`badge-kyc-status-twilio-${number.id}`}
-                          >
-                            <Shield className="h-3 w-3 mr-1" />
-                            {getKycStatusLabel(currentUser?.kycStatus ?? undefined)}
-                          </Badge>
-                        )}
+                        <Badge 
+                          variant="outline"
+                          className={`cursor-pointer transition-colors ${
+                            currentUser?.kycStatus === 'approved'
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                              : 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/20'
+                          }`}
+                          onClick={() => setLocation('/app/settings')}
+                          data-testid={`badge-kyc-status-twilio-${number.id}`}
+                        >
+                          <Shield className="h-3 w-3 mr-1" />
+                          {getKycStatusLabel(currentUser?.kycStatus ?? undefined)}
+                        </Badge>
                       </div>
                     </div>
 
@@ -747,12 +745,20 @@ export default function PhoneNumbers() {
                         <span>{t('phoneNumbers.labels.country')}:</span>
                         <span className="font-medium text-foreground">{number.country}</span>
                       </div>
-                      {!number.isSystemPool && (
-                        <div className="flex justify-between text-muted-foreground">
-                          <span>{t('phoneNumbers.labels.monthlyCost')}:</span>
-                          <span className="font-medium text-foreground">{MONTHLY_CREDITS} {t('phoneNumbers.labels.credits')}</span>
-                        </div>
-                      )}
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>{t('phoneNumbers.labels.monthlyCost')}:</span>
+                        <span className="font-medium text-foreground">{number.monthlyCredits || MONTHLY_CREDITS} {t('phoneNumbers.labels.credits')}</span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Purchase Cost:</span>
+                        <span className="font-medium text-foreground">{number.purchaseCredits || (MONTHLY_CREDITS * 2)} credits</span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Purchased:</span>
+                        <span className="font-medium text-foreground">
+                          {number.purchasedAt ? new Date(number.purchasedAt).toLocaleDateString() : number.createdAt ? new Date(number.createdAt).toLocaleDateString() : new Date().toLocaleDateString()}
+                        </span>
+                      </div>
                       {(() => {
                         const connection = getConnection(number.id);
                         return connection ? (
@@ -777,37 +783,35 @@ export default function PhoneNumbers() {
                       })()}
                     </div>
 
-                    {!number.isSystemPool && (
-                      <div className="pt-4 mt-4 border-t space-y-2">
-                        {twilioKycRequired && !isKycApproved && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => {
-                              setKycRequiredDialogOpen(true);
-                            }}
-                            data-testid={`button-kyc-twilio-${number.id}`}
-                          >
-                            <Upload className="h-4 w-4 mr-2" />
-                            Complete KYC Verification
-                          </Button>
-                        )}
+                    <div className="pt-4 mt-4 border-t space-y-2">
+                      {twilioKycRequired && !isKycApproved && (
                         <Button
-                          variant="destructive"
+                          variant="outline"
                           size="sm"
                           className="w-full"
                           onClick={() => {
-                            setNumberToRelease(number);
-                            setReleaseDialogOpen(true);
+                            setKycRequiredDialogOpen(true);
                           }}
-                          data-testid={`button-release-${number.id}`}
+                          data-testid={`button-kyc-twilio-${number.id}`}
                         >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          {t('phoneNumbers.actions.release')}
+                          <Upload className="h-4 w-4 mr-2" />
+                          Complete KYC Verification
                         </Button>
-                      </div>
-                    )}
+                      )}
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => {
+                          setNumberToRelease(number);
+                          setReleaseDialogOpen(true);
+                        }}
+                        data-testid={`button-release-${number.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        {t('phoneNumbers.actions.release')}
+                      </Button>
+                    </div>
                   </Card>
                 ))}
               </div>

@@ -33,26 +33,30 @@ import { AuthStorage } from "@/lib/auth-storage";
 import { TimezoneEnforcementModal } from "@/components/TimezoneEnforcementModal";
 import { PhoneConflictDialog, PhoneConflictState, initialPhoneConflictState } from "./PhoneConflictDialog";
 import { usePluginStatus } from "@/hooks/use-plugin-status";
+import { formatPhoneNumber } from "@/lib/formatters";
 
 interface Agent {
   id: string;
   name: string;
   personality: string;
   type: 'incoming' | 'natural' | 'flow';
-  telephonyProvider: 'twilio' | 'plivo' | 'plivo_openai' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip' | 'custom-voice-engine' | null;
+  telephonyProvider: 'twilio' | 'plivo' | 'plivo_openai' | 'plivo_elevenlabs' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip' | 'custom-voice-engine' | null;
   sipPhoneNumberId?: string | null;
 }
 
-const getEngineLabel = (provider: string | null): string => {
-  switch (provider) {
-    case 'plivo':
-    case 'plivo_openai': return 'Plivo+OpenAI';
-    case 'twilio_openai': return 'Twilio+OpenAI';
-    case 'elevenlabs-sip': return 'ElevenLabs SIP';
-    case 'openai-sip': return 'OpenAI SIP';
-    case 'custom-voice-engine': return 'Custom Voice Engine';
-    default: return 'Twilio+ElevenLabs';
+const getEngineLabel = (provider: string | null | undefined): string => {
+  if (!provider) return 'Twilio+ElevenLabs';
+  const p = provider.toLowerCase().trim();
+  if (p === 'plivo_elevenlabs' || p === 'elevenlabs-plivo' || (p.includes('plivo') && (p.includes('elevenlabs') || p.includes('11lab')))) {
+    return 'Plivo+ElevenLabs';
   }
+  if (p === 'plivo' || p === 'plivo_openai') return 'Plivo+OpenAI';
+  if (p === 'twilio_openai' || (p.includes('twilio') && p.includes('openai'))) return 'Twilio+OpenAI';
+  if (p === 'twilio' || p.includes('twilio')) return 'Twilio+ElevenLabs';
+  if (p.includes('elevenlabs') && p.includes('sip')) return 'ElevenLabs SIP';
+  if (p.includes('openai') && p.includes('sip')) return 'OpenAI SIP';
+  if (p.includes('custom')) return 'Custom Voice Engine';
+  return 'Twilio+ElevenLabs';
 };
 
 
@@ -176,8 +180,8 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
   const selectedAgent = agents.find(a => a.id === formData.agentId);
   const isElevenLabsSipAgent = selectedAgent?.telephonyProvider === 'elevenlabs-sip';
   const isSipAgent = selectedAgent?.telephonyProvider === 'elevenlabs-sip' || selectedAgent?.telephonyProvider === 'openai-sip';
-  const isPlivoAgent = selectedAgent?.telephonyProvider === 'plivo' || selectedAgent?.telephonyProvider === 'plivo_openai';
-  const isTwilioAgent = !selectedAgent?.telephonyProvider || selectedAgent?.telephonyProvider === 'twilio' || selectedAgent?.telephonyProvider === 'twilio_openai';
+  const isPlivoAgent = !!selectedAgent?.telephonyProvider && selectedAgent.telephonyProvider.toLowerCase().includes('plivo');
+  const isTwilioAgent = !selectedAgent?.telephonyProvider || selectedAgent.telephonyProvider.toLowerCase().includes('twilio');
 
   const { data: flows = [] } = useQuery<Array<{ id: string; name: string; description?: string }>>({
     queryKey: ["/api/flow-automation/flows"],
@@ -311,7 +315,7 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
           return;
         }
       } else if (isPlivoAgent) {
-        if (!formData.plivoPhoneNumberId) {
+        if (!formData.plivoPhoneNumberId && !formData.phoneNumberId) {
           toast({ title: t("campaigns.toast.pleaseSelectPhone"), variant: "destructive" });
           return;
         }
@@ -461,12 +465,16 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                     <Select 
                       value={formData.agentId} 
                       onValueChange={(value) => {
+                        const selected = agents.find(a => a.id === value);
+                        const isPlivo = selected?.telephonyProvider && selected.telephonyProvider.toLowerCase().includes('plivo');
+                        const defaultPlivoId = isPlivo && plivoPhoneNumbers.length > 0 ? plivoPhoneNumbers[0].id : "";
+                        const defaultTwilioId = !isPlivo && phoneNumbers.length > 0 ? phoneNumbers[0].id : "";
                         setFormData({ 
                           ...formData, 
                           agentId: value,
-                          phoneNumberId: "",
+                          phoneNumberId: defaultTwilioId,
                           sipPhoneNumberId: "",
-                          plivoPhoneNumberId: ""
+                          plivoPhoneNumberId: defaultPlivoId
                         });
                       }}
                     >
@@ -510,10 +518,45 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                   <div className="space-y-2">
                     <Label htmlFor="phone-select">{t("campaigns.create.phoneNumberRequired")}</Label>
                     {!formData.agentId ? (
-                      <Select disabled>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Please select an agent first" />
+                      <Select 
+                        value={
+                          formData.plivoPhoneNumberId 
+                            ? `plivo:${formData.plivoPhoneNumberId}` 
+                            : formData.phoneNumberId 
+                              ? `twilio:${formData.phoneNumberId}` 
+                              : ""
+                        } 
+                        onValueChange={(value) => {
+                          if (value.startsWith('plivo:')) {
+                            const id = value.split(':')[1];
+                            setFormData({ ...formData, plivoPhoneNumberId: id, phoneNumberId: '' });
+                          } else if (value.startsWith('twilio:')) {
+                            const id = value.split(':')[1];
+                            setFormData({ ...formData, phoneNumberId: id, plivoPhoneNumberId: '' });
+                          } else {
+                            setFormData({ ...formData, phoneNumberId: value, plivoPhoneNumberId: '' });
+                          }
+                        }}
+                      >
+                        <SelectTrigger data-testid="select-phone">
+                          <SelectValue placeholder={
+                            (phoneNumbers.length === 0 && plivoPhoneNumbers.length === 0) 
+                              ? "No phone numbers available" 
+                              : "Select a phone number"
+                          } />
                         </SelectTrigger>
+                        <SelectContent>
+                          {phoneNumbers.map((phone) => (
+                            <SelectItem key={`twilio:${phone.id}`} value={`twilio:${phone.id}`}>
+                              {formatPhoneNumber(phone.phoneNumber)} {phone.friendlyName ? `(${phone.friendlyName})` : ''}
+                            </SelectItem>
+                          ))}
+                          {plivoPhoneNumbers.map((phone) => (
+                            <SelectItem key={`plivo:${phone.id}`} value={`plivo:${phone.id}`}>
+                              {formatPhoneNumber(phone.phoneNumber)} (Plivo)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
                       </Select>
                     ) : isElevenLabsSipAgent && !isSipPluginEnabled ? (
                       <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20">
@@ -545,20 +588,48 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                       </>
                     ) : isPlivoAgent ? (
                       <>
-                        <Select value={formData.plivoPhoneNumberId} onValueChange={(value) => setFormData({ ...formData, plivoPhoneNumberId: value })}>
+                        <Select 
+                          value={
+                            formData.plivoPhoneNumberId 
+                              ? `plivo:${formData.plivoPhoneNumberId}` 
+                              : formData.phoneNumberId 
+                                ? `twilio:${formData.phoneNumberId}` 
+                                : ""
+                          } 
+                          onValueChange={(value) => {
+                            if (value.startsWith('plivo:')) {
+                              const id = value.split(':')[1];
+                              setFormData({ ...formData, plivoPhoneNumberId: id, phoneNumberId: '' });
+                            } else if (value.startsWith('twilio:')) {
+                              const id = value.split(':')[1];
+                              setFormData({ ...formData, phoneNumberId: id, plivoPhoneNumberId: '' });
+                            } else {
+                              setFormData({ ...formData, plivoPhoneNumberId: value, phoneNumberId: '' });
+                            }
+                          }}
+                        >
                           <SelectTrigger data-testid="select-phone">
-                            <SelectValue placeholder={plivoPhoneNumbers.length === 0 ? "No Plivo phone numbers available" : "Select a Plivo phone number"} />
+                            <SelectValue placeholder={
+                              (plivoPhoneNumbers.length === 0 && phoneNumbers.length === 0) 
+                                ? "No phone numbers available" 
+                                : "Select a phone number"
+                            } />
                           </SelectTrigger>
                           <SelectContent>
                             {plivoPhoneNumbers.map((phone) => (
-                              <SelectItem key={phone.id} value={phone.id}>
-                                {phone.friendlyName || phone.phoneNumber}
+                              <SelectItem key={`plivo:${phone.id}`} value={`plivo:${phone.id}`}>
+                                {formatPhoneNumber(phone.phoneNumber)} (Plivo)
+                              </SelectItem>
+                            ))}
+                            {phoneNumbers.map((phone) => (
+                              <SelectItem key={`twilio:${phone.id}`} value={`twilio:${phone.id}`}>
+                                {formatPhoneNumber(phone.phoneNumber)} {phone.friendlyName ? `(${phone.friendlyName})` : ''}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        {plivoPhoneNumbers.length === 0 && (
-                          <p className="text-sm text-muted-foreground">No Plivo phone numbers available. Purchase a Plivo phone number first.</p>
+                        {plivoPhoneNumbers.length === 0 && phoneNumbers.length === 0 && (
+                          <p className="text-sm text-muted-foreground">No phone numbers available. Please add a phone number first.</p>
                         )}
                       </>
                     ) : selectedAgent?.telephonyProvider === 'custom-voice-engine' ? (
@@ -593,12 +664,12 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                           <SelectContent>
                             {plivoPhoneNumbers.map((phone) => (
                               <SelectItem key={`plivo:${phone.id}`} value={`plivo:${phone.id}`}>
-                                {phone.friendlyName || phone.phoneNumber} (Plivo)
+                                {formatPhoneNumber(phone.phoneNumber)} (Plivo)
                               </SelectItem>
                             ))}
                             {userSipPhoneNumbers.map((phone) => (
                               <SelectItem key={`sip:${phone.id}`} value={`sip:${phone.id}`}>
-                                {phone.phone_number} {phone.label ? `(${phone.label})` : ''} (Custom SIP)
+                                {formatPhoneNumber(phone.phone_number)} (Custom SIP)
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -616,7 +687,7 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                           <SelectContent>
                             {phoneNumbers.map((phone) => (
                               <SelectItem key={phone.id} value={phone.id}>
-                                {phone.friendlyName || phone.phoneNumber}
+                                {formatPhoneNumber(phone.phoneNumber)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -1021,7 +1092,7 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                   onClick={handleSubmit}
                   disabled={createMutation.isPending || !formData.agentId || 
                     (isElevenLabsSipAgent ? (!isSipPluginEnabled || !formData.sipPhoneNumberId) 
-                     : isPlivoAgent ? !formData.plivoPhoneNumberId 
+                     : isPlivoAgent ? (!formData.plivoPhoneNumberId && !formData.phoneNumberId) 
                      : selectedAgent?.telephonyProvider === 'custom-voice-engine' ? false 
                      : !formData.phoneNumberId)}
                   data-testid="button-create-campaign"

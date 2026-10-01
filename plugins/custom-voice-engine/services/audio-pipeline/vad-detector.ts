@@ -41,9 +41,9 @@ export class VadDetector {
     const smoothedEnergy =
       this.lastEnergyValues.reduce((a, b) => a + b, 0) / this.lastEnergyValues.length;
 
-    // During TTS playback, require higher threshold (0.15) so speaker echo does not cause self-interruption
-    const threshold = isPlayingTts ? 0.15 : this.config.energyThreshold;
-    const requiredSpeechMs = isPlayingTts ? 350 : this.config.speechThresholdMs;
+    // During TTS playback, use a slightly higher energy threshold (0.035) to filter minor background noise while ensuring caller speech reliably triggers barge-in
+    const threshold = isPlayingTts ? Math.max(0.035, this.config.energyThreshold * 1.25) : this.config.energyThreshold;
+    const requiredSpeechMs = isPlayingTts ? 180 : this.config.speechThresholdMs;
     const isSpeech = smoothedEnergy > threshold;
     const now = Date.now();
 

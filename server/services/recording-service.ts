@@ -24,6 +24,8 @@ import { ElevenLabsService, elevenLabsService } from "./elevenlabs";
 import { ElevenLabsPoolService } from "./elevenlabs-pool";
 import { getTwilioClient } from "./twilio-connector";
 import { storage } from "../storage";
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Result of a recording fetch operation
@@ -565,21 +567,65 @@ export class RecordingService {
    */
   async fetchPlivoRecordingByUrl(recordingUrl: string): Promise<RecordingResult | null> {
     try {
-      console.log(`🎙️ [Recording] Fetching Plivo recording from URL`);
+      console.log(`🎙️ [Recording] Fetching Plivo recording from URL: ${recordingUrl}`);
       
-      const response = await fetch(recordingUrl);
+      let relativePath = recordingUrl;
+      if (relativePath.includes('/uploads/')) {
+        relativePath = relativePath.substring(relativePath.indexOf('/uploads/'));
+      }
+      if (relativePath.includes('?')) {
+        relativePath = relativePath.split('?')[0];
+      }
       
-      if (!response.ok) {
-        console.log(`⚠️ [Recording] Failed to fetch Plivo recording: ${response.status}`);
-        return null;
+      // Handle local server-side recording files starting with '/' or containing '/uploads/'
+      if (relativePath.startsWith('/') || relativePath.includes('/uploads/')) {
+        const rootDirs = [
+          process.cwd(),
+          path.resolve(process.cwd(), '..'),
+          '/home/calliqoai/htdocs/calliqoai.com',
+          '/home/calliqoai/htdocs/calliqoai.com/Calliqoai',
+        ];
+
+        const candidatePaths: string[] = [];
+        for (const r of rootDirs) {
+          candidatePaths.push(path.join(r, relativePath));
+          candidatePaths.push(path.join(r, 'dist', 'public', relativePath));
+          candidatePaths.push(path.join(r, 'client', 'public', relativePath));
+          candidatePaths.push(path.join(r, 'public', relativePath));
+        }
+
+        const targetPath = candidatePaths.find(p => fs.existsSync(p));
+
+        if (targetPath) {
+          console.log(`✅ [Recording] Serving local Plivo recording file: ${targetPath}`);
+          const buffer = fs.readFileSync(targetPath);
+          return {
+            audioBuffer: buffer,
+            contentType: 'audio/wav',
+            source: 'plivo'
+          };
+        } else {
+          console.warn(`⚠️ [Recording] Local Plivo recording file not found in candidates for relative path: ${relativePath}`);
+        }
       }
 
-      const buffer = await response.arrayBuffer();
-      return {
-        audioBuffer: Buffer.from(buffer),
-        contentType: response.headers.get('content-type') || 'audio/mpeg',
-        source: 'plivo'
-      };
+      if (recordingUrl.startsWith('http://') || recordingUrl.startsWith('https://')) {
+        const response = await fetch(recordingUrl);
+        
+        if (!response.ok) {
+          console.log(`⚠️ [Recording] Failed to fetch Plivo recording: ${response.status}`);
+          return null;
+        }
+
+        const buffer = await response.arrayBuffer();
+        return {
+          audioBuffer: Buffer.from(buffer),
+          contentType: response.headers.get('content-type') || 'audio/mpeg',
+          source: 'plivo'
+        };
+      }
+
+      return null;
     } catch (error: any) {
       console.warn(`⚠️ [Recording] Plivo URL fetch failed: ${error.message}`);
       return null;
@@ -621,6 +667,19 @@ export class RecordingService {
       }
 
       if (!credential) {
+        // Fallback: Check globalSettings ('plivo_auth_id' & 'plivo_auth_token') or process.env
+        try {
+          const dbAuthId = await storage.getGlobalSetting('plivo_auth_id');
+          const dbAuthToken = await storage.getGlobalSetting('plivo_auth_token');
+          const authId = (typeof dbAuthId?.value === 'string' ? dbAuthId.value.trim() : '') || (process.env.PLIVO_AUTH_ID || '').trim();
+          const authToken = (typeof dbAuthToken?.value === 'string' ? dbAuthToken.value.trim() : '') || (process.env.PLIVO_AUTH_TOKEN || '').trim();
+
+          if (authId && authToken && authId !== 'your_plivo_auth_id_here') {
+            return { authId, authToken };
+          }
+        } catch (err: any) {
+          console.error(`❌ [Recording] Error reading fallback Plivo credentials from global settings:`, err);
+        }
         return null;
       }
 

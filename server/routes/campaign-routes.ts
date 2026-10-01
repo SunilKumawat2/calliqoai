@@ -284,11 +284,31 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
         }
 
         // Validate agent is using Plivo telephony (or Custom Voice Engine which supports all)
-        if (agent.telephonyProvider !== 'plivo' && agent.telephonyProvider !== 'plivo_openai' && agent.telephonyProvider !== 'custom-voice-engine') {
+        const isPlivoTelephony = agent.telephonyProvider === 'plivo' ||
+          agent.telephonyProvider === 'plivo_openai' ||
+          agent.telephonyProvider === 'plivo_elevenlabs' ||
+          (agent as any).telephonyProvider === 'elevenlabs-plivo' ||
+          agent.telephonyProvider === 'custom-voice-engine';
+
+        if (!isPlivoTelephony) {
           return res.status(400).json({ 
             error: "Engine mismatch",
             message: `Cannot use a Plivo phone number with a ${agent.telephonyProvider || 'Twilio'} agent. Please select a Plivo agent for this campaign.`
           });
+        }
+      }
+
+      let finalPlivoPhoneId = plivoPhoneNumberId || null;
+      if (!finalPlivoPhoneId && !phoneNumberId && !sipPhoneNumberId && agent) {
+        const isPlivoTelephony = agent.telephonyProvider === 'plivo' ||
+          agent.telephonyProvider === 'plivo_openai' ||
+          agent.telephonyProvider === 'plivo_elevenlabs' ||
+          (agent as any).telephonyProvider === 'elevenlabs-plivo';
+        if (isPlivoTelephony) {
+          const [activePlivo] = await db.select().from(plivoPhoneNumbers).where(eq(plivoPhoneNumbers.status, 'active')).limit(1);
+          if (activePlivo) {
+            finalPlivoPhoneId = activePlivo.id;
+          }
         }
       }
 
@@ -298,7 +318,7 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
         voiceId: voiceId || null,
         phoneNumberId: phoneNumberId || null,
         sipPhoneNumberId: sipPhoneNumberId || null,
-        plivoPhoneNumberId: plivoPhoneNumberId || null,
+        plivoPhoneNumberId: finalPlivoPhoneId,
         flowId: flowId || null,
         name,
         type,
@@ -789,6 +809,17 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
             ))
             .limit(1);
           hasSipPhoneNumber = !!sipPhone;
+        }
+      }
+      
+      if (!campaign.plivoPhoneNumberId && !campaign.phoneNumberId && !(campaign as any).sipPhoneNumberId && campaign.agentId) {
+        const agent = await storage.getAgent(campaign.agentId);
+        if (agent && (agent.telephonyProvider === 'plivo' || agent.telephonyProvider === 'plivo_elevenlabs' || (agent as any).telephonyProvider === 'elevenlabs-plivo')) {
+          const [activePlivo] = await db.select().from(plivoPhoneNumbers).where(eq(plivoPhoneNumbers.status, 'active')).limit(1);
+          if (activePlivo) {
+            await db.update(campaigns).set({ plivoPhoneNumberId: activePlivo.id }).where(eq(campaigns.id, campaign.id));
+            (campaign as any).plivoPhoneNumberId = activePlivo.id;
+          }
         }
       }
       

@@ -41,6 +41,8 @@ export interface CallSession {
   direction: 'inbound' | 'outbound';
   transcript: TranscriptPart[];
   conversationId?: string;
+  initialAudioQueue?: string[];
+  isPlivoReady?: boolean;
 }
 
 export interface TranscriptPart {
@@ -78,15 +80,33 @@ export interface ElevenLabsWebSocketMessage {
     format?: string;
     sample_rate?: number;
   };
+  audio_event?: {
+    audio_base_64: string;
+    event_id?: number;
+    is_final?: boolean;
+  };
   user_transcript?: {
     text: string;
     is_final: boolean;
+  };
+  user_transcription_event?: {
+    user_transcript: string;
+    is_final?: boolean;
   };
   agent_response?: {
     text: string;
     is_final: boolean;
   };
+  agent_response_event?: {
+    agent_response: string;
+    is_final?: boolean;
+  };
   conversation_id?: string;
+  conversation_initiation_metadata_event?: {
+    conversation_id: string;
+    agent_output_audio_format?: string;
+    user_input_audio_format?: string;
+  };
   ping_event?: {
     event_id: number;
   };

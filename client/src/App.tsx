@@ -43,6 +43,7 @@ import Billing from "@/pages/Billing";
 import PaymentResult from "@/pages/PaymentResult";
 import KnowledgeBase from "@/pages/KnowledgeBase";
 import Agents from "@/pages/Agents";
+import TestAgents from "@/pages/TestAgents";
 import Voices from "@/pages/Voices";
 import PhoneNumbers from "@/pages/PhoneNumbers";
 import AllContacts from "@/pages/AllContacts";
@@ -336,6 +337,8 @@ function UserRouter() {
                 </Route>
                 <Route path="/app/knowledge-base" component={KnowledgeBase} />
                 <Route path="/app/agents" component={Agents} />
+                <Route path="/app/test-agents" component={TestAgents} />
+                <Route path="/app/test_agents" component={TestAgents} />
                 <Route path="/app/conversations" component={PluginConversationsPage} />
                 <Route path="/app/prompt-templates" component={PromptTemplates} />
                 <Route path="/app/incoming-connections" component={IncomingConnections} />

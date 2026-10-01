@@ -685,7 +685,7 @@ export class OpenAIAgentFactory {
 
     const endCallTool: AgentTool = {
       name: 'end_call',
-      description: 'IMMEDIATELY end the call. You MUST call this function when: (1) the user says "bye", "goodbye", "thank you bye", "have a good day", "that\'s all", "I\'m done", "hang up", or any farewell phrase, (2) the conversation has naturally concluded and all tasks are complete, (3) the user explicitly asks to end the call. DO NOT just say goodbye - you MUST actually call this function to disconnect the call.',
+      description: 'End the phone call. CRITICAL: You MUST speak your complete closing message from your prompt out loud to the caller FIRST. ONLY invoke this end_call tool AFTER you have finished speaking your full closing statement out loud to the caller.',
       parameters: {
         type: 'object',
         properties: {

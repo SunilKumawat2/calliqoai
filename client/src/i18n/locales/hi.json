@@ -141,7 +141,8 @@
     "websiteWidget": "Website Widget",
     "conversations": "Conversations",
     "tools": "Tools",
-    "settings": "Settings"
+    "settings": "Settings",
+    "demo": "Demo Playground"
   },
   "sidebar": {
     "build": "निर्माण",

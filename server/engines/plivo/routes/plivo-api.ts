@@ -869,7 +869,7 @@ export function createPlivoApiRoutes(): Router {
 
       const agentMap = new Map(assignedAgents.map(a => [a.id, a]));
 
-      // Get available Plivo agents (telephonyProvider = 'plivo' and type = 'incoming' only)
+      // Get available incoming agents (type = 'incoming' and active)
       // Flow agents should not appear in incoming connections dropdown
       const availableAgents = await db
         .select({
@@ -882,7 +882,6 @@ export function createPlivoApiRoutes(): Router {
         .where(
           and(
             eq(agents.userId, req.userId!),
-            eq(agents.telephonyProvider, 'plivo'),
             eq(agents.type, 'incoming'),
             eq(agents.isActive, true)
           )

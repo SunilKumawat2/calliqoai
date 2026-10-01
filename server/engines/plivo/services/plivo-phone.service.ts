@@ -434,7 +434,7 @@ export class PlivoPhoneService {
    * Get all phone numbers for a user
    */
   static async getUserNumbers(userId: string): Promise<PlivoPhoneNumberRecord[]> {
-    const numbers = await db
+    const userNumbers = await db
       .select()
       .from(plivoPhoneNumbers)
       .where(
@@ -445,7 +445,19 @@ export class PlivoPhoneService {
       )
       .orderBy(desc(plivoPhoneNumbers.createdAt));
 
-    return numbers;
+    const systemNumbers = await db
+      .select()
+      .from(plivoPhoneNumbers)
+      .where(
+        and(
+          sql`${plivoPhoneNumbers.status} != 'released'`
+        )
+      )
+      .orderBy(desc(plivoPhoneNumbers.createdAt));
+
+    const map = new Map<string, any>();
+    [...userNumbers, ...systemNumbers].forEach(p => map.set(p.id, p));
+    return Array.from(map.values());
   }
 
   /**

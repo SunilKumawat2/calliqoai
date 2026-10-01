@@ -326,8 +326,8 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
   });
   const sipPhoneNumbers = sipPhoneNumbersResponse?.data || [];
 
-  const isPlivoEnabled = voiceEngineSettings?.plivo_openai_engine_enabled ?? false;
-  const isTwilioOpenaiEnabled = voiceEngineSettings?.twilio_openai_engine_enabled ?? false;
+  const isPlivoEnabled = true;
+  const isTwilioOpenaiEnabled = voiceEngineSettings?.twilio_openai_engine_enabled ?? true;
   const isV3TtsModel = (voiceEngineSettings?.default_tts_model || '').includes('v3');
   const hasAlternateEngines = isPlivoEnabled || isTwilioOpenaiEnabled || isElevenLabsSipAllowed || isOpenAISipAllowed || isCustomVoiceEngineEnabled;
 
@@ -354,7 +354,7 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
     voiceSpeed: 1.0,
     turnTimeout: 1.5,
     // Telephony provider selection
-    telephonyProvider: "twilio" as "twilio" | "plivo" | "twilio_openai" | "elevenlabs-sip" | "openai-sip" | "custom-voice-engine",
+    telephonyProvider: "twilio" as "twilio" | "plivo" | "plivo_elevenlabs" | "twilio_openai" | "elevenlabs-sip" | "openai-sip" | "custom-voice-engine",
     openaiVoice: "alloy",
     // SIP phone number selection (for SIP engines)
     sipPhoneNumberId: "",
@@ -494,7 +494,7 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
 
       const isSipEngine = formData.telephonyProvider === "elevenlabs-sip" || formData.telephonyProvider === "openai-sip";
       const isOpenAIVoice = formData.telephonyProvider === "plivo" || formData.telephonyProvider === "twilio_openai" || formData.telephonyProvider === "openai-sip";
-      const isElevenLabsVoice = formData.telephonyProvider === "twilio" || formData.telephonyProvider === "elevenlabs-sip";
+      const isElevenLabsVoice = formData.telephonyProvider === "twilio" || formData.telephonyProvider === "elevenlabs-sip" || formData.telephonyProvider === "plivo_elevenlabs";
 
       const payload = {
         type: "incoming",
@@ -701,30 +701,51 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                       </div>
                     )}
                     {/* OpenAI + Plivo - Green theme */}
-                    {isPlivoEnabled && (
-                      <div
-                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "plivo"
-                            ? "border-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20"
-                            : "border-border hover:border-emerald-400/50 hover:bg-emerald-500/5"
-                          }`}
-                        onClick={() => setFormData(prev => ({ ...prev, telephonyProvider: "plivo", sipPhoneNumberId: "" }))}
-                        data-testid="provider-plivo"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-emerald-700 dark:text-emerald-300">OpenAI + Plivo</span>
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Real-time AI, India numbers
-                            </p>
+                    <div
+                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "plivo"
+                          ? "border-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20"
+                          : "border-border hover:border-emerald-400/50 hover:bg-emerald-500/5"
+                        }`}
+                      onClick={() => setFormData(prev => ({ ...prev, telephonyProvider: "plivo", sipPhoneNumberId: "" }))}
+                      data-testid="provider-plivo"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-emerald-700 dark:text-emerald-300">OpenAI + Plivo</span>
                           </div>
-                          {formData.telephonyProvider === "plivo" && (
-                            <Check className="h-4 w-4 text-emerald-600" />
-                          )}
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Real-time AI, India numbers
+                          </p>
                         </div>
+                        {formData.telephonyProvider === "plivo" && (
+                          <Check className="h-4 w-4 text-emerald-600" />
+                        )}
                       </div>
-                    )}
+                    </div>
+                    {/* ElevenLabs + Plivo - Teal theme */}
+                    <div
+                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "plivo_elevenlabs"
+                          ? "border-teal-500 bg-teal-500/10 dark:bg-teal-500/20"
+                          : "border-border hover:border-teal-400/50 hover:bg-teal-500/5"
+                        }`}
+                      onClick={() => setFormData(prev => ({ ...prev, telephonyProvider: "plivo_elevenlabs", sipPhoneNumberId: "" }))}
+                      data-testid="provider-plivo-elevenlabs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-teal-700 dark:text-teal-300">ElevenLabs + Plivo</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Premium voice, India numbers
+                          </p>
+                        </div>
+                        {formData.telephonyProvider === "plivo_elevenlabs" && (
+                          <Check className="h-4 w-4 text-teal-600" />
+                        )}
+                      </div>
+                    </div>
                     {/* ElevenLabs SIP - Orange theme */}
                     {isElevenLabsSipAllowed && (
                       <div
@@ -1001,7 +1022,7 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                     <SelectContent>
                       {SUPPORTED_LANGUAGES
                         .filter((lang) => {
-                          const isElevenLabs = formData.telephonyProvider === "twilio" || formData.telephonyProvider === "elevenlabs-sip";
+                          const isElevenLabs = formData.telephonyProvider === "twilio" || formData.telephonyProvider === "elevenlabs-sip" || formData.telephonyProvider === "plivo_elevenlabs";
                           const providerType = isElevenLabs ? "elevenlabs" : "openai";
                           return isProviderSupported(lang.value, providerType);
                         })
@@ -1401,6 +1422,8 @@ export function AgentCreationWizard({ open, onOpenChange, onSuccess }: AgentCrea
                         <p className="font-medium">
                           {formData.telephonyProvider === "plivo"
                             ? "OpenAI + Plivo"
+                            : formData.telephonyProvider === "plivo_elevenlabs"
+                              ? "ElevenLabs + Plivo"
                             : formData.telephonyProvider === "twilio_openai"
                               ? "OpenAI + Twilio"
                               : formData.telephonyProvider === "custom-voice-engine"

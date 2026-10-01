@@ -157,7 +157,7 @@ ${statesJson}
 
 # CRITICAL TOOL USAGE REQUIREMENTS
 - FORM SUBMISSIONS: After collecting all required information from the caller, you MUST call the submit_form tool with the collected data. Do NOT just say you have saved the information - you MUST actually call the submit_form function to save it.
-- ENDING CALLS: When ending a conversation, FIRST speak your complete farewell message out loud to the caller (e.g. "ਤੁਹਾਡਾ ਕੀਮਤੀ ਸਮਾਂ ਅਤੇ ਫੀਡਬੈਕ ਦੇਣ ਲਈ ਬਹੁਤ ਧੰਨਵਾਦ ਜੀ..."). AFTER AND ONLY AFTER you have completely spoken the entire farewell message out loud, call the end_call function to hang up. NEVER call end_call in the same turn before speaking the full farewell message.
+- ENDING CALLS: When ending a conversation, speak ONLY the exact closing statement specified in your prompt/state word-for-word. Do NOT invent, translate, or add any extra text (like "Aapka bahumulya feedback..."). AFTER AND ONLY AFTER you have completely spoken the exact closing statement out loud, call the end_call function to hang up.
 - TRANSFERS: When transferring to a human agent, you MUST call the transfer_call function. Do NOT just say you are transferring - actually call the function.
 - APPOINTMENTS: When booking appointments, you MUST call the book_appointment function with all collected details.
 - SEND EMAIL: When instructed to send an email, you MUST call the appropriate send_email_* function with the recipient email and template name. If no recipient email is pre-configured, ask the caller for it first.

@@ -113,7 +113,7 @@ interface Agent {
   endConversationEnabled: boolean | null;
   appointmentBookingEnabled: boolean | null;
   expressiveMode: boolean | null;
-  telephonyProvider: 'twilio' | 'plivo' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip' | 'custom-voice-engine' | null;
+  telephonyProvider: 'twilio' | 'plivo' | 'plivo_elevenlabs' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip' | 'custom-voice-engine' | null;
   openaiVoice: string | null;
   createdAt: string;
 }
@@ -312,7 +312,7 @@ export default function Agents() {
   const [activeTab, setActiveTab] = useState<'agents' | 'templates' | 'voices'>('agents');
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<'all' | 'incoming' | 'flow' | 'cve'>('all');
-  const [engineFilter, setEngineFilter] = useState<'all' | 'twilio' | 'plivo' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip'>('all');
+  const [engineFilter, setEngineFilter] = useState<'all' | 'twilio' | 'plivo' | 'plivo_elevenlabs' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip'>('all');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [knowledgeUploadOpen, setKnowledgeUploadOpen] = useState(false);
@@ -352,7 +352,7 @@ export default function Agents() {
     voiceSpeed: 1.0,
     turnTimeout: 1.5,
     // Telephony Provider selection (Twilio/ElevenLabs, Plivo/OpenAI, Twilio/OpenAI, or SIP engines)
-    telephonyProvider: "twilio" as "twilio" | "plivo" | "twilio_openai" | "elevenlabs-sip" | "openai-sip" | "custom-voice-engine",
+    telephonyProvider: "twilio" as "twilio" | "plivo" | "plivo_elevenlabs" | "twilio_openai" | "elevenlabs-sip" | "openai-sip" | "custom-voice-engine",
     openaiVoice: "aura-asteria-en",
     sttProvider: "deepgram",
     sttModel: "",
@@ -427,8 +427,8 @@ export default function Agents() {
     staleTime: 60000,
   });
 
-  const isPlivoEnabled = voiceEngineSettings?.plivo_openai_engine_enabled ?? false;
-  const isTwilioOpenaiEnabled = voiceEngineSettings?.twilio_openai_engine_enabled ?? false;
+  const isPlivoEnabled = true;
+  const isTwilioOpenaiEnabled = voiceEngineSettings?.twilio_openai_engine_enabled ?? true;
   const isV3TtsModel = (voiceEngineSettings?.default_tts_model || '').includes('v3');
 
   // Fetch CVE admin settings for active TTS provider and OpenRouter models
@@ -840,7 +840,7 @@ export default function Agents() {
       voiceSpeed: 1.0,
       turnTimeout: 1.5,
       // Telephony Provider selection
-      telephonyProvider: "twilio" as "twilio" | "plivo" | "twilio_openai" | "elevenlabs-sip" | "openai-sip" | "custom-voice-engine",
+      telephonyProvider: "twilio" as "twilio" | "plivo" | "plivo_elevenlabs" | "twilio_openai" | "elevenlabs-sip" | "openai-sip" | "custom-voice-engine",
       openaiVoice: "alloy",
       sipPhoneNumberId: "",
       sttProvider: "deepgram",
@@ -975,7 +975,7 @@ export default function Agents() {
       voiceSpeed: agent.voiceSpeed ?? 1.0,
       turnTimeout: agent.turnTimeout ?? 1.5,
       // Telephony Provider selection
-      telephonyProvider: (agent.telephonyProvider || "twilio") as "twilio" | "plivo" | "twilio_openai" | "elevenlabs-sip" | "openai-sip" | "custom-voice-engine",
+      telephonyProvider: (agent.telephonyProvider || "twilio") as "twilio" | "plivo" | "plivo_elevenlabs" | "twilio_openai" | "elevenlabs-sip" | "openai-sip" | "custom-voice-engine",
       openaiVoice: agent.openaiVoice || (agent as any).tts_voice || "alloy",
       sttProvider: (agent as any).stt_provider || (agent as any).config?.sttProvider || "deepgram",
       ttsProvider: (agent as any).tts_provider || (agent as any).config?.ttsProvider || "deepgram",
@@ -1223,6 +1223,14 @@ export default function Agents() {
                       <div className="flex items-center gap-2">
                         <div className="h-2 w-2 rounded-full bg-emerald-500" />
                         OpenAI + Plivo
+                      </div>
+                    </SelectItem>
+                  )}
+                  {isPlivoEnabled && (
+                    <SelectItem value="plivo_elevenlabs">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-teal-500" />
+                        ElevenLabs + Plivo
                       </div>
                     </SelectItem>
                   )}
@@ -1909,35 +1917,61 @@ export default function Agents() {
                               </div>
                             )}
                             {/* OpenAI + Plivo - Green theme */}
-                            {(isPlivoEnabled || formData.telephonyProvider === "plivo") && (
-                              <div
-                                className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "plivo"
-                                  ? "border-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20"
-                                  : "border-border hover:border-emerald-400/50 hover:bg-emerald-500/5"
-                                  }`}
-                                onClick={() => setFormData({
-                                  ...formData,
-                                  telephonyProvider: "plivo",
-                                  type: formData.type === "custom_engine" ? "incoming" : formData.type,
-                                  llmModel: "gpt-realtime-1.5"
-                                })}
-                                data-testid="flow-provider-plivo"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="font-medium text-emerald-700 dark:text-emerald-300">OpenAI + Plivo</span>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mt-0.5">
-                                      Real-time AI, India numbers
-                                    </p>
+                            <div
+                              className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "plivo"
+                                ? "border-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20"
+                                : "border-border hover:border-emerald-400/50 hover:bg-emerald-500/5"
+                                }`}
+                              onClick={() => setFormData({
+                                ...formData,
+                                telephonyProvider: "plivo",
+                                type: formData.type === "custom_engine" ? "incoming" : formData.type,
+                                llmModel: "gpt-realtime-1.5"
+                              })}
+                              data-testid="flow-provider-plivo"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-medium text-emerald-700 dark:text-emerald-300">OpenAI + Plivo</span>
                                   </div>
-                                  {formData.telephonyProvider === "plivo" && (
-                                    <Check className="h-4 w-4 text-emerald-600" />
-                                  )}
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    Real-time AI, India numbers
+                                  </p>
                                 </div>
+                                {formData.telephonyProvider === "plivo" && (
+                                  <Check className="h-4 w-4 text-emerald-600" />
+                                )}
                               </div>
-                            )}
+                            </div>
+                            {/* ElevenLabs + Plivo - Teal theme */}
+                            <div
+                              className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "plivo_elevenlabs"
+                                ? "border-teal-500 bg-teal-500/10 dark:bg-teal-500/20"
+                                : "border-border hover:border-teal-400/50 hover:bg-teal-500/5"
+                                }`}
+                              onClick={() => setFormData({
+                                ...formData,
+                                telephonyProvider: "plivo_elevenlabs",
+                                type: formData.type === "custom_engine" ? "incoming" : formData.type,
+                                llmModel: availableLLMModels.length > 0 ? availableLLMModels[0].modelId : "gpt-4o-mini"
+                              })}
+                              data-testid="flow-provider-plivo-elevenlabs"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-medium text-teal-700 dark:text-teal-300">ElevenLabs + Plivo</span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    Premium voice, India numbers
+                                  </p>
+                                </div>
+                                {formData.telephonyProvider === "plivo_elevenlabs" && (
+                                  <Check className="h-4 w-4 text-teal-600" />
+                                )}
+                              </div>
+                            </div>
                             {/* ElevenLabs SIP - Orange theme */}
                             {(isElevenLabsSipAllowed || formData.telephonyProvider === "elevenlabs-sip") && (
                               <div
@@ -2684,35 +2718,61 @@ export default function Agents() {
                           </div>
                         )}
                         {/* OpenAI + Plivo - Green theme */}
-                        {(isPlivoEnabled || formData.telephonyProvider === "plivo") && (
-                          <div
-                            className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "plivo"
-                              ? "border-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20"
-                              : "border-border hover:border-emerald-400/50 hover:bg-emerald-500/5"
-                              }`}
-                            onClick={() => setFormData({
-                              ...formData,
-                              telephonyProvider: "plivo",
-                              type: formData.type === "custom_engine" ? "incoming" : formData.type,
-                              llmModel: "gpt-realtime-1.5"
-                            })}
-                            data-testid="provider-plivo"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-medium text-emerald-700 dark:text-emerald-300">OpenAI + Plivo</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  Real-time AI, India numbers
-                                </p>
+                        <div
+                          className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "plivo"
+                            ? "border-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20"
+                            : "border-border hover:border-emerald-400/50 hover:bg-emerald-500/5"
+                            }`}
+                          onClick={() => setFormData({
+                            ...formData,
+                            telephonyProvider: "plivo",
+                            type: formData.type === "custom_engine" ? "incoming" : formData.type,
+                            llmModel: "gpt-realtime-1.5"
+                          })}
+                          data-testid="provider-plivo"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-medium text-emerald-700 dark:text-emerald-300">OpenAI + Plivo</span>
                               </div>
-                              {formData.telephonyProvider === "plivo" && (
-                                <Check className="h-4 w-4 text-emerald-600" />
-                              )}
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                Real-time AI, India numbers
+                              </p>
                             </div>
+                            {formData.telephonyProvider === "plivo" && (
+                              <Check className="h-4 w-4 text-emerald-600" />
+                            )}
                           </div>
-                        )}
+                        </div>
+                        {/* ElevenLabs + Plivo - Teal theme */}
+                        <div
+                          className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${formData.telephonyProvider === "plivo_elevenlabs"
+                            ? "border-teal-500 bg-teal-500/10 dark:bg-teal-500/20"
+                            : "border-border hover:border-teal-400/50 hover:bg-teal-500/5"
+                            }`}
+                          onClick={() => setFormData({
+                            ...formData,
+                            telephonyProvider: "plivo_elevenlabs",
+                            type: formData.type === "custom_engine" ? "incoming" : formData.type,
+                            llmModel: availableLLMModels.length > 0 ? availableLLMModels[0].modelId : "gpt-4o-mini"
+                          })}
+                          data-testid="provider-plivo-elevenlabs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-medium text-teal-700 dark:text-teal-300">ElevenLabs + Plivo</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                Premium voice, India numbers
+                              </p>
+                            </div>
+                            {formData.telephonyProvider === "plivo_elevenlabs" && (
+                              <Check className="h-4 w-4 text-teal-600" />
+                            )}
+                          </div>
+                        </div>
                         {/* ElevenLabs SIP - Orange theme */}
                         {(isElevenLabsSipAllowed || formData.telephonyProvider === "elevenlabs-sip") && (
                           <div

@@ -128,11 +128,11 @@ export class SarvamSttProvider extends BaseSttProvider {
       return;
     }
 
-    // Respect minimum buffer size (0.5 seconds of audio = 8000 bytes) unless closing
+    // Respect minimum buffer size (1.5 seconds of audio = 24000 bytes for periodic flushes, 320B for VAD force-flush/closing)
     const { sampleRate: flushSampleRate = 8000, channels: flushChannels = 1 } = this.format || {};
-    const minBufferSize = (force && this.closed) ? 320 : Math.round(flushSampleRate * flushChannels * 2 * 0.5); // 0.5s min audio
+    const minBufferSize = (force || this.closed) ? 320 : Math.round(flushSampleRate * flushChannels * 2 * 1.5); // 1.5s min audio for periodic safety-net flushes
     if (this.totalBufferSize < minBufferSize) {
-      console.log(`[STT:Sarvam] flushBuffer skipped: buffer ${this.totalBufferSize}B < min ${minBufferSize}B (force=${force})`);
+      console.log(`[STT:Sarvam] flushBuffer skipped: buffer ${this.totalBufferSize}B < min ${minBufferSize}B (force=${force}, closed=${this.closed})`);
       return;
     }
     if (this.totalBufferSize === 0) {

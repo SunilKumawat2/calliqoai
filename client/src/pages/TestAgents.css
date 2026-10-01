@@ -1,0 +1,1217 @@
+/* ==========================================================================
+   TestAgents.css - Pure Vanilla CSS for CallIQo AI Agent Creation Wizard
+   ========================================================================== */
+
+:root {
+  --neon-green: #00E575;
+  --neon-green-glow: rgba(0, 229, 117, 0.4);
+  --neon-green-bg: rgba(0, 229, 117, 0.08);
+  --neon-green-border: rgba(0, 229, 117, 0.5);
+  --dark-bg: #090c10;
+  --card-bg: #0d1016;
+  --card-border: #1c212a;
+  --input-bg: #141822;
+  --input-border: #222836;
+  --hover-border: #2e3748;
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+}
+
+/* Base Container */
+.test-agents-page {
+  width: 100%;
+  min-height: calc(100vh - 5rem);
+  color: var(--text-primary);
+  font-family: inherit;
+  padding-bottom: 2rem;
+}
+
+/* ==========================================================================
+   Main Agent List View (Step 0)
+   ========================================================================== */
+.agent-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  animation: fadeIn 0.3s ease;
+}
+
+.agent-list-header {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .agent-list-header {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+.agent-header-subtitle {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #10b981;
+  text-transform: uppercase;
+  font-family: monospace;
+}
+
+.agent-header-title {
+  font-size: 30px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  margin-top: 0.25rem;
+  font-family: 'Inter';
+}
+
+.create-agent-btn {
+  background-color: #1CD152;
+  color: #000000;
+  font-weight: 500;
+  padding: 0.65rem 1.35rem;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(28, 209, 82, 0.25);
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-family: Inter;
+}
+
+.create-agent-btn:hover {
+  background-color: #1CD152;
+  transform: translateY(-1px);
+}
+
+.empty-state-box {
+  width: 100%;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(13, 16, 22, 0.7);
+  padding: 4rem 2rem;
+  min-height: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  display: none;
+}
+
+.empty-state-icon {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #34d399;
+  margin-bottom: 1.25rem;
+}
+
+.empty-state-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 0.5rem;
+}
+
+.empty-state-desc {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  max-width: 420px;
+  margin-bottom: 1.5rem;
+}
+
+/* ==========================================================================
+   Wizard Layout & Progress Bar
+   ========================================================================== */
+.wizard-container {
+  max-width: 1024px;
+  margin: 0 auto;
+  padding: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  animation: fadeIn 0.3s ease;
+}
+
+.progress-bar-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 680px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0.5rem 1rem;
+}
+
+.progress-node {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.progress-node.completed {
+  background-color: var(--neon-green);
+  color: #000000;
+  box-shadow: 0 0 12px var(--neon-green-glow);
+}
+
+.progress-node.active {
+  background-color: #0a2618;
+  color: var(--neon-green);
+  border: 2px solid var(--neon-green);
+  box-shadow: 0 0 14px var(--neon-green-glow);
+}
+
+.progress-node.pending {
+  background-color: #181c24;
+  color: var(--text-muted);
+  border: 1px solid #272f3d;
+}
+
+.active-pulse-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background-color: var(--neon-green);
+  box-shadow: 0 0 8px var(--neon-green);
+}
+
+.pending-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: #3f4a5c;
+}
+
+.progress-line {
+  flex: 1;
+  height: 2.5px;
+  margin: 0 0.5rem;
+  border-radius: 9999px;
+  background: #222938;
+  transition: all 0.3s ease;
+}
+
+.progress-line.completed {
+  background: var(--neon-green);
+  box-shadow: 0 0 8px var(--neon-green-glow);
+}
+
+.progress-line.active {
+  background: linear-gradient(90deg, var(--neon-green), #222938);
+}
+
+/* Wizard Step Header */
+.step-header {
+  margin-bottom: 1.5rem;
+}
+
+.step-title {
+  font-size: 30px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  font-family: 'Inter';
+}
+
+.step-subtitle {
+  font-size: 16px;
+  color: #6B6B6B;
+  margin-top: 0.35rem;
+  font-weight: 400;
+  font-style: Regular;
+}
+
+/* ==========================================================================
+   Step 1: Call Direction Cards
+   ========================================================================== */
+.direction-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .direction-grid {
+    grid-template-columns: repeat(1, 1fr);
+  }
+}
+
+.direction-card {
+  position: relative;
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--card-border);
+  background: rgba(17, 20, 26, 0.7);
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 1.25rem;
+  min-height: auto;
+  transition: all 0.2s ease;
+  background: #161616 !important;
+}
+
+.direction-card:hover {
+  background: #141820;
+  border-color: var(--hover-border);
+}
+
+.direction-card.selected {
+  border-color: var(--neon-green);
+  background: #11151c;
+  box-shadow: 0 8px 24px var(--neon-green-bg);
+  outline: 1px solid var(--neon-green-border);
+}
+
+.direction-card .card-icon-box {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0;
+  flex-shrink: 0;
+  background: transparent;
+}
+
+.direction-card .card-icon-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.direction-card.selected .card-icon-box {
+  background: transparent;
+  box-shadow: none;
+}
+
+.card-title {
+  font-size: 20px !important;
+  line-height: 1.5rem;
+  font-weight: 600;
+  color: #FFFFFF;
+  font-family: 'Manrope';
+  margin-bottom: 0.25rem;
+}
+
+.card-desc {
+  font-size: 14px !important;
+  color: #6B6B6B;
+  line-height: 1.4;
+  margin: 0;
+  font-weight: 400;
+  font-style: Regular;
+}
+
+.active-dot-indicator {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: var(--neon-green);
+  box-shadow: 0 0 10px var(--neon-green);
+  display: none;
+}
+
+/* ==========================================================================
+   Step 2: Use Cases Grid
+   ========================================================================== */
+.usecase-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .usecase-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .usecase-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.usecase-card {
+  position: relative;
+  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--card-border);
+  background: rgba(17, 20, 26, 0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  transition: all 0.2s ease;
+  background: #161616 !important;
+}
+
+.usecase-card:hover {
+  background: #141820;
+  border-color: var(--hover-border);
+}
+
+.usecase-card.selected {
+  border-color: var(--neon-green);
+  background: #11151c;
+  box-shadow: 0 8px 24px var(--neon-green-bg);
+  outline: 1px solid var(--neon-green-border);
+}
+
+.usecase-icon-box {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e2430;
+  color: #34d399;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   Main Form Card Containers (Used across Steps 3, 4, 5, 6)
+   ========================================================================== */
+.form-card-container {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--card-border);
+  /* background: rgba(13, 16, 22, 0.9); */
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+  border: 1px solid #1C1C1C;
+}
+
+@media (min-width: 768px) {
+  .form-card-container {
+    padding: 2rem;
+  }
+}
+
+/* Form Fields */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #d1d5db;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.form-label-required {
+  /* color: var(--neon-green); */
+  font-weight: 700;
+  color: red;
+}
+
+.form-input {
+  width: 100%;
+  height: 3rem;
+  /* background-color: var(--input-bg); */
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  padding: 0 1rem;
+  color: #ffffff;
+  font-size: 0.925rem;
+  outline: none;
+  transition: all 0.2s ease;
+  background: #161616 !important;
+}
+
+.form-input:focus {
+  border-color: var(--neon-green);
+  box-shadow: 0 0 0 1px var(--neon-green-border);
+}
+
+.form-input::placeholder {
+  color: #4b5563;
+}
+
+/* Grid Rows */
+.two-col-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .two-col-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.three-col-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .three-col-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.four-col-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.25rem;
+}
+
+@media (min-width: 1024px) {
+  .four-col-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ==========================================================================
+   Step 3: Number Selection & Calling Tiers
+   ========================================================================== */
+.number-card {
+  position: relative;
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--card-border);
+  /* background: rgba(18, 22, 31, 0.7); */
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: all 0.2s ease;
+  background: #161616 !important;
+}
+
+.number-card:hover {
+  background: #151a24;
+  border-color: var(--hover-border);
+}
+
+.number-card.selected {
+  border-color: var(--neon-green);
+  background: var(--neon-green-bg);
+  box-shadow: 0 8px 20px rgba(0, 229, 117, 0.12);
+  outline: 1px solid var(--neon-green-border);
+}
+
+.number-tooltip {
+  display: none;
+  position: absolute;
+  left: 12rem;
+  top: -4rem;
+  z-index: 50;
+  width: 20rem;
+  padding: 0.9rem;
+  background: #171b24;
+  border: 1px solid #2b3344;
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+}
+
+@media (min-width: 1024px) {
+  .number-tooltip {
+    display: block;
+  }
+}
+
+.number-tooltip::after {
+  content: '';
+  position: absolute;
+  left: 1.5rem;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: #171b24;
+  border-right: 1px solid #2b3344;
+  border-bottom: 1px solid #2b3344;
+  transform: rotate(45deg);
+}
+
+.tier-card {
+  position: relative;
+  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--card-border);
+  /* background: rgba(18, 22, 31, 0.7); */
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+  background: #161616 !important;
+}
+
+.tier-card:hover {
+  background: #151a24;
+  border-color: var(--hover-border);
+}
+
+.tier-card.selected {
+  border-color: var(--neon-green);
+  background: var(--neon-green-bg);
+  box-shadow: 0 8px 20px rgba(0, 229, 117, 0.12);
+  outline: 1px solid var(--neon-green-border);
+}
+
+.tier-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1CD152 !important;
+  font-family: 'Inter';
+}
+
+.tier-card.selected .tier-title {
+  color: var(--neon-green);
+}
+
+.tier-credits {
+  font-size: 0.75rem;
+  /* color: var(--text-muted); */
+  font-family: monospace;
+  margin-top: 0.25rem;
+  font-family: 'Inter';
+}
+
+.info-tooltip-btn {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: rgba(39, 47, 61, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.info-tooltip-btn:hover {
+  background: #374151;
+  color: #ffffff;
+}
+
+.tier-popup-tooltip {
+  position: absolute;
+  right: 0;
+  top: 2.25rem;
+  z-index: 50;
+  width: 16rem;
+  padding: 0.75rem;
+  background: #171b24;
+  border: 1px solid #2b3344;
+  color: #cbd5e1;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+}
+
+/* Response Delay Slider Row */
+.slider-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.slider-badge {
+  font-size: 0.85rem;
+  font-family: monospace;
+  font-weight: 700;
+  /* color: var(--neon-green); */
+  /* background: #0a2618; */
+  /* border: 1px solid var(--neon-green-border); */
+  padding: 0.25rem 0.85rem;
+  border-radius: var(--radius-sm);
+  /* box-shadow: 0 2px 8px rgba(0, 229, 117, 0.15); */
+  background: 1px solid #1C1C1C;
+  background: #161616 !important;
+}
+
+
+
+/* ==========================================================================
+   Step 4: Configure Prompts
+   ========================================================================== */
+.card-header-flex {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .card-header-flex {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.template-btn {
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: #cbd5e1;
+  border-radius: var(--radius-md);
+  padding: 0.5rem 1rem;
+  font-size: 0.825rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  align-self: flex-start;
+}
+
+@media (min-width: 640px) {
+  .template-btn {
+    align-self: auto;
+  }
+}
+
+.template-btn:hover {
+  background-color: #1e2433;
+  color: #ffffff;
+  border-color: var(--hover-border);
+}
+
+.prompt-split-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 1024px) {
+  .prompt-split-grid {
+    grid-template-columns: 1fr 340px;
+  }
+}
+
+.form-textarea {
+  width: 100%;
+  /* background-color: var(--input-bg); */
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  color: #ffffff;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  background: #161616 !important;
+}
+
+.form-textarea:focus {
+  border-color: var(--neon-green);
+  box-shadow: 0 0 0 1px var(--neon-green-border);
+}
+
+.form-textarea::placeholder {
+  color: #4b5563;
+}
+
+.char-counter {
+  text-align: right;
+  font-size: 0.75rem;
+  font-family: monospace;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+}
+
+/* Tips Box (Green Glowing Box) */
+.tips-container-box {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--neon-green-border);
+  background: rgba(7, 28, 18, 0.65);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.85rem;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 229, 117, 0.06);
+}
+
+.tips-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--neon-green);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.tips-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.tips-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.775rem;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+/* Example Box (Grey Box) */
+.example-container-box {
+  border-radius: var(--radius-lg);
+  /* border: 1px solid var(--card-border); */
+  /* background: rgba(18, 22, 31, 0.7); */
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: #0f0e0e;
+  border: 1px solid #161616;
+}
+
+.example-quote {
+  /* background: #0b0e14; */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  font-size: 0.775rem;
+  color: #e2e8f0;
+  font-style: italic;
+  line-height: 1.5;
+  background: #161616;
+}
+
+.use-example-btn {
+  background-color: #101010;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid #374151;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: all 0.2s ease;
+}
+
+.use-example-btn:hover {
+  background-color: #252e3e;
+  border-color: #4b5563;
+}
+
+/* Dynamic Variables Row */
+.variables-wrap-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding-top: 0.25rem;
+}
+
+.variable-badge-btn {
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius-sm);
+  /* background: var(--input-bg); */
+  border: 1px solid var(--input-border);
+  font-size: 0.775rem;
+  font-family: monospace;
+  color: #E5E5E5;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: #1C1C1C;
+}
+
+.variable-badge-btn:hover {
+  border-color: var(--neon-green);
+  color: var(--neon-green);
+  background: var(--neon-green-bg);
+}
+
+.variable-badge-btn:active {
+  transform: scale(0.96);
+}
+
+.variables-sidebar {
+  width: 100%;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .variables-sidebar {
+    width: 320px;
+    flex-shrink: 0;
+    border-top: none;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 0;
+    padding-left: 1.5rem;
+  }
+}
+
+/* Knowledge Base Checkbox Grid */
+.kb-card {
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--card-border);
+  /* background: rgba(18, 22, 31, 0.7); */
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: all 0.2s ease;
+  background: #1C1C1C;
+}
+
+.kb-card:hover {
+  background: #151a24;
+  border-color: var(--hover-border);
+}
+
+.kb-card.selected {
+  border-color: var(--neon-green);
+  background: var(--neon-green-bg);
+  box-shadow: 0 4px 12px rgba(0, 229, 117, 0.1);
+  outline: 1px solid var(--neon-green-border);
+}
+
+.kb-checkbox-box {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #4b5563;
+  background: #161a24;
+  flex-shrink: 0;
+}
+
+.kb-card.selected .kb-checkbox-box,
+.tool-item-row.selected .tool-checkbox-box {
+  background: var(--neon-green);
+  border-color: var(--neon-green);
+  color: #000000;
+  box-shadow: 0 0 8px var(--neon-green-glow);
+}
+
+/* ==========================================================================
+   Step 5: Agent Tools Category Grid
+   ========================================================================== */
+.tools-category-header {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #d1d5db;
+  margin-bottom: 0.65rem;
+}
+
+.tool-group-card {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--card-border);
+  /* background: rgba(13, 16, 22, 0.9); */
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  background: #161616;
+}
+
+.tool-item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tool-item-row:hover {
+  background: rgba(39, 47, 61, 0.3);
+}
+
+.tool-item-row.selected {
+  background: var(--neon-green-bg);
+}
+
+.tool-checkbox-box {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #4b5563;
+  background: var(--input-bg);
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+.tool-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.tool-item-row.selected .tool-title {
+  color: #ffffff;
+}
+
+.tool-desc {
+  font-size: 0.775rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-top: 0.15rem;
+}
+
+/* ==========================================================================
+   Step 6: Review Your Agent
+   ========================================================================== */
+.review-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.review-meta-label {
+  font-size: 0.775rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.review-meta-value {
+  font-size: 0.925rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.review-preview-box {
+  font-size: 0.85rem;
+  color: #d1d5db;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  background: rgba(18, 22, 31, 0.5);
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(34, 40, 54, 0.6);
+  margin-top: 0.35rem;
+}
+
+/* ==========================================================================
+   Template Modal
+   ========================================================================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-dialog {
+  background: #0f131a;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 680px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+  animation: zoomIn 0.2s ease;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.85rem;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+}
+
+.modal-close-btn:hover {
+  color: #ffffff;
+}
+
+.template-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+@media (min-width: 640px) {
+  .template-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.template-pick-card {
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid #222938;
+  background: var(--input-bg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.template-pick-card:hover {
+  border-color: var(--neon-green);
+  background: var(--neon-green-bg);
+}
+
+/* ==========================================================================
+   Bottom Navigation Bar
+   ========================================================================== */
+.wizard-footer-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btn-back {
+  /* background-color: var(--input-bg); */
+  border: 1px solid var(--input-border);
+  color: #ffffff;
+  padding: 0.7rem 1.6rem;
+  border-radius: var(--radius-md);
+  font-weight: 400;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 150px;
+  height: 40px;
+  font-size: 14px;
+}
+
+.btn-back:hover {
+  background-color: #1e2433;
+  color: #ffffff;
+}
+
+.btn-next,
+.btn-create-agent {
+  background-color: var(--neon-green);
+  color: #000000;
+  border: none;
+  font-weight: 500;
+  padding: 0.75rem 2.25rem;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  box-shadow: 0 4px 18px var(--neon-green-glow);
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-family: 'Inter';
+  width: 150px;
+  height: 40px;
+}
+
+.btn-next:hover,
+.btn-create-agent:hover {
+  background-color: #00c966;
+  transform: translateY(-1px);
+}
+
+.btn-next:active,
+.btn-create-agent:active {
+  transform: scale(0.98);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

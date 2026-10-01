@@ -88,13 +88,9 @@ export default function LandingPage() {
 
       <main id="top">
         <section className="hero container">
-          <div className="eyebrow reveal">
-            CALLIQO AI is now live
-          </div>
           <h1 className="reveal">
-            The intelligence<br />
-            behind<br />
-            <span>every<br />conversation.</span>
+            The intelligence behind<br />
+            <span>every conversation.</span>
           </h1>
           <p className="hero-copy reveal">
             AI voice agents that call, listen, qualify, and act—so your team enters every conversation with context and leaves with the next step.

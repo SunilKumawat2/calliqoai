@@ -99,9 +99,46 @@ export class PlivoElevenLabsBatchCallingService {
         throw new Error('Campaign has no agent configured');
       }
 
-      const plivoPhoneNumberId = campaign.plivoPhoneNumberId;
-      if (!plivoPhoneNumberId) {
-        throw new Error('Campaign has no Plivo phone number configured. Please select a Plivo phone number.');
+      let phoneNumber: any = null;
+      if (campaign.plivoPhoneNumberId) {
+        const [pn] = await db
+          .select()
+          .from(plivoPhoneNumbers)
+          .where(eq(plivoPhoneNumbers.id, campaign.plivoPhoneNumberId))
+          .limit(1);
+        phoneNumber = pn;
+      }
+
+      if (!phoneNumber && campaign.userId) {
+        const [userPlivoPn] = await db
+          .select()
+          .from(plivoPhoneNumbers)
+          .where(and(eq(plivoPhoneNumbers.userId, campaign.userId), eq(plivoPhoneNumbers.status, 'active')))
+          .limit(1);
+        phoneNumber = userPlivoPn;
+      }
+
+      if (!phoneNumber) {
+        const [plivoPn] = await db.select().from(plivoPhoneNumbers).where(eq(plivoPhoneNumbers.status, 'active')).limit(1);
+        phoneNumber = plivoPn;
+      }
+
+      if (!phoneNumber) {
+        const [anyPlivoPn] = await db.select().from(plivoPhoneNumbers).limit(1);
+        phoneNumber = anyPlivoPn;
+      }
+
+      if (!phoneNumber && campaign.phoneNumberId) {
+        const [pn] = await db
+          .select()
+          .from(phoneNumbers)
+          .where(eq(phoneNumbers.id, campaign.phoneNumberId))
+          .limit(1);
+        phoneNumber = pn;
+      }
+
+      if (!phoneNumber) {
+        throw new Error('No valid Plivo phone number found for campaign');
       }
 
       const [agent] = await db
@@ -112,20 +149,6 @@ export class PlivoElevenLabsBatchCallingService {
 
       if (!agent) {
         throw new Error('Agent not found');
-      }
-
-      if (!agent.elevenLabsAgentId) {
-        throw new Error('Agent has no ElevenLabs Agent ID configured. Please configure the ElevenLabs agent.');
-      }
-
-      const [phoneNumber] = await db
-        .select()
-        .from(plivoPhoneNumbers)
-        .where(eq(plivoPhoneNumbers.id, plivoPhoneNumberId))
-        .limit(1);
-
-      if (!phoneNumber) {
-        throw new Error('Plivo phone number not found');
       }
 
       // Resolve Plivo Credentials

@@ -467,10 +467,10 @@ ${buffer}`);
           wavHeader.write("data", 36);
           wavHeader.writeUInt32LE(dataSize, 40);
           const wavBuffer = Buffer.concat([wavHeader, audio]);
-          const tempDir = process.platform === "win32" ? "C:\\tmp" : "/home/calliqoai/htdocs/calliqoai.com/client/public/uploads/recordings";
+          const tempDir = process.platform === "win32" ? "C:\\tmp" : "/tmp/calliqoai-tts";
           if (!fs.existsSync(tempDir)) {
             try {
-              fs.mkdirSync(tempDir, { recursive: true });
+              fs.mkdirSync(tempDir, { recursive: true, mode: 511 });
             } catch (err) {
               console.warn(`[AudioWS] Failed to create temp directory ${tempDir}:`, err.message);
             }
@@ -478,9 +478,8 @@ ${buffer}`);
           const filePath = `${tempDir}/${sessionId}_tts_${Date.now()}_${audioPlayCount}.wav`;
           await fs.promises.writeFile(filePath, wavBuffer);
           try {
-            await fs.promises.chmod(filePath, 420);
+            await fs.promises.chmod(filePath, 438);
           } catch (chmodErr) {
-            console.warn(`[AudioWS] Failed to chmod ${filePath}:`, chmodErr.message);
           }
           console.log(`[AudioWS] Wrote TTS audio to ${filePath} (${wavBuffer.length} bytes), playing via ESL uuid_broadcast...`);
           const targetUuid = session.channelUuid || sessionId;
@@ -1207,7 +1206,7 @@ You MUST speak ONLY in ${languageName}. From the very first word you say, speak 
         sarvamSpeaker: resolvedSarvamSpeaker,
         outputFormat: {
           encoding: "linear16",
-          sampleRate: effectiveTtsProvider === "sarvam" ? 16e3 : 8e3,
+          sampleRate: 8e3,
           channels: 1,
           bitDepth: 16
         },

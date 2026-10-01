@@ -220,6 +220,7 @@ export interface AudioBridgeSession {
   toNumber?: string;
   callDirection?: CallDirection;
   pendingAudioQueue: PendingAudioRequest[];
+  pcmRemainderBuffer?: Buffer;
 }
 
 export interface CreateSessionParams {

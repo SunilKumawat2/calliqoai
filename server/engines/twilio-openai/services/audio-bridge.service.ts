@@ -39,6 +39,44 @@ const fsWriteFile = promisify(fs.writeFile);
 const fsUnlink = promisify(fs.unlink);
 const fsReadFile = promisify(fs.readFile);
 
+/**
+ * Mulaw decoding table (256 entries for byte values 0-255)
+ */
+const MULAW_DECODE_TABLE: Int16Array = new Int16Array([
+  -32124, -31100, -30076, -29052, -28028, -27004, -25980, -24956,
+  -23932, -22908, -21884, -20860, -19836, -18812, -17788, -16764,
+  -15996, -15484, -14972, -14460, -13948, -13436, -12924, -12412,
+  -11900, -11388, -10876, -10364, -9852, -9340, -8828, -8316,
+  -7932, -7676, -7420, -7164, -6908, -6652, -6396, -6140,
+  -5884, -5628, -5372, -5116, -4860, -4604, -4348, -4092,
+  -3900, -3772, -3644, -3516, -3388, -3260, -3132, -3004,
+  -2876, -2748, -2620, -2492, -2364, -2236, -2108, -1980,
+  -1884, -1820, -1756, -1692, -1628, -1564, -1500, -1436,
+  -1372, -1308, -1244, -1180, -1116, -1052, -988, -924,
+  -876, -844, -812, -780, -748, -716, -684, -652,
+  -620, -588, -556, -524, -492, -460, -428, -396,
+  -372, -356, -340, -324, -308, -292, -276, -260,
+  -244, -228, -212, -196, -180, -164, -148, -132,
+  -120, -112, -104, -96, -88, -80, -72, -64,
+  -56, -48, -40, -32, -24, -16, -8, 0,
+  32124, 31100, 30076, 29052, 28028, 27004, 25980, 24956,
+  23932, 22908, 21884, 20860, 19836, 18812, 17788, 16764,
+  15996, 15484, 14972, 14460, 13948, 13436, 12924, 12412,
+  11900, 11388, 10876, 10364, 9852, 9340, 8828, 8316,
+  7932, 7676, 7420, 7164, 6908, 6652, 6396, 6140,
+  5884, 5628, 5372, 5116, 4860, 4604, 4348, 4092,
+  3900, 3772, 3644, 3516, 3388, 3260, 3132, 3004,
+  2876, 2748, 2620, 2492, 2364, 2236, 2108, 1980,
+  1884, 1820, 1756, 1692, 1628, 1564, 1500, 1436,
+  1372, 1308, 1244, 1180, 1116, 1052, 988, 924,
+  876, 844, 812, 780, 748, 716, 684, 652,
+  620, 588, 556, 524, 492, 460, 428, 396,
+  372, 356, 340, 324, 308, 292, 276, 260,
+  244, 228, 212, 196, 180, 164, 148, 132,
+  120, 112, 104, 96, 88, 80, 72, 64,
+  56, 48, 40, 32, 24, 16, 8, 0
+]);
+
 export class TwilioOpenAIAudioBridge {
   private static activeSessions: Map<string, AudioBridgeSession> = new Map();
   private static readonly OPENAI_REALTIME_URL = 'wss://api.openai.com/v1/realtime';
@@ -68,7 +106,7 @@ export class TwilioOpenAIAudioBridge {
       onEndCallback: null,
       endCallbackFired: false,
       firstMessageSent: false,
-      twilioStreamReady: false,
+      twilioStreamReady: !!(twilioWs && streamSid),
       lastUserSpeechTime: Date.now(),
       fromNumber,
       toNumber,
@@ -112,9 +150,9 @@ export class TwilioOpenAIAudioBridge {
 
       let model = agentConfig.model;
       if (model === 'gpt-realtime-mini' || model === 'gpt-4o-mini-realtime-preview' || model === 'gpt-4o-mini-realtime-preview-2024-12-17') {
-        model = 'gpt-4o-mini-realtime-preview-2024-12-17';
+        model = 'gpt-realtime-mini';
       } else {
-        model = 'gpt-4o-realtime-preview-2024-12-17';
+        model = 'gpt-realtime';
       }
       const wsUrl = `${this.OPENAI_REALTIME_URL}?model=${model}`;
 
@@ -168,7 +206,18 @@ export class TwilioOpenAIAudioBridge {
       });
 
       ws.on('close', (code, reason) => {
-        console.log(`[TwilioOpenAI Bridge] OpenAI closed for ${callSid}: ${code} ${reason}`);
+        const reasonStr = reason ? reason.toString() : '';
+        console.log(`[TwilioOpenAI Bridge] OpenAI closed for ${callSid}: ${code} ${reasonStr}`);
+
+        if ((reasonStr.includes('model_not_found') || reasonStr.includes('does not exist') || reasonStr.includes('access')) && model !== 'gpt-realtime-mini') {
+          console.warn(`[TwilioOpenAI Bridge] Model ${model} not available for API key. Falling back to gpt-realtime-mini for ${callSid}`);
+          session.agentConfig.model = 'gpt-realtime-mini';
+          return TwilioOpenAIAudioBridge.connectToOpenAI(session, apiKey).then(resolve).catch(reject);
+        }
+
+
+
+
         session.status = 'disconnected';
         openaiPoolManager.removeConnection(session.callSid);
         this.fireEndCallback(session);
@@ -196,9 +245,9 @@ export class TwilioOpenAIAudioBridge {
     // Improved defaults for better call quality - less aggressive interruption
     const vadSettings = agentConfig.vadSettings || {};
     const vadType = vadSettings.type ?? 'server_vad';
-    const vadThreshold = vadSettings.threshold ?? 0.7;
-    const vadPrefixPaddingMs = vadSettings.prefixPaddingMs ?? 500;
-    const vadSilenceDurationMs = vadSettings.silenceDurationMs ?? 900;
+    const vadThreshold = vadSettings.threshold ?? 0.85;
+    const vadPrefixPaddingMs = vadSettings.prefixPaddingMs ?? 300;
+    const vadSilenceDurationMs = vadSettings.silenceDurationMs ?? 800;
     const vadEagerness = vadSettings.eagerness ?? 'low';
 
     console.log(`[TwilioOpenAI Bridge] VAD settings: type=${vadType}, threshold=${vadThreshold}, prefix=${vadPrefixPaddingMs}ms, silence=${vadSilenceDurationMs}ms`);
@@ -217,7 +266,38 @@ export class TwilioOpenAIAudioBridge {
         silence_duration_ms: vadSilenceDurationMs,
       };
 
-    // Append mandatory function calling requirements to system prompt
+    // Prepend Mandatory Role, Purpose & Female Gender Guardrails to system prompt
+    // Prepend Mandatory Role, Purpose & Female Gender Guardrails to system prompt
+    const identityAndFemaleGuardrails = `
+# CRITICAL IDENTITY, FEMALE GENDER & ACTIVE LISTENING DIRECTIVES (HIGHEST PRIORITY):
+- ROLE & IDENTITY:
+  - Aapka naam Ananya hai. Aap ek polite, professional aur helpful Female (Mahila) Real Estate Consultant hain JDA Property Jaipur ke liye.
+  - Caller pehle bole ya agent, ya caller beech me interrupt kare — aapko HAMESHA aur 100% apne role (Ananya, JDA Property Consultant) mein hi rehna hai.
+  - KABHI BHI yeh mat bolna ki "I am an AI assistant" ya "Main ek AI model hoon". Aap ek real female property executive hain.
+
+- STRICT FEMALE HINDI/HINGLISH GRAMMAR (100% COMPULSORY):
+  - Aapko HAMESHA sirf aur sirf FEMALE (स्त्रीलिंग) Hindi verbs ka istemaal karna hai. Male verbs bolna STRICTLY PROHIBITED hai.
+  - SAHI (Female Verbs - ONLY USE THESE):
+    * "Main aapko bata rahi hoon" / "Main batati hoon"
+    * "Main samajh gayi"
+    * "Main check kar leti hoon" / "Main check karke bataungi"
+    * "Main aapki poori help kar sakti hoon"
+    * "Main site visit schedule kar deti hoon"
+    * "Main connect karwati hoon"
+  - GHALAT (Male Verbs - NEVER USE):
+    * "Main batata hoon" / "Main bata raha hoon"
+    * "Main samajh gaya"
+    * "Main kar sakta hoon" / "Main check karunga"
+    * "Main schedule karta hoon"
+  - Caller chahe Male ho ya Female, aap apne liye HAMESHA Female verbs hi bolengi.
+
+- ACTIVE LISTENING & CALL PURPOSE:
+  - Caller ki baat ko dhyaan se sunein. Caller ka jo bhi sawal ho (Jaipur JDA Approved Plots, Location, Rates, Registry, Loan facility, Site Visit) pehle unke sawal ka seedha aur accurate jawab dein.
+  - Caller ke sawal ka santoshjanak jawab dene ke baad hi aage qualification ya site visit ke liye poochein.
+  - Background noise, TV, music ya ambient sound ko bilkul ignore karein, sirf main caller ki aawaaz ka jawab dein.
+
+`;
+
     const functionCallingRequirements = `
 
 IMPORTANT FUNCTION CALLING REQUIREMENTS:
@@ -233,26 +313,21 @@ BACKGROUND NOISE HANDLING:
 - Only respond to the primary caller's direct speech addressed to you.
 - Do NOT change topics, repeat yourself, or restart based on background conversations or sounds.`;
 
-    const enhancedInstructions = agentConfig.systemPrompt + functionCallingRequirements;
+    const enhancedInstructions = identityAndFemaleGuardrails + agentConfig.systemPrompt + functionCallingRequirements;
 
+    // Verified OpenAI Realtime GA API session.update format
     const sessionConfig = {
       type: 'session.update',
       session: {
         type: 'realtime',
         instructions: enhancedInstructions,
-        audio: {
-          input: {
-            format: { type: 'audio/pcmu' },
-            transcription: { model: 'whisper-1' },
-            turn_detection: turnDetection,
-          },
-          output: {
-            format: { type: 'audio/pcmu' },
-            voice: agentConfig.voice,
-          },
-        },
         tools,
         tool_choice: tools.length > 0 ? 'auto' : 'none',
+        audio: {
+          output: {
+            voice: agentConfig.voice || 'coral',
+          },
+        },
       },
     };
 
@@ -273,11 +348,23 @@ BACKGROUND NOISE HANDLING:
     if (session.firstMessageSent) return;
     if (!session.twilioStreamReady) return;
     if (session.status !== 'connected') return;
-    if (!session.agentConfig.firstMessage) return;
 
     session.firstMessageSent = true;
-    console.log(`[TwilioOpenAI Bridge] Twilio stream ready, sending first message for ${session.callSid}`);
-    this.sendAgentMessage(session, session.agentConfig.firstMessage);
+
+    // Trigger first message after 300ms delay so Twilio media stream is fully established & phone speaker un-muted
+    setTimeout(() => {
+      if (session.status === 'connected' && session.openaiWs && session.openaiWs.readyState === WebSocket.OPEN) {
+        if (session.agentConfig.firstMessage) {
+          console.log(`[TwilioOpenAI Bridge] Twilio stream ready, sending first message for ${session.callSid}`);
+          this.sendAgentMessage(session, session.agentConfig.firstMessage);
+        } else {
+          console.log(`[TwilioOpenAI Bridge] Twilio stream ready, triggering initial response for ${session.callSid}`);
+          session.openaiWs.send(JSON.stringify({
+            type: 'response.create',
+          }));
+        }
+      }
+    }, 300);
   }
 
   /**
@@ -329,12 +416,10 @@ BACKGROUND NOISE HANDLING:
 
     console.log(`[TwilioOpenAI Bridge] Sending first message for ${callSid}: "${text.substring(0, 50)}..."`);
 
-    // Use response.create with instructions to speak the exact greeting
-    // This is the official way to have the agent say a specific first message
     openaiWs.send(JSON.stringify({
       type: 'response.create',
       response: {
-        instructions: `Say exactly this greeting to start the conversation, do not add anything else: "${text}"`,
+        instructions: `TASK: Speak the following text out loud EXACTLY as written below — word by word, in the SAME language it is written. Do NOT translate it. Do NOT add any words before or after. Do NOT introduce yourself. Do NOT say you are ChatGPT or a virtual assistant. Just speak these exact words and stop:\n\n${text}`,
       },
     }));
   }
@@ -357,16 +442,22 @@ BACKGROUND NOISE HANDLING:
         case 'response.audio.delta':
         case 'response.output_audio.delta':
           if (message.delta) {
-            if (session.onAudioCallback) {
-              session.onAudioCallback(message.delta);
+            const incomingPcm = Buffer.from(message.delta, 'base64');
+            const fullPcm = session.pcmRemainderBuffer ? Buffer.concat([session.pcmRemainderBuffer, incomingPcm]) : incomingPcm;
+            const { mulawBuffer, remainder } = this.pcm16ToMulawWithRemainder(fullPcm);
+            session.pcmRemainderBuffer = remainder;
+            const mulawBase64 = mulawBuffer.toString('base64');
+
+            if (session.onAudioCallback && mulawBuffer.length > 0) {
+              session.onAudioCallback(mulawBase64);
             }
 
-            if (session.twilioWs && session.twilioWs.readyState === WebSocket.OPEN && session.streamSid) {
+            if (mulawBuffer.length > 0 && session.twilioWs && session.twilioWs.readyState === WebSocket.OPEN && session.streamSid) {
               session.twilioWs.send(JSON.stringify({
                 event: 'media',
                 streamSid: session.streamSid,
                 media: {
-                  payload: message.delta,
+                  payload: mulawBase64,
                 },
               }));
             }
@@ -736,7 +827,7 @@ BACKGROUND NOISE HANDLING:
 
             setTimeout(async () => {
               try {
-                const hangupResult = await AudioBridgeService.executeHangup(session);
+                const hangupResult = await TwilioOpenAIAudioBridge.executeHangup(session);
                 console.log(`[TwilioOpenAI Bridge] Delayed hangup completed: ${JSON.stringify(hangupResult)}`);
               } catch (err: any) {
                 console.error(`[TwilioOpenAI Bridge] Error in delayed hangup: ${err.message}`);
@@ -891,9 +982,12 @@ BACKGROUND NOISE HANDLING:
           break;
         }
         if (event.media?.payload && session.openaiWs && session.openaiWs.readyState === WebSocket.OPEN) {
+          const mulawBuffer = Buffer.from(event.media.payload, 'base64');
+          const pcmBuffer = this.mulawToPcm16(mulawBuffer);
+          const pcmBase64 = pcmBuffer.toString('base64');
           session.openaiWs.send(JSON.stringify({
             type: 'input_audio_buffer.append',
-            audio: event.media.payload,
+            audio: pcmBase64,
           }));
         }
         break;
@@ -1701,5 +1795,97 @@ BACKGROUND NOISE HANDLING:
 
       return null;
     }
+  }
+
+  /**
+   * Convert mulaw 8kHz to PCM16 24kHz for OpenAI
+   * Includes upsampling from 8kHz to 24kHz (3x) using linear interpolation
+   */
+  private static mulawToPcm16(mulawData: Buffer): Buffer {
+    const inputLength = mulawData.length;
+    if (inputLength === 0) return Buffer.alloc(0);
+
+    const outputLength = inputLength * 3 * 2;
+    const output = Buffer.alloc(outputLength);
+
+    let outIndex = 0;
+    const pcmSamples: number[] = new Array(inputLength);
+    for (let i = 0; i < inputLength; i++) {
+      pcmSamples[i] = MULAW_DECODE_TABLE[mulawData[i]];
+    }
+
+    for (let i = 0; i < inputLength; i++) {
+      const currentSample = pcmSamples[i];
+      const nextSample = i < inputLength - 1 ? pcmSamples[i + 1] : currentSample;
+
+      for (let j = 0; j < 3; j++) {
+        const t = j / 3;
+        const interpolatedSample = Math.round(currentSample + (nextSample - currentSample) * t);
+        const clampedSample = Math.max(-32768, Math.min(32767, interpolatedSample));
+
+        output.writeInt16LE(clampedSample, outIndex);
+        outIndex += 2;
+      }
+    }
+
+    return output;
+  }
+
+  /**
+   * Convert PCM16 24kHz to mulaw 8kHz for Twilio
+   * Downsamples 24kHz to 8kHz (3:1 ratio, 6 bytes PCM16 -> 1 byte Mulaw)
+   * Preserves remainder bytes across frames so NO audio samples are ever lost between packets (prevents voice stuttering/cutting)
+   */
+  private static pcm16ToMulawWithRemainder(pcmData: Buffer): { mulawBuffer: Buffer; remainder: Buffer } {
+    const bytesPerGroup = 6; // 3 samples of PCM16 = 6 bytes
+    const completeGroups = Math.floor(pcmData.length / bytesPerGroup);
+    const usableBytes = completeGroups * bytesPerGroup;
+
+    const mulawBuffer = Buffer.alloc(completeGroups);
+
+    for (let i = 0; i < completeGroups; i++) {
+      const baseByteIndex = i * bytesPerGroup;
+      const s1 = pcmData.readInt16LE(baseByteIndex);
+      const s2 = pcmData.readInt16LE(baseByteIndex + 2);
+      const s3 = pcmData.readInt16LE(baseByteIndex + 4);
+
+      const avgSample = Math.round((s1 + s2 + s3) / 3);
+      const clampedSample = Math.max(-32768, Math.min(32767, avgSample));
+      mulawBuffer[i] = this.linearToMulaw(clampedSample);
+    }
+
+    const remainder = pcmData.subarray(usableBytes);
+    return { mulawBuffer, remainder };
+  }
+
+  /**
+   * Convert linear PCM sample to mulaw byte
+   */
+  private static linearToMulaw(sample: number): number {
+    const MULAW_BIAS = 33;
+    const CLIP = 32635;
+
+    const sign = (sample >> 8) & 0x80;
+    if (sign !== 0) {
+      sample = -sample;
+    }
+
+    if (sample > CLIP) {
+      sample = CLIP;
+    }
+
+    sample = sample + MULAW_BIAS;
+
+    let exponent = 7;
+    let mask = 0x4000;
+    while ((sample & mask) === 0 && exponent > 0) {
+      exponent--;
+      mask >>= 1;
+    }
+
+    const mantissa = (sample >> (exponent + 3)) & 0x0F;
+    const mulawByte = ~(sign | (exponent << 4) | mantissa);
+
+    return mulawByte & 0xFF;
   }
 }

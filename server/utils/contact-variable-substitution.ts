@@ -168,6 +168,14 @@ export function enrichDynamicDataWithContactInfo(
       }
     }
   }
+
+  // Ensure common template variables have sensible fallbacks so ElevenLabs does not reject the call
+  if (!enrichedData.company_name) {
+    enrichedData.company_name = enrichedData.company || 'our company';
+  }
+  if (!enrichedData.company) {
+    enrichedData.company = enrichedData.company_name;
+  }
   
   return enrichedData;
 }
