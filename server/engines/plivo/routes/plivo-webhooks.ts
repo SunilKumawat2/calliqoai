@@ -79,7 +79,7 @@ export function setupPlivoWebhooks(app: Express, baseUrl: string): void {
       res.set('Content-Type', 'text/xml');
       res.send(xml);
 
-      // Update the call record with Plivo UUID asynchronously (non-blocking)
+      // Update the call record with Plivo UUID (keep status as initiated/ringing until stream connects)
       if (callId && CallUUID) {
         db.update(plivoCalls)
           .set({ plivoCallUuid: CallUUID })

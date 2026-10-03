@@ -493,13 +493,18 @@ export default function DemoPage() {
       addLog("success", `Server connection established!`);
       addLog("info", `Ringing customer device...`);
 
-      // Poll status every 1.5s to detect when user picks up the call
+      let ringingTime = 0;
+      let hasConnected = false;
+
+      // Status polling (every 1.5s) to accurately track call lifecycle
       const pollInterval = setInterval(async () => {
         if (isCancelledRef.current || !activeCallRef.current) {
           clearInterval(pollInterval);
           return;
         }
 
+        ringingTime += 1.5;
+
         try {
           const params = new URLSearchParams();
           if (result.uuid) params.append("uuid", result.uuid);
@@ -510,66 +515,54 @@ export default function DemoPage() {
           const statusRes = await fetch(`/api/public/demo-call-status?${params.toString()}`);
           const statusData = await statusRes.json();
 
-          if (statusData.isAnswered && !isCancelledRef.current) {
+          if (isCancelledRef.current) {
             clearInterval(pollInterval);
+            return;
+          }
+
+          // Case 1: Call is Answered & in-progress
+          if (statusData.isAnswered && !hasConnected) {
+            hasConnected = true;
             setCallStatus("active");
-            addLog("success", `Call Answered & Connected! AI Agent is speaking.`);
-          } else if (statusData.isEnded) {
-            clearInterval(pollInterval);
-            setCallStatus("idle");
-            setIsCalling(false);
-          }
-        } catch (e) {
-          // ignore polling errors
-        }
-      }, 1500);
-
-      // Fallback timer: If after 12s still ringing, auto-transition to active
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setCallStatus((prev) => {
-          if (prev === "ringing" && !isCancelledRef.current) {
             addLog("success", `Call Connected! AI Agent is speaking.`);
-            return "active";
+            return;
           }
-          return prev;
-        });
-      }, 12000);
 
-      setTimeout(() => {
-        if (!isCancelledRef.current) {
-          addLog("info", `Audio stream active. Transcripts syncing.`);
-        }
-      }, 15000);
-
-      // Continuous status polling (every 2s) to detect when call naturally completes on carrier/flow
-      const activePollInterval = setInterval(async () => {
-        if (isCancelledRef.current || !activeCallRef.current) {
-          clearInterval(activePollInterval);
-          return;
-        }
-
-        try {
-          const params = new URLSearchParams();
-          if (result.uuid) params.append("uuid", result.uuid);
-          if (result.callId) params.append("callId", result.callId);
-          if (result.provider) params.append("provider", result.provider);
-          if (result.twilioSid) params.append("twilioSid", result.twilioSid);
-
-          const statusRes = await fetch(`/api/public/demo-call-status?${params.toString()}`);
-          const statusData = await statusRes.json();
-
+          // Case 2: Call Ended (rejected, busy, unanswered, completed, or disconnected)
           if (statusData.isEnded) {
-            clearInterval(activePollInterval);
-            addLog("success", "Call session completed naturally.");
+            clearInterval(pollInterval);
             activeCallRef.current = null;
             setCallStatus("idle");
             setIsCalling(false);
+
+            if (hasConnected) {
+              addLog("success", "Call session completed naturally.");
+            } else {
+              const reason = statusData.status || 'disconnected';
+              if (['busy', 'rejected'].includes(reason)) {
+                addLog("warn", "Call was busy or rejected by user.");
+              } else if (['no-answer', 'canceled', 'cancelled'].includes(reason)) {
+                addLog("warn", "Call was unanswered or cancelled.");
+              } else {
+                addLog("info", "Call ended on customer device.");
+              }
+            }
+            return;
+          }
+
+          // Case 3: Ringing Timeout (e.g. 50 seconds without answer)
+          if (!hasConnected && ringingTime >= 50) {
+            clearInterval(pollInterval);
+            activeCallRef.current = null;
+            setCallStatus("idle");
+            setIsCalling(false);
+            addLog("warn", "Call timed out (no answer from device).");
+            return;
           }
         } catch (e) {
-          // ignore polling errors
+          // ignore transient polling errors
         }
-      }, 2000);
+      }, 1200);
 
     } catch (error: any) {
       setCallStatus("failed");

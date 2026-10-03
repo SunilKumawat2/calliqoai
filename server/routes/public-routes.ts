@@ -1725,6 +1725,7 @@ ${allUrls.map(u => {
     try {
       let isAnswered = false;
       let isEnded = false;
+      let rawStatus: string | null = null;
 
       // 1. Check Plivo Calls DB Record
       if (uuid || callId || provider === 'plivo' || provider === 'plivo_openai') {
@@ -1734,18 +1735,23 @@ ${allUrls.map(u => {
         if (callId) conditions.push(eq(plivoCalls.id, callId));
         if (uuid) conditions.push(eq(plivoCalls.plivoCallUuid, uuid));
 
+        let callPlivoUuid = uuid;
         if (conditions.length > 0) {
           const [callRecord] = await db
-            .select({ status: plivoCalls.status })
+            .select({ status: plivoCalls.status, plivoCallUuid: plivoCalls.plivoCallUuid })
             .from(plivoCalls)
             .where(or(...conditions))
             .limit(1);
 
           if (callRecord) {
+            rawStatus = callRecord.status;
+            if (callRecord.plivoCallUuid) {
+              callPlivoUuid = callRecord.plivoCallUuid;
+            }
             if (['in-progress', 'answered'].includes(callRecord.status)) {
               isAnswered = true;
             }
-            if (['completed', 'failed', 'busy', 'no-answer', 'canceled', 'cancelled'].includes(callRecord.status)) {
+            if (['completed', 'failed', 'busy', 'no-answer', 'canceled', 'cancelled', 'rejected'].includes(callRecord.status)) {
               isEnded = true;
             }
           }
@@ -1753,8 +1759,9 @@ ${allUrls.map(u => {
 
         // Check active WebSocket session
         const { AudioBridgeService } = await import('../engines/plivo/services/audio-bridge.service');
-        if (uuid) {
-          const session = AudioBridgeService.getSession(uuid);
+        const sessionKey = callPlivoUuid || uuid;
+        if (sessionKey) {
+          const session = AudioBridgeService.getSession(sessionKey);
           if (session && session.status === 'connected') {
             isAnswered = true;
           } else if (session && session.status === 'disconnected') {
@@ -1779,6 +1786,7 @@ ${allUrls.map(u => {
             .limit(1);
 
           if (callRecord) {
+            rawStatus = callRecord.status;
             if (['in-progress', 'answered'].includes(callRecord.status)) {
               isAnswered = true;
             }
@@ -1800,13 +1808,41 @@ ${allUrls.map(u => {
         }
       }
 
+      // 3. Check General Calls DB Record (for ElevenLabs or generic calls)
+      if (callId || provider === 'twilio_elevenlabs' || provider === 'elevenlabs') {
+        const { calls } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        if (callId) {
+          const [callRecord] = await db
+            .select({ status: calls.status })
+            .from(calls)
+            .where(eq(calls.id, callId))
+            .limit(1);
+
+          if (callRecord) {
+            rawStatus = callRecord.status;
+            if (['in-progress', 'in_progress', 'answered'].includes(callRecord.status)) {
+              isAnswered = true;
+            }
+            if (['completed', 'failed', 'busy', 'no-answer', 'no_answer', 'canceled', 'cancelled'].includes(callRecord.status)) {
+              isEnded = true;
+            }
+          }
+        }
+      }
+
+      if (isEnded) {
+        isAnswered = false;
+      }
+
       return res.json({
         success: true,
+        status: rawStatus,
         isAnswered,
         isEnded
       });
     } catch (err: any) {
-      return res.json({ success: false, isAnswered: false, isEnded: false });
+      return res.json({ success: false, status: null, isAnswered: false, isEnded: false });
     }
   });
 

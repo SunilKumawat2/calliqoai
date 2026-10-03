@@ -105,6 +105,12 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
           // Mark the Plivo stream as ready AFTER session is initialized
           // This triggers the first message to be sent to OpenAI
           AudioBridgeService.markStreamReady(callUuid);
+
+          // Mark call as in-progress and answered in database
+          db.update(plivoCalls)
+            .set({ status: 'in-progress', answeredAt: new Date() })
+            .where(eq(plivoCalls.plivoCallUuid, callUuid))
+            .catch(err => logger.error(`Error updating plivoCall status to in-progress: ${err.message}`, err, 'PlivoStream'));
         }
       } else if (message.event === 'media') {
         // Forward audio to OpenAI via audio bridge
@@ -131,6 +137,13 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
       const result = await AudioBridgeService.endSession(callUuid);
       logger.info(`Session ended: duration ${result.duration}s, transcript length: ${result.transcript?.length || 0}`, undefined, 'PlivoStream');
       
+      // Mark call as completed in database immediately
+      await db
+        .update(plivoCalls)
+        .set({ status: 'completed', endedAt: new Date(), duration: result.duration })
+        .where(eq(plivoCalls.plivoCallUuid, callUuid))
+        .catch(err => logger.error(`Error marking call completed: ${err.message}`, err, 'PlivoStream'));
+
       // Get call to update transcript and trigger credit deduction
       const call = await PlivoCallService.getCallByUuid(callUuid);
       if (call) {
@@ -207,20 +220,15 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
           logger.info(`Set answeredAt for incoming call ${call.id}`, undefined, 'PlivoStream');
         }
         
-        // Trigger call completion which handles credit deduction and calls table UI sync
-        // Triggered if call was inbound, answered, OR if session produced audio stream duration > 0!
-        if (call.callDirection === 'inbound' || call.answeredAt || result.duration > 0) {
-          if (!['completed', 'busy', 'failed', 'no-answer', 'canceled'].includes(call.status)) {
-            logger.info(`Triggering call completion for call ${call.id} with duration ${result.duration}s`, undefined, 'PlivoStream');
-            await PlivoCallService.handleCallStatus(
-              call.id, 
-              'completed', 
-              { source: 'stream_close' },
-              result.duration
-            );
-          }
-        } else {
-          logger.info(`Early stream closed for unanswered outbound call ${call.id} - leaving call in '${call.status}' state`, undefined, 'PlivoStream');
+        // Trigger call completion which handles credit deduction, DB update and calls table UI sync
+        if (!['completed', 'busy', 'failed', 'no-answer', 'canceled'].includes(call.status)) {
+          logger.info(`Triggering call completion for call ${call.id} with duration ${result.duration}s`, undefined, 'PlivoStream');
+          await PlivoCallService.handleCallStatus(
+            call.id, 
+            'completed', 
+            { source: 'stream_close' },
+            result.duration
+          );
         }
         
         // Update flow execution status if this call has an associated flow execution
