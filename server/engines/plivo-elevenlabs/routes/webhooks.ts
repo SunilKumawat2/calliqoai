@@ -30,58 +30,34 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
       
       logger.info(`Answer: ${CallUUID} from ${From} to ${To} (${Direction})`, undefined, 'PlivoElevenLabs');
       
-      const streamUrl = getSipStreamUrl(CallUUID);
-      
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
-    ${streamUrl}
-  </Stream>
-</Response>`;
-      
-      res.set('Content-Type', 'text/xml');
-      res.send(xml);
-    } catch (error: any) {
-      logger.error('Answer error', error, 'PlivoElevenLabs');
-      res.set('Content-Type', 'text/xml');
-      res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
-    }
-  });
-  
-  /**
-   * Answer URL with call ID path (for outbound calls)
-   */
-  app.post('/api/plivo-elevenlabs/voice/:callId', async (req: Request, res: Response) => {
-    try {
-      const { callId } = req.params;
-      const { CallUUID, From, To, Direction } = req.body;
-
-      logger.info(`Answer for ${callId}: ${CallUUID} from ${From} to ${To} (${Direction})`, undefined, 'PlivoElevenLabs');
-
-      // Record Plivo's real CallUUID on the outbound row so the status webhook
-      // can find it by `plivo_call_uuid`. The row was inserted at dial time
-      // with `metadata.internalId = callId` (the synthetic id from the URL).
-      if (CallUUID && callId) {
-        ElevenLabsBridgeService.aliasSession(callId, CallUUID);
-        try {
-          await db
-            .update(plivoCalls)
-            .set({
-              plivoCallUuid: CallUUID,
-              status: 'in-progress',
-              answeredAt: new Date(),
-            })
-            .where(sql`${plivoCalls.metadata}->>'internalId' = ${callId} AND ${plivoCalls.metadata}->>'engine' = 'plivo-elevenlabs'`);
-        } catch (updErr: any) {
-          logger.warn(
-            `Failed to attach CallUUID ${CallUUID} to outbound call ${callId}: ${updErr?.message || updErr}`,
-            undefined,
-            'PlivoElevenLabs'
-          );
-        }
+      if (CallUUID) {
+        (async () => {
+          try {
+            const [cred] = await db.select().from(plivoCredentials).where(eq(plivoCredentials.isActive, true)).limit(1);
+            if (cred && CallUUID) {
+              const recCallback = getSipWebhookUrl('/recording/callback');
+              const recRes = await fetch(`https://api.plivo.com/v1/Account/${cred.authId}/Call/${CallUUID}/Record/`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': 'Basic ' + Buffer.from(`${cred.authId}:${cred.authToken}`).toString('base64'),
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  time_limit: 3600,
+                  file_format: 'mp3',
+                  callback_url: recCallback,
+                  callback_method: 'POST',
+                }),
+              });
+              logger.info(`[Plivo-ElevenLabs Recording] Triggered Record API for inbound ${CallUUID} (status: ${recRes.status})`, undefined, 'PlivoElevenLabs');
+            }
+          } catch (rErr: any) {
+            logger.warn(`[Plivo-ElevenLabs Recording] Inbound Record API trigger notice: ${rErr?.message || rErr}`, undefined, 'PlivoElevenLabs');
+          }
+        })();
       }
 
-      const streamUrl = getSipStreamUrl(CallUUID || callId);
+      const streamUrl = getSipStreamUrl(CallUUID);
       
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -99,9 +75,9 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
       res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
     }
   });
-  
+
   /**
-   * Status callback
+   * Status callback (MUST be registered before :callId param route)
    */
   app.post('/api/plivo-elevenlabs/voice/status', async (req: Request, res: Response) => {
     try {
@@ -127,20 +103,25 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
             .where(eq(plivoCalls.plivoCallUuid, CallUUID))
             .limit(1);
 
-          // Update the call record itself (status, duration, endedAt) so the
-          // call history reflects the final state. Only update rows that
-          // belong to this engine — defensive guard against any future
-          // collision with the Plivo+OpenAI engine on the same uuid.
           if (call) {
             const isThisEngine =
               ((call.metadata as Record<string, unknown> | null)?.engine === 'plivo-elevenlabs');
             if (isThisEngine) {
+              const metadataUpdate: any = {};
+              if (result.conversationId) {
+                metadataUpdate.conversationId = result.conversationId;
+                metadataUpdate.elevenLabsConversationId = result.conversationId;
+              }
               await db
                 .update(plivoCalls)
                 .set({
                   status: CallStatus,
                   duration: durationSeconds > 0 ? durationSeconds : (call.duration ?? 0),
                   endedAt: new Date(),
+                  ...(result?.recordingUrl ? { recordingUrl: result.recordingUrl } : {}),
+                  ...(Object.keys(metadataUpdate).length > 0 ? {
+                    metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify(metadataUpdate)}::jsonb`
+                  } : {}),
                 })
                 .where(eq(plivoCalls.id, call.id));
             }
@@ -166,12 +147,6 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
               logger.info(`Updated flow execution ${flowExec.id} to ${execStatus}`, undefined, 'PlivoElevenLabs');
             }
 
-            // Bill the user for the call. Only on terminal 'completed' status,
-            // only for rows owned by this engine, and only when there is a
-            // user and a positive duration. `deductCallCredits` is idempotent
-            // (advisory lock + uniqueness on
-            // `credit_transactions.reference = 'plivo-elevenlabs:<callId>'`)
-            // so retries from Plivo will not double-charge.
             if (
               CallStatus === 'completed' &&
               call.userId &&
@@ -197,9 +172,6 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
                       undefined,
                       'PlivoElevenLabs'
                     );
-                    // Mark call as credit_failed (mirrors Twilio+OpenAI
-                    // semantics) so admin tooling and Task #165's UI can
-                    // surface the billing failure.
                     await db
                       .update(plivoCalls)
                       .set({
@@ -229,7 +201,6 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
               }
             }
 
-            // Post-call messaging trigger for Plivo-ElevenLabs engine
             if (CallStatus === 'completed' && call.userId && call.agentId) {
               try {
                 const [agentRecord] = await db
@@ -253,15 +224,132 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
               }
             }
           }
-        } catch (flowExecError: any) {
-          logger.warn(`Failed to update flow execution status: ${flowExecError.message}`, undefined, 'PlivoElevenLabs');
+        } catch (dbError: any) {
+          logger.error('Failed to update call status in database', dbError.message, 'PlivoElevenLabs');
         }
       }
       
-      res.sendStatus(200);
+      res.set('Content-Type', 'text/plain');
+      res.status(200).send('OK');
     } catch (error: any) {
-      logger.error('Status error', error, 'PlivoElevenLabs');
-      res.sendStatus(200);
+      logger.error('Status callback error', error.message, 'PlivoElevenLabs');
+      res.set('Content-Type', 'text/plain');
+      res.status(200).send('OK');
+    }
+  });
+
+  /**
+   * Recording callback for Plivo-ElevenLabs engine
+   */
+  app.post('/api/plivo-elevenlabs/recording/callback', async (req: Request, res: Response) => {
+    try {
+      let data = req.body;
+      if (req.body.response && typeof req.body.response === 'string') {
+        try {
+          data = JSON.parse(req.body.response);
+        } catch (e) {
+          // ignore parse error
+        }
+      }
+
+      const callUuid = data.call_uuid || data.CallUUID || req.body.CallUUID || req.body.call_uuid;
+      const recordingUrl = data.record_url || data.recording_url || data.RecordUrl || req.body.RecordUrl || req.body.record_url;
+      const recordingId = data.recording_id || data.RecordingID || req.body.RecordingID;
+      const duration = parseInt(data.recording_duration || data.RecordingDuration || req.body.RecordingDuration || '0', 10);
+
+      logger.info(`[Plivo-ElevenLabs Recording] Callback received for ${callUuid}: ${recordingUrl}`, undefined, 'PlivoElevenLabs');
+
+      if (callUuid && recordingUrl) {
+        await db.update(plivoCalls)
+          .set({
+            recordingUrl: recordingUrl,
+            recordingId: recordingId || null,
+            recordingDuration: duration > 0 ? duration : null,
+          })
+          .where(or(
+            eq(plivoCalls.plivoCallUuid, callUuid),
+            eq(plivoCalls.id, callUuid),
+            sql`${plivoCalls.metadata}->>'internalId' = ${callUuid}`
+          ));
+      }
+
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      logger.error(`[Plivo-ElevenLabs Recording] Callback error: ${error.message}`, error, 'PlivoElevenLabs');
+      res.status(200).json({ success: false });
+    }
+  });
+  
+  /**
+   * Answer URL with call ID path (for outbound calls)
+   */
+  app.post('/api/plivo-elevenlabs/voice/:callId', async (req: Request, res: Response) => {
+    try {
+      const { callId } = req.params;
+      const { CallUUID, From, To, Direction } = req.body;
+
+      logger.info(`Answer for ${callId}: ${CallUUID} from ${From} to ${To} (${Direction})`, undefined, 'PlivoElevenLabs');
+
+      if (CallUUID && callId) {
+        ElevenLabsBridgeService.aliasSession(callId, CallUUID);
+        try {
+          await db
+            .update(plivoCalls)
+            .set({
+              plivoCallUuid: CallUUID,
+            })
+            .where(sql`${plivoCalls.metadata}->>'internalId' = ${callId} AND ${plivoCalls.metadata}->>'engine' = 'plivo-elevenlabs'`);
+        } catch (updErr: any) {
+          logger.warn(
+            `Failed to attach CallUUID ${CallUUID} to outbound call ${callId}: ${updErr?.message || updErr}`,
+            undefined,
+            'PlivoElevenLabs'
+          );
+        }
+
+        // Proactively trigger Plivo REST recording API to guarantee call audio is recorded
+        (async () => {
+          try {
+            const [cred] = await db.select().from(plivoCredentials).where(eq(plivoCredentials.isActive, true)).limit(1);
+            if (cred && CallUUID) {
+              const recCallback = getSipWebhookUrl('/recording/callback');
+              const recRes = await fetch(`https://api.plivo.com/v1/Account/${cred.authId}/Call/${CallUUID}/Record/`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': 'Basic ' + Buffer.from(`${cred.authId}:${cred.authToken}`).toString('base64'),
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  time_limit: 3600,
+                  file_format: 'mp3',
+                  callback_url: recCallback,
+                  callback_method: 'POST',
+                }),
+              });
+              logger.info(`[Plivo-ElevenLabs Recording] Triggered Record API for ${CallUUID} (status: ${recRes.status})`, undefined, 'PlivoElevenLabs');
+            }
+          } catch (rErr: any) {
+            logger.warn(`[Plivo-ElevenLabs Recording] Record API trigger notice: ${rErr?.message || rErr}`, undefined, 'PlivoElevenLabs');
+          }
+        })();
+      }
+
+      const streamUrl = getSipStreamUrl(CallUUID || callId);
+      
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
+    ${streamUrl}
+  </Stream>
+  <Wait length="3600"/>
+</Response>`;
+      
+      res.set('Content-Type', 'text/xml');
+      res.send(xml);
+    } catch (error: any) {
+      logger.error('Answer error', error, 'PlivoElevenLabs');
+      res.set('Content-Type', 'text/xml');
+      res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
     }
   });
   

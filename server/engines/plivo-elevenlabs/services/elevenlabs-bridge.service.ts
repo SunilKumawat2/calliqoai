@@ -17,10 +17,16 @@
  */
 
 import WebSocket from 'ws';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AudioConverter } from './audio-converter';
 import type { CallSession, TranscriptPart, ElevenLabsAgentConfig, ElevenLabsWebSocketMessage } from '../types';
 import { PlivoElevenLabsConfig } from '../config/config';
 import { logger } from '../../../utils/logger';
+
+import { db } from '../../../db';
+import { plivoCalls } from '@shared/schema';
+import { eq, or, sql } from 'drizzle-orm';
 
 const SESSION_PREFIX = 'plivo-elevenlabs:';
 const SESSION_MAX_AGE_MS = 30 * 60 * 1000;
@@ -214,6 +220,21 @@ export class ElevenLabsBridgeService {
         case 'conversation_initiation_metadata':
           session.conversationId = (message as any).conversation_initiation_metadata_event?.conversation_id || message.conversation_id;
           logger.info(`Conversation started: ${session.conversationId}`, undefined, 'PlivoElevenLabsBridge');
+          if (session.conversationId && session.callUuid) {
+            db.update(plivoCalls)
+              .set({
+                metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify({
+                  conversationId: session.conversationId,
+                  elevenLabsConversationId: session.conversationId,
+                })}::jsonb`,
+              })
+              .where(or(
+                eq(plivoCalls.plivoCallUuid, session.callUuid),
+                eq(plivoCalls.id, session.callUuid),
+                sql`${plivoCalls.metadata}->>'internalId' = ${session.callUuid}`
+              ))
+              .catch(err => logger.warn(`Failed to store conversationId: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge'));
+          }
           break;
           
         case 'audio':
@@ -404,6 +425,8 @@ export class ElevenLabsBridgeService {
   static async endSession(callUuid: string): Promise<{
     duration: number;
     transcript: TranscriptPart[];
+    conversationId?: string;
+    recordingUrl?: string;
   }> {
     const sessionKey = this.getSessionKey(callUuid);
     const session = this.activeSessions.get(sessionKey);
@@ -423,10 +446,11 @@ export class ElevenLabsBridgeService {
     
     const duration = Math.floor((session.endedAt.getTime() - session.startedAt.getTime()) / 1000);
     const transcript = [...session.transcript];
+    const conversationId = session.conversationId;
     
     this.activeSessions.delete(sessionKey);
     
-    return { duration, transcript };
+    return { duration, transcript, conversationId };
   }
   
   /**

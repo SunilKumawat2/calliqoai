@@ -54,7 +54,7 @@ interface Call {
   campaign?: { id: string; name: string } | null;
   contact?: { id: string; firstName: string; lastName?: string; phone: string } | null;
   incomingConnection?: { id: string; agentId: string } | null;
-  engine?: 'elevenlabs' | 'twilio-openai' | 'plivo-openai' | 'openai' | 'custom-voice-engine';
+  engine?: 'elevenlabs' | 'twilio-openai' | 'plivo-openai' | 'plivo-elevenlabs' | 'openai' | 'custom-voice-engine';
   agent?: { id: string; name: string } | null;
   widgetId?: string | null;
   widget?: { id: string; name: string } | null;
@@ -342,6 +342,9 @@ export default function Calls() {
     if (engine === 'plivo-openai') {
       return <Badge className="bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20">Plivo+OpenAI</Badge>;
     }
+    if (engine === 'plivo-elevenlabs') {
+      return <Badge className="bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/20">Plivo+ElevenLabs</Badge>;
+    }
     if (engine === 'openai') {
       return <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20">OpenAI</Badge>;
     }
@@ -371,8 +374,8 @@ export default function Calls() {
   };
 
   const hasRecording = (call: Call) => {
-    if (call.recordingUrl || call.elevenLabsConversationId) return true;
-    if (call.engine === 'twilio-openai' || call.engine === 'plivo-openai' || call.engine === 'custom-voice-engine') return true;
+    if (call.recordingUrl || call.elevenLabsConversationId || (call as any).metadata?.conversationId) return true;
+    if (call.engine === 'twilio-openai' || call.engine === 'plivo-openai' || call.engine === 'plivo-elevenlabs' || call.engine === 'custom-voice-engine') return true;
     return false;
   };
 

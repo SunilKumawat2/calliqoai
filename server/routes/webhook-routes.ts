@@ -2311,6 +2311,53 @@ export async function handleElevenLabsWebhook(req: Request, res: Response) {
       .from(calls)
       .where(eq(calls.elevenLabsConversationId, conversation_id))
       .limit(1);
+
+    // Check if this conversation belongs to a Plivo-ElevenLabs call
+    let [plivoCallRecord] = await db
+      .select()
+      .from(plivoCalls)
+      .where(or(
+        sql`${plivoCalls.metadata}->>'conversationId' = ${conversation_id}`,
+        sql`${plivoCalls.metadata}->>'elevenLabsConversationId' = ${conversation_id}`
+      ))
+      .limit(1);
+
+    if (plivoCallRecord) {
+      console.log(`✅ [ElevenLabs Webhook] Matched Plivo-ElevenLabs call: ${plivoCallRecord.id} (To: ${plivoCallRecord.toNumber})`);
+      
+      const { callSyncService } = await import('../services/call-sync');
+      const syncedData = await callSyncService.syncFromWebhook({
+        conversationId: conversation_id,
+        agentId: agent_id,
+        transcript: webhookTranscript,
+        analysis,
+        metadata,
+        status,
+        callDurationSecs: metadata?.call_duration_secs || callDuration,
+        customerPhone: customerPhone || undefined,
+      });
+
+      // Update plivo_calls with transcript, analysis, etc. without creating duplicate in calls
+      await db
+        .update(plivoCalls)
+        .set({
+          transcript: syncedData.transcript || plivoCallRecord.transcript,
+          aiSummary: syncedData.aiSummary || null,
+          classification: syncedData.classification || null,
+          sentiment: syncedData.sentiment || null,
+          metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify({
+            ...syncedData.metadata,
+            analysis: syncedData.metadata?.elevenLabsAnalysis || analysis || null,
+            classification: syncedData.classification,
+            sentiment: syncedData.sentiment,
+            createdFromWebhook: false,
+          })}::jsonb`,
+        })
+        .where(eq(plivoCalls.id, plivoCallRecord.id));
+
+      console.log(`✅ [ElevenLabs Webhook] Updated plivo_calls row ${plivoCallRecord.id} with analysis & AI summary`);
+      return res.sendStatus(200);
+    }
     
     // If no record found by conversation_id, try matching by phone number + agent for batch calls
     // Batch calls are pre-created with status='pending' and matching phone numbers

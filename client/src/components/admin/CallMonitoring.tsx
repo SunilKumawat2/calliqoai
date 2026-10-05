@@ -418,7 +418,7 @@ export default function CallMonitoring() {
   };
 
   const hasRecording = (call: Call) => {
-    return !!(call.recordingUrl || call.elevenLabsConversationId);
+    return !!(call.recordingUrl || call.elevenLabsConversationId || (call as any).metadata?.conversationId || call.engine === 'plivo-elevenlabs' || call.engine === 'plivo-openai' || call.engine === 'twilio-openai');
   };
 
   const handlePageChange = (newPage: number) => setPage(newPage);

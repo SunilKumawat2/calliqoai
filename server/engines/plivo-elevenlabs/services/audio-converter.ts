@@ -164,4 +164,35 @@ export class AudioConverter {
   static decodeBase64(base64: string): Buffer {
     return Buffer.from(base64, 'base64');
   }
+
+  /**
+   * Create standard WAV header and return complete WAV Buffer
+   */
+  static createWavFile(pcmData: Buffer, sampleRate: number = 16000, numChannels: number = 1, bitsPerSample: number = 16): Buffer {
+    const header = Buffer.alloc(44);
+    const dataLength = pcmData.length;
+    const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+    const blockAlign = numChannels * (bitsPerSample / 8);
+
+    // RIFF chunk descriptor
+    header.write('RIFF', 0);
+    header.writeUInt32LE(36 + dataLength, 4);
+    header.write('WAVE', 8);
+
+    // "fmt " sub-chunk
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16); // Subchunk1Size (16 for PCM)
+    header.writeUInt16LE(1, 20);  // AudioFormat (1 for PCM)
+    header.writeUInt16LE(numChannels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(bitsPerSample, 34);
+
+    // "data" sub-chunk
+    header.write('data', 36);
+    header.writeUInt32LE(dataLength, 40);
+
+    return Buffer.concat([header, pcmData]);
+  }
 }

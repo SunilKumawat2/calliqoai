@@ -124,6 +124,7 @@ export class PlivoElevenLabsOutboundService {
       
       const answerUrl = getSipWebhookUrl(`/voice/${callUuid}`);
       const statusUrl = getSipWebhookUrl('/voice/status');
+      const recordingCallbackUrl = getSipWebhookUrl('/recording/callback');
       
       const plivoClient = await this.getPlivoClient(plivoAuthId, plivoAuthToken);
       

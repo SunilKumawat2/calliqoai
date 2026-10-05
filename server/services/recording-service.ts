@@ -321,7 +321,7 @@ export class RecordingService {
    * same key to ensure proper authentication.
    */
   async resolveCredentialForCall(call: Call): Promise<ElevenLabsCredential | null> {
-    // Direct agentId check (used by SIP calls which store agentId directly on the record)
+    // Direct agentId check (used by SIP and Plivo-ElevenLabs calls which store agentId directly on the record)
     if ((call as any).agentId) {
       try {
         const [agent] = await db
@@ -330,11 +330,18 @@ export class RecordingService {
           .where(eq(agents.id, (call as any).agentId))
           .limit(1);
         
-        if (agent?.elevenLabsCredentialId) {
-          const credential = await ElevenLabsPoolService.getCredentialById(agent.elevenLabsCredentialId);
-          if (credential) {
-            console.log(`🎙️ [Recording] Using credential from direct agentId: ${agent.name}`);
-            return credential;
+        if (agent) {
+          if (agent.elevenLabsCredentialId) {
+            const credential = await ElevenLabsPoolService.getCredentialById(agent.elevenLabsCredentialId);
+            if (credential) {
+              console.log(`🎙️ [Recording] Using credential from direct agentId: ${agent.name}`);
+              return credential;
+            }
+          }
+          const poolCred = await ElevenLabsPoolService.getCredentialForAgent(agent.id);
+          if (poolCred) {
+            console.log(`🎙️ [Recording] Using credential from ElevenLabsPoolService for agent: ${agent.name}`);
+            return poolCred;
           }
         }
       } catch (error) {

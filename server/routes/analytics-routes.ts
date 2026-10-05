@@ -222,6 +222,60 @@ export function createAnalyticsRoutes(ctx: RouteContext): Router {
         });
       }
 
+      // Handle Plivo+ElevenLabs calls - fetch from ElevenLabs conversation audio for studio quality recording
+      if (callWithDetails.engine === 'plivo-elevenlabs' || (callWithDetails.metadata as any)?.engine === 'plivo-elevenlabs') {
+        console.log(`🎙️ [Recording] Fetching Plivo+ElevenLabs recording for call ${callWithDetails.id}`);
+
+        // 1. Try ElevenLabs conversation audio FIRST (studio-quality mixed recording)
+        const conversationId = callWithDetails.elevenLabsConversationId || 
+          (callWithDetails.metadata as any)?.conversationId || 
+          (callWithDetails.metadata as any)?.elevenLabsConversationId;
+
+        if (conversationId) {
+          try {
+            const elevenLabsResult = await recordingService.fetchElevenLabsRecording(conversationId, callWithDetails as any);
+            if (elevenLabsResult && elevenLabsResult.audioBuffer && elevenLabsResult.audioBuffer.length > 0) {
+              console.log(`✅ [Recording] Successfully fetched studio ElevenLabs recording for ${conversationId} (${elevenLabsResult.audioBuffer.length} bytes)`);
+              res.setHeader('Content-Type', elevenLabsResult.contentType || 'audio/mpeg');
+              res.setHeader('Content-Disposition', `inline; filename="call-recording-${callWithDetails.id}.mp3"`);
+              res.setHeader('Cache-Control', 'no-cache');
+              return res.send(elevenLabsResult.audioBuffer);
+            }
+          } catch (elRecErr: any) {
+            console.warn(`⚠️ [Recording] ElevenLabs recording fetch error for ${conversationId}:`, elRecErr.message);
+          }
+        }
+
+        // 2. Try stored remote Plivo recording URL as fallback
+        if (callWithDetails.recordingUrl && (callWithDetails.recordingUrl.startsWith('http://') || callWithDetails.recordingUrl.startsWith('https://'))) {
+          const urlResult = await recordingService.fetchPlivoRecordingByUrl(callWithDetails.recordingUrl);
+          if (urlResult) {
+            res.setHeader('Content-Type', urlResult.contentType);
+            res.setHeader('Content-Disposition', `inline; filename="call-recording-${callWithDetails.id}.mp3"`);
+            res.setHeader('Cache-Control', 'no-cache');
+            return res.send(urlResult.audioBuffer);
+          }
+        }
+
+        // 3. Fallback: Try fetching from Plivo API using call UUID
+        const plivoCallUuid = callWithDetails.plivoCallUuid || (callWithDetails.metadata as any)?.plivoCallUuid;
+        const plivoCredentialId = (callWithDetails.metadata as any)?.plivoCredentialId;
+        if (plivoCallUuid) {
+          const plivoResult = await recordingService.fetchPlivoRecordingByCallUuid(plivoCallUuid, plivoCredentialId);
+          if (plivoResult) {
+            res.setHeader('Content-Type', plivoResult.contentType);
+            res.setHeader('Content-Disposition', `inline; filename="call-recording-${callWithDetails.id}.mp3"`);
+            res.setHeader('Cache-Control', 'no-cache');
+            return res.send(plivoResult.audioBuffer);
+          }
+        }
+
+        return res.status(404).json({
+          error: "Recording not available",
+          details: "No recording found for this Plivo+ElevenLabs call. The recording may still be processing."
+        });
+      }
+
       // Handle Plivo+OpenAI calls - fetch recording from stored URL or Plivo API
       if (callWithDetails.engine === 'plivo-openai') {
         console.log(`🎙️ [Recording] Fetching Plivo+OpenAI recording for call ${callWithDetails.id}`);

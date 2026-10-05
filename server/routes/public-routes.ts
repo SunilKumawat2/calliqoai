@@ -1727,13 +1727,16 @@ ${allUrls.map(u => {
       let isEnded = false;
       let rawStatus: string | null = null;
 
-      // 1. Check Plivo Calls DB Record
-      if (uuid || callId || provider === 'plivo' || provider === 'plivo_openai') {
+      // 1. Check Plivo Calls DB Record (Plivo+OpenAI and Plivo+ElevenLabs)
+      if (uuid || callId || provider === 'plivo' || provider === 'plivo_openai' || provider === 'plivo_elevenlabs') {
         const { plivoCalls } = await import('@shared/schema');
-        const { eq, or } = await import('drizzle-orm');
+        const { eq, or, sql } = await import('drizzle-orm');
         const conditions = [];
         if (callId) conditions.push(eq(plivoCalls.id, callId));
-        if (uuid) conditions.push(eq(plivoCalls.plivoCallUuid, uuid));
+        if (uuid) {
+          conditions.push(eq(plivoCalls.plivoCallUuid, uuid));
+          conditions.push(sql`${plivoCalls.metadata}->>'internalId' = ${uuid}`);
+        }
 
         let callPlivoUuid = uuid;
         if (conditions.length > 0) {
@@ -1757,14 +1760,21 @@ ${allUrls.map(u => {
           }
         }
 
-        // Check active WebSocket session
+        // Check active WebSocket session (Plivo-OpenAI or Plivo-ElevenLabs)
         const { AudioBridgeService } = await import('../engines/plivo/services/audio-bridge.service');
+        const { ElevenLabsBridgeService } = await import('../engines/plivo-elevenlabs/services/elevenlabs-bridge.service');
+        
         const sessionKey = callPlivoUuid || uuid;
         if (sessionKey) {
           const session = AudioBridgeService.getSession(sessionKey);
-          if (session && session.status === 'connected') {
+          const elSession = ElevenLabsBridgeService.getSession(sessionKey) || (uuid ? ElevenLabsBridgeService.getSession(uuid) : undefined);
+          
+          const isPlivoOpenAiConnected = session && session.status === 'connected';
+          const isPlivoElevenLabsConnected = elSession && elSession.status === 'connected' && Boolean((elSession as any).isPlivoReady || (elSession as any).plivoWs);
+
+          if (isPlivoOpenAiConnected || isPlivoElevenLabsConnected) {
             isAnswered = true;
-          } else if (session && session.status === 'disconnected') {
+          } else if ((session && session.status === 'disconnected') || (elSession && elSession.status === 'disconnected')) {
             isEnded = true;
           }
         }

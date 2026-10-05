@@ -43,6 +43,7 @@ export interface CallSession {
   conversationId?: string;
   initialAudioQueue?: string[];
   isPlivoReady?: boolean;
+  recordedAudioChunks?: Buffer[];
 }
 
 export interface TranscriptPart {

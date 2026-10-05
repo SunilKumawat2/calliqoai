@@ -16,6 +16,9 @@
 import type { Server as HttpServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ElevenLabsBridgeService } from '../services/elevenlabs-bridge.service';
+import { db } from '../../../db';
+import { plivoCalls } from '@shared/schema';
+import { eq, or, sql } from 'drizzle-orm';
 
 interface PlivoStreamMessage {
   event: string;
@@ -105,6 +108,16 @@ function handleStreamConnection(ws: WebSocket, callUuid: string): void {
           } else {
             ElevenLabsBridgeService.setPlivoWebSocket(callUuid, ws, streamSid || '');
             isConnected = true;
+
+            // Mark call as in-progress and answered in database
+            db.update(plivoCalls)
+              .set({ status: 'in-progress', answeredAt: new Date() })
+              .where(or(
+                eq(plivoCalls.plivoCallUuid, callUuid),
+                eq(plivoCalls.id, callUuid),
+                sql`${plivoCalls.metadata}->>'internalId' = ${callUuid}`
+              ))
+              .catch(err => console.error(`[Plivo-ElevenLabs Stream] Error updating status in-progress:`, err?.message || err));
           }
           break;
           
@@ -147,6 +160,35 @@ function handleStreamConnection(ws: WebSocket, callUuid: string): void {
       try {
         const result = await ElevenLabsBridgeService.endSession(callUuid);
         console.log(`[Plivo-ElevenLabs Stream] Session ended: duration=${result.duration}s, transcript parts=${result.transcript.length}`);
+
+        const metadataUpdate: Record<string, any> = { engine: 'plivo-elevenlabs' };
+        if (result.conversationId) {
+          metadataUpdate.conversationId = result.conversationId;
+          metadataUpdate.elevenLabsConversationId = result.conversationId;
+        }
+
+        // Format transcript text if present
+        let transcriptText: string | null = null;
+        if (result.transcript && result.transcript.length > 0) {
+          transcriptText = result.transcript.map(t => `${t.role === 'user' ? 'User' : 'Agent'}: ${t.text}`).join('\n');
+        }
+
+        // Update database immediately to mark call completed
+        await db.update(plivoCalls)
+          .set({ 
+            status: 'completed', 
+            endedAt: new Date(), 
+            duration: result.duration,
+            ...(result.recordingUrl ? { recordingUrl: result.recordingUrl } : {}),
+            ...(transcriptText ? { transcript: transcriptText } : {}),
+            metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify(metadataUpdate)}::jsonb`,
+          })
+          .where(or(
+            eq(plivoCalls.plivoCallUuid, callUuid),
+            eq(plivoCalls.id, callUuid),
+            sql`${plivoCalls.metadata}->>'internalId' = ${callUuid}`
+          ))
+          .catch(err => console.error(`[Plivo-ElevenLabs Stream] Error marking call completed:`, err?.message || err));
       } catch (err: any) {
         console.error(`[Plivo-ElevenLabs Stream] Error ending session:`, err.message);
       }

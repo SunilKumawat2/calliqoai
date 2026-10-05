@@ -63,7 +63,7 @@ interface Call {
   callDirection: string | null;
   contact?: Contact | null;
   campaign?: Campaign | null;
-  engine?: 'elevenlabs' | 'twilio-openai' | 'plivo-openai' | 'openai' | 'custom-voice-engine';
+  engine?: 'elevenlabs' | 'twilio-openai' | 'plivo-openai' | 'plivo-elevenlabs' | 'openai' | 'custom-voice-engine';
   agent?: { id: string; name: string } | null;
   widgetId?: string | null;
   widget?: { id: string; name: string } | null;
@@ -156,14 +156,14 @@ export default function CallDetail() {
   const contact = call?.contact;
   const campaign = call?.campaign;
 
-  const hasRecording = call?.engine !== 'openai' && (call?.recordingUrl || call?.elevenLabsConversationId || call?.twilioSid || call?.plivoCallUuid || call?.engine === 'custom-voice-engine');
+  const hasRecording = call?.engine !== 'openai' && (call?.recordingUrl || call?.elevenLabsConversationId || (call as any)?.metadata?.conversationId || call?.twilioSid || call?.plivoCallUuid || call?.engine === 'custom-voice-engine' || call?.engine === 'plivo-elevenlabs');
 
   // Fetch recording as blob with authentication
   useEffect(() => {
     const abortController = new AbortController();
     let fetchedBlobUrl: string | null = null;
     
-    if (call?.engine !== 'openai' && (call?.recordingUrl || call?.elevenLabsConversationId || call?.twilioSid || call?.plivoCallUuid || call?.engine === 'custom-voice-engine') && id) {
+    if (call?.engine !== 'openai' && (call?.recordingUrl || call?.elevenLabsConversationId || (call as any)?.metadata?.conversationId || call?.twilioSid || call?.plivoCallUuid || call?.engine === 'custom-voice-engine' || call?.engine === 'plivo-elevenlabs') && id) {
       setIsRecordingLoading(true);
       setRecordingError(null);
 
@@ -305,6 +305,9 @@ export default function CallDetail() {
     }
     if (engine === 'plivo-openai') {
       return <Badge className="bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20">Plivo+OpenAI</Badge>;
+    }
+    if (engine === 'plivo-elevenlabs') {
+      return <Badge className="bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/20">Plivo+ElevenLabs</Badge>;
     }
     if (engine === 'openai') {
       return <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20">OpenAI</Badge>;
