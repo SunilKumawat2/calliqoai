@@ -401,6 +401,280 @@
 }
 
 /* ==========================================================================
+   Step 2: Live Template Cards & Pagination (Theme Aligned)
+   ========================================================================== */
+.template-grid-card {
+  position: relative;
+  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid #222836;
+  background: #12161f;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.85rem;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 290px;
+}
+
+.template-grid-card:hover {
+  background: #171d29;
+  border-color: rgba(0, 229, 117, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.template-grid-card.selected {
+  border-color: var(--neon-green);
+  background: #111822;
+  box-shadow: 0 0 20px rgba(0, 229, 117, 0.18), inset 0 0 0 1px var(--neon-green);
+}
+
+.template-card-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.template-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.template-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  line-height: 1.35;
+  font-family: 'Manrope', sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.template-badges-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.template-category-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(0, 229, 117, 0.12);
+  color: #00E575;
+  border: 1px solid rgba(0, 229, 117, 0.3);
+  text-transform: capitalize;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.template-system-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  background: #1f2737;
+  color: #94a3b8;
+  border: 1px solid #2d3748;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.template-card-desc {
+  font-size: 0.76rem;
+  color: #8e9cae;
+  line-height: 1.4;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.template-prompt-box {
+  background: #0b0e14;
+  border: 1px solid #1c2331;
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.template-vars-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.template-var-label {
+  font-size: 0.68rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.template-var-chip {
+  font-size: 0.65rem;
+  font-family: monospace;
+  background: #18202c;
+  border: 1px solid #283347;
+  color: #cbd5e1;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.template-tone-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: #718096;
+}
+
+.template-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.template-usage-text {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-family: monospace;
+}
+
+.btn-use-template {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: #1e2636;
+  border: 1px solid #2e3b52;
+  color: #e2e8f0;
+}
+
+.btn-use-template:hover {
+  background: rgba(0, 229, 117, 0.15);
+  border-color: #00E575;
+  color: #00E575;
+}
+
+.btn-use-template.active {
+  background: var(--neon-green);
+  border-color: var(--neon-green);
+  color: #000000;
+  box-shadow: 0 0 10px var(--neon-green-glow);
+}
+
+/* Pagination Bar */
+.template-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #1e2430;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.pagination-info {
+  font-size: 0.8rem;
+  color: #8e9cae;
+  font-weight: 500;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pagination-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: #141824;
+  border: 1px solid #272f3d;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pagination-nav-btn:hover:not(:disabled) {
+  background: #1e2434;
+  border-color: #3b475b;
+  color: #ffffff;
+}
+
+.pagination-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pagination-page-btn {
+  min-width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: #141824;
+  border: 1px solid #272f3d;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0 0.4rem;
+}
+
+.pagination-page-btn:hover:not(.active) {
+  background: #1e2434;
+  border-color: #3b475b;
+  color: #ffffff;
+}
+
+.pagination-page-btn.active {
+  background: var(--neon-green);
+  border-color: var(--neon-green);
+  color: #000000;
+  font-weight: 700;
+  box-shadow: 0 0 12px var(--neon-green-glow);
+}
+
+/* ==========================================================================
    Main Form Card Containers (Used across Steps 3, 4, 5, 6)
    ========================================================================== */
 .form-card-container {
@@ -1125,6 +1399,183 @@
 .template-pick-card:hover {
   border-color: var(--neon-green);
   background: var(--neon-green-bg);
+}
+
+/* ==========================================================================
+   Modal Backdrop & Overlays
+   ========================================================================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 99999;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.modal-dialog {
+  background: #0d1117;
+  border: 1px solid #232a3b;
+  border-radius: 12px;
+  max-width: 680px;
+  width: 95%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  gap: 1.25rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+  animation: zoomIn 0.2s ease-out;
+  overflow: hidden;
+  position: relative;
+  z-index: 100000;
+}
+
+/* ==========================================================================
+   Fill in Variables Modal
+   ========================================================================== */
+.var-modal-dialog {
+  background: #0d1117;
+  border: 1px solid #232a3b;
+  border-radius: 12px;
+  max-width: 480px;
+  width: 95%;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85);
+  animation: zoomIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  position: relative;
+  z-index: 100000;
+}
+
+.var-modal-header {
+  padding: 1.25rem 1.5rem 0.85rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  position: relative;
+}
+
+.var-modal-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.var-modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-family: 'Manrope', sans-serif;
+}
+
+.var-modal-subtitle {
+  font-size: 0.8rem;
+  color: #8b949e;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.var-modal-body {
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  max-height: 55vh;
+}
+
+.var-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.var-input-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: #ffffff;
+}
+
+.var-input-field {
+  width: 100%;
+  height: 2.75rem;
+  padding: 0 0.9rem;
+  background: #141824;
+  border: 1px solid #232a3b;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.85rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.var-input-field:focus {
+  border-color: #00E575;
+  box-shadow: 0 0 10px rgba(0, 229, 117, 0.2);
+}
+
+.var-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  background: #090c10;
+}
+
+.var-btn-cancel {
+  padding: 0.55rem 1.25rem;
+  border-radius: 6px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.var-btn-cancel:hover {
+  background: #21262d;
+  color: #ffffff;
+}
+
+.var-btn-apply {
+  padding: 0.55rem 1.4rem;
+  border-radius: 6px;
+  background: #e6edf3;
+  border: none;
+  color: #0d1117;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.var-btn-apply:hover {
+  background: #ffffff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
 
 /* ==========================================================================
