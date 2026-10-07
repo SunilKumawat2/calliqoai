@@ -123,7 +123,7 @@ export class PlivoElevenLabsOutboundService {
       console.log(`[Plivo-ElevenLabs Outbound] Bridge session created for ${callUuid}`);
       
       const answerUrl = getSipWebhookUrl(`/voice/${callUuid}`);
-      const statusUrl = getSipWebhookUrl('/voice/status');
+      const statusUrl = getSipWebhookUrl(`/voice/status?internalId=${encodeURIComponent(callUuid)}`);
       const recordingCallbackUrl = getSipWebhookUrl('/recording/callback');
       
       const plivoClient = await this.getPlivoClient(plivoAuthId, plivoAuthToken);

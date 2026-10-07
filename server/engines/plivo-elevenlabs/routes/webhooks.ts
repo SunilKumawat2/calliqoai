@@ -13,7 +13,7 @@ import { getSipStreamUrl } from '../config/config';
 import { ElevenLabsBridgeService } from '../services/elevenlabs-bridge.service';
 import { db } from '../../../db';
 import { agents, plivoPhoneNumbers, sipPhoneNumbers, users, flowExecutions, plivoCalls, type InsertPlivoCall } from '@shared/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, or, sql } from 'drizzle-orm';
 import { deductCallCredits } from '../../../services/credit-service';
 import { logger } from '../../../utils/logger';
 import { ElevenLabsPoolService } from '../../../services/elevenlabs-pool';
@@ -82,12 +82,27 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
   app.post('/api/plivo-elevenlabs/voice/status', async (req: Request, res: Response) => {
     try {
       const { CallUUID, CallStatus, Duration, HangupCause } = req.body;
+      const internalId = (req.query.internalId as string) || (req.body.internalId as string) || (req.query.callId as string) || (req.body.callId as string);
       
-      logger.info(`Status: ${CallUUID} -> ${CallStatus} (duration: ${Duration}s, cause: ${HangupCause})`, undefined, 'PlivoElevenLabs');
+      logger.info(`Status: ${CallUUID || 'unknown'} (internalId: ${internalId || 'none'}) -> ${CallStatus} (duration: ${Duration}s, cause: ${HangupCause})`, undefined, 'PlivoElevenLabs');
       
-      if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'busy' || CallStatus === 'no-answer') {
-        const result = await ElevenLabsBridgeService.endSession(CallUUID);
-        logger.info(`Session ended: duration=${result.duration}s, transcript parts=${result.transcript.length}`, undefined, 'PlivoElevenLabs');
+      // Proactively alias session if both IDs are available on status callback
+      if (CallUUID && internalId) {
+        ElevenLabsBridgeService.aliasSession(internalId, CallUUID);
+      }
+
+      const isTerminal = ['completed', 'failed', 'busy', 'no-answer', 'rejected', 'timeout', 'canceled', 'cancelled'].includes(CallStatus);
+
+      if (isTerminal) {
+        // Guarantee session termination by CallUUID and internalId
+        let result = CallUUID ? await ElevenLabsBridgeService.endSession(CallUUID) : { duration: 0, transcript: [] };
+        if ((!result || result.duration === 0) && internalId) {
+          const fallbackResult = await ElevenLabsBridgeService.endSession(internalId);
+          if (fallbackResult && fallbackResult.duration > 0) {
+            result = fallbackResult;
+          }
+        }
+        logger.info(`Session ended: duration=${result?.duration || 0}s, transcript parts=${result?.transcript?.length || 0}`, undefined, 'PlivoElevenLabs');
 
         // Plivo's reported Duration is authoritative (answered duration only).
         // Fall back to bridge-measured duration if Plivo did not include one.
@@ -95,26 +110,46 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
         const bridgeDuration = result?.duration ? Math.ceil(Number(result.duration)) : 0;
         const durationSeconds = reportedDuration > 0 ? reportedDuration : bridgeDuration;
 
-        // Update flow execution status - find the call by Plivo UUID first
+        // Update flow execution status - find the call by Plivo UUID or internalId
         try {
-          const [call] = await db
-            .select()
-            .from(plivoCalls)
-            .where(eq(plivoCalls.plivoCallUuid, CallUUID))
-            .limit(1);
+          let call;
+          if (CallUUID) {
+            const [byPlivoUuid] = await db
+              .select()
+              .from(plivoCalls)
+              .where(eq(plivoCalls.plivoCallUuid, CallUUID))
+              .limit(1);
+            call = byPlivoUuid;
+          }
+
+          if (!call && internalId) {
+            const [byInternalId] = await db
+              .select()
+              .from(plivoCalls)
+              .where(or(
+                eq(plivoCalls.callUuid, internalId),
+                sql`${plivoCalls.metadata}->>'internalId' = ${internalId}`
+              ))
+              .limit(1);
+            call = byInternalId;
+          }
 
           if (call) {
             const isThisEngine =
               ((call.metadata as Record<string, unknown> | null)?.engine === 'plivo-elevenlabs');
             if (isThisEngine) {
               const metadataUpdate: any = {};
-              if (result.conversationId) {
+              if (result?.conversationId) {
                 metadataUpdate.conversationId = result.conversationId;
                 metadataUpdate.elevenLabsConversationId = result.conversationId;
+              }
+              if (internalId) {
+                metadataUpdate.internalId = internalId;
               }
               await db
                 .update(plivoCalls)
                 .set({
+                  ...(CallUUID && !call.plivoCallUuid ? { plivoCallUuid: CallUUID } : {}),
                   status: CallStatus,
                   duration: durationSeconds > 0 ? durationSeconds : (call.duration ?? 0),
                   endedAt: new Date(),

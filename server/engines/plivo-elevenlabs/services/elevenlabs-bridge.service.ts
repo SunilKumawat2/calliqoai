@@ -29,8 +29,8 @@ import { plivoCalls } from '@shared/schema';
 import { eq, or, sql } from 'drizzle-orm';
 
 const SESSION_PREFIX = 'plivo-elevenlabs:';
-const SESSION_MAX_AGE_MS = 30 * 60 * 1000;
-const SESSION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
+const SESSION_CLEANUP_INTERVAL_MS = 60 * 1000;
 
 export interface CreateBridgeSessionParams {
   callUuid: string;
@@ -65,10 +65,25 @@ export class ElevenLabsBridgeService {
     let cleaned = 0;
     for (const [key, session] of Array.from(this.activeSessions.entries())) {
       const age = now - session.startedAt.getTime();
-      if (age > SESSION_MAX_AGE_MS) {
-        logger.warn(`Cleaning up stale session ${key} (age: ${Math.round(age / 1000)}s)`, undefined, 'PlivoElevenLabsBridge');
-        if (session.elevenLabsWs && (session.elevenLabsWs as any).readyState === WebSocket.OPEN) {
-          (session.elevenLabsWs as any).close();
+      const isOutboundUnconnected = session.direction === 'outbound' && !session.plivoWs && age > 75 * 1000;
+      const isOverMaxAge = age > SESSION_MAX_AGE_MS;
+
+      if (isOutboundUnconnected || isOverMaxAge) {
+        logger.warn(`Cleaning up stale session ${key} (age: ${Math.round(age / 1000)}s, unconnected: ${isOutboundUnconnected})`, undefined, 'PlivoElevenLabsBridge');
+        if (session.elevenLabsWs) {
+          try {
+            const readyState = (session.elevenLabsWs as any).readyState;
+            if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) {
+              (session.elevenLabsWs as any).close();
+            }
+          } catch (e) {}
+        }
+        if (session.plivoWs) {
+          try {
+            if ((session.plivoWs as any).readyState === WebSocket.OPEN) {
+              (session.plivoWs as any).close();
+            }
+          } catch (e) {}
         }
         this.activeSessions.delete(key);
         cleaned++;
@@ -113,6 +128,23 @@ export class ElevenLabsBridgeService {
     
     try {
       await this.connectToElevenLabs(session, elevenLabsApiKey, agentConfig);
+
+      // Safety guard for outbound calls: if Plivo audio stream never connects within 60s
+      // (e.g. user rejected, telecom busy/failed, or webhook dropped), force terminate
+      // the ElevenLabs WebSocket to prevent credit drain on ghost calls.
+      if (direction === 'outbound') {
+        const safetyTimeout = setTimeout(() => {
+          const currentSession = this.activeSessions.get(sessionKey);
+          if (currentSession && !currentSession.plivoWs && currentSession.status !== 'disconnected') {
+            logger.warn(`[Plivo-ElevenLabsBridge] Safety timeout (60s) reached for outbound call ${callUuid} without media connection. Force closing ElevenLabs session to save credits.`, undefined, 'PlivoElevenLabsBridge');
+            ElevenLabsBridgeService.endSession(callUuid).catch(err => logger.error(`Error in safety timeout cleanup: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge'));
+          }
+        }, 60000);
+        if ((safetyTimeout as any).unref) {
+          (safetyTimeout as any).unref();
+        }
+      }
+
       return session;
     } catch (error: any) {
       logger.error('Failed to create session', error.message, 'PlivoElevenLabsBridge');
@@ -428,27 +460,74 @@ export class ElevenLabsBridgeService {
     conversationId?: string;
     recordingUrl?: string;
   }> {
+    if (!callUuid) {
+      return { duration: 0, transcript: [] };
+    }
+
     const sessionKey = this.getSessionKey(callUuid);
-    const session = this.activeSessions.get(sessionKey);
+    let session = this.activeSessions.get(sessionKey);
+
+    // Fallback 1: check direct raw key if prefix wasn't used
+    if (!session) {
+      session = this.activeSessions.get(callUuid);
+    }
+
+    // Fallback 2: search all active sessions by callUuid or streamSid
+    if (!session) {
+      for (const [key, s] of this.activeSessions.entries()) {
+        if (s.callUuid === callUuid || s.streamSid === callUuid || key.includes(callUuid)) {
+          session = s;
+          logger.info(`Found session for ${callUuid} via active session search (key: ${key})`, undefined, 'PlivoElevenLabsBridge');
+          break;
+        }
+      }
+    }
     
     if (!session) {
+      logger.warn(`No active bridge session found to end for callUuid=${callUuid}`, undefined, 'PlivoElevenLabsBridge');
       return { duration: 0, transcript: [] };
     }
     
-    logger.info(`Ending session for ${callUuid}`, undefined, 'PlivoElevenLabsBridge');
+    logger.info(`Ending session for ${callUuid} (originalCallUuid: ${session.callUuid})`, undefined, 'PlivoElevenLabsBridge');
     
     session.status = 'disconnected';
     session.endedAt = new Date();
     
-    if (session.elevenLabsWs && (session.elevenLabsWs as any).readyState === WebSocket.OPEN) {
-      (session.elevenLabsWs as any).close();
+    // Close ElevenLabs WS immediately
+    if (session.elevenLabsWs) {
+      try {
+        const readyState = (session.elevenLabsWs as any).readyState;
+        if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) {
+          (session.elevenLabsWs as any).close();
+          logger.info(`Closed ElevenLabs WebSocket for ${callUuid}`, undefined, 'PlivoElevenLabsBridge');
+        }
+      } catch (wsErr: any) {
+        logger.warn(`Error closing ElevenLabs WS: ${wsErr?.message}`, undefined, 'PlivoElevenLabsBridge');
+      }
+    }
+
+    // Close Plivo WS if open
+    if (session.plivoWs) {
+      try {
+        if ((session.plivoWs as any).readyState === WebSocket.OPEN) {
+          (session.plivoWs as any).close();
+          logger.info(`Closed Plivo WebSocket for ${callUuid}`, undefined, 'PlivoElevenLabsBridge');
+        }
+      } catch (wsErr: any) {
+        logger.warn(`Error closing Plivo WS: ${wsErr?.message}`, undefined, 'PlivoElevenLabsBridge');
+      }
     }
     
     const duration = Math.floor((session.endedAt.getTime() - session.startedAt.getTime()) / 1000);
     const transcript = [...session.transcript];
     const conversationId = session.conversationId;
     
-    this.activeSessions.delete(sessionKey);
+    // Delete all keys referencing this session
+    for (const [k, s] of Array.from(this.activeSessions.entries())) {
+      if (s === session || s.callUuid === session.callUuid) {
+        this.activeSessions.delete(k);
+      }
+    }
     
     return { duration, transcript, conversationId };
   }

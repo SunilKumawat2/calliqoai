@@ -261,17 +261,38 @@ export default function DemoPage() {
     return { provider: 'twilio', subTab: 'premium' };
   };
 
+  // Helper to check allowed agents for Plivo + OpenAI Standard mode
+  const isAllowedPlivoStandardAgent = (agent: DemoAgent) => {
+    const n = (agent.name || "").toLowerCase().trim();
+    return (
+      n.includes("jagdeep singh kaka brar") ||
+      n.includes("jagdeep kaka brar") ||
+      n.includes("new test mla")
+    );
+  };
+
   // Helper to auto-select matching agent when tab/sub-tab changes
   const autoSelectAgentForTab = (provider: 'twilio' | 'plivo', targetSubTab: string, list: DemoAgent[] = agentsList) => {
     const matchingAgent = list.find(agent => {
       const info = getAgentSubTab(agent);
-      return info.provider === provider && info.subTab === targetSubTab;
+      if (info.provider !== provider || info.subTab !== targetSubTab) return false;
+      if (provider === 'plivo' && targetSubTab === 'standard') {
+        return isAllowedPlivoStandardAgent(agent);
+      }
+      return true;
     });
 
     if (matchingAgent) {
       setSelectedAgentId(matchingAgent.id);
     } else {
-      const providerFallback = list.find(agent => getAgentSubTab(agent).provider === provider);
+      const providerFallback = list.find(agent => {
+        const info = getAgentSubTab(agent);
+        if (info.provider !== provider) return false;
+        if (provider === 'plivo' && targetSubTab === 'standard') {
+          return info.subTab === 'standard' && isAllowedPlivoStandardAgent(agent);
+        }
+        return true;
+      });
       if (providerFallback) {
         setSelectedAgentId(providerFallback.id);
       }
@@ -284,9 +305,21 @@ export default function DemoPage() {
     if (selectedProvider === "twilio") {
       return provider === "twilio" && subTab === intlSubTab;
     } else {
-      return provider === "plivo" && subTab === indianSubTab;
+      if (provider !== "plivo" || subTab !== indianSubTab) return false;
+      // For Plivo + OpenAI (Standard mode), show ONLY the 3 designated agents
+      if (indianSubTab === "standard") {
+        return isAllowedPlivoStandardAgent(agent);
+      }
+      return true;
     }
   });
+
+  // Keep selectedAgentId synchronized with available filteredAgents
+  useEffect(() => {
+    if (filteredAgents.length > 0 && !filteredAgents.some(a => a.id === selectedAgentId)) {
+      setSelectedAgentId(filteredAgents[0].id);
+    }
+  }, [filteredAgents, selectedAgentId]);
 
   // Fetch public demo agents and providers
   useEffect(() => {
