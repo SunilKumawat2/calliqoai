@@ -72,6 +72,7 @@ interface Call {
   agent?: { id: string; name: string } | null;
   widgetId?: string | null;
   widget?: { id: string; name: string } | null;
+  followUps?: any[];
 }
 
 export default function CallDetail() {
@@ -101,12 +102,16 @@ export default function CallDetail() {
   const { toast } = useToast();
   const [triggeringFollowUpId, setTriggeringFollowUpId] = useState<string | null>(null);
 
-  const { data: followUps = [], refetch: refetchFollowUps } = useQuery<any[]>({
+  const { data: standaloneFollowUps = [], refetch: refetchFollowUps } = useQuery<any[]>({
     queryKey: [`/api/followups?callId=${id}`],
     enabled: !!id,
     queryFn: async () => {
-      const res = await apiRequest('GET', `/api/followups?callId=${id}`);
-      return res.json();
+      try {
+        const res = await apiRequest('GET', `/api/followups?callId=${id}`);
+        return await res.json();
+      } catch {
+        return [];
+      }
     }
   });
 
@@ -307,6 +312,8 @@ export default function CallDetail() {
       </div>
     );
   }
+
+  const followUps = (call?.followUps && call.followUps.length > 0) ? call.followUps : standaloneFollowUps;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -952,6 +959,125 @@ export default function CallDetail() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {/* Automated Follow-Up Calls Card */}
+          {followUps && followUps.length > 0 && (
+            <div className="space-y-3">
+              {followUps.map((fu: any) => {
+                const isPending = fu.status === 'pending';
+                const isInProgress = fu.status === 'in_progress';
+                const isCompleted = fu.status === 'completed';
+                const isCancelled = fu.status === 'cancelled';
+                const isFailed = fu.status === 'failed';
+
+                return (
+                  <div 
+                    key={fu.id}
+                    className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-purple-500/15 border-2 border-amber-500/40 p-5 shadow-lg shadow-amber-500/10"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-2xl">⏰</span>
+                          <h3 className="text-lg font-bold text-foreground">Automated Follow-Up Call</h3>
+                          {isPending && (
+                            <Badge className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 font-semibold px-2.5 py-0.5">
+                              ⏳ Scheduled Pending
+                            </Badge>
+                          )}
+                          {isInProgress && (
+                            <Badge className="bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/40 animate-pulse font-semibold px-2.5 py-0.5">
+                              📞 Calling Now...
+                            </Badge>
+                          )}
+                          {isCompleted && (
+                            <Badge className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 font-semibold px-2.5 py-0.5">
+                              ✅ Completed
+                            </Badge>
+                          )}
+                          {isCancelled && (
+                            <Badge className="bg-slate-500/20 text-slate-400 border border-slate-500/40 px-2.5 py-0.5">
+                              Cancelled
+                            </Badge>
+                          )}
+                          {isFailed && (
+                            <Badge className="bg-red-500/20 text-red-500 border border-red-500/40 px-2.5 py-0.5">
+                              ⚠️ Failed ({fu.errorMessage || 'Unknown error'})
+                            </Badge>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+                          <span className="font-medium text-foreground">
+                            📅 Scheduled At: <span className="text-amber-600 dark:text-amber-400 font-bold text-base">{formatCallDate(fu.scheduledAt || fu.scheduled_at)}</span>
+                          </span>
+                          {(fu.preferredTimeText || fu.preferred_time_text) && (
+                            <>
+                              <span>•</span>
+                              <span>Customer Request: <strong className="text-foreground">"{fu.preferredTimeText || fu.preferred_time_text}"</strong></span>
+                            </>
+                          )}
+                          {(fu.customerName || fu.customer_name) && (
+                            <>
+                              <span>•</span>
+                              <span>Lead: <strong className="text-foreground">{fu.customerName || fu.customer_name}</strong> ({fu.phoneNumber || fu.phone_number})</span>
+                            </>
+                          )}
+                        </div>
+
+                        {(fu.contextNote || fu.context_note) && (
+                          <p className="text-xs text-muted-foreground italic bg-black/10 dark:bg-white/5 rounded-lg px-3 py-1.5 inline-block">
+                            💡 Context: {fu.contextNote || fu.context_note}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {(isPending || isFailed) && (
+                          <>
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md shadow-emerald-600/20 gap-1.5 px-4"
+                              disabled={triggeringFollowUpId === fu.id}
+                              onClick={() => handleCallNow(fu.id)}
+                            >
+                              {triggeringFollowUpId === fu.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <PhoneOutgoing className="h-4 w-4" />
+                              )}
+                              Call Now
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-slate-400 hover:text-red-400 hover:border-red-400/50"
+                              onClick={() => handleCancelFollowUp(fu.id)}
+                            >
+                              <XCircle className="h-4 w-4 mr-1" />
+                              Cancel
+                            </Button>
+                          </>
+                        )}
+                        {isCompleted && (fu.followUpCallId || fu.follow_up_call_id) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-blue-500 hover:text-blue-400"
+                            onClick={() => setLocation(`/app/calls/${fu.followUpCallId || fu.follow_up_call_id}`)}
+                          >
+                            <ArrowRight className="h-4 w-4 mr-1" />
+                            View Follow-Up Call
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* AI Summary Card */}
           <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/80 via-blue-50/50 to-slate-50 dark:from-indigo-950/40 dark:via-blue-950/30 dark:to-slate-950/40 border border-indigo-100/50 dark:border-indigo-900/30 p-6">
             <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-indigo-500/10 to-transparent rounded-full -mr-16 -mt-16" />
@@ -1063,125 +1189,6 @@ export default function CallDetail() {
                   </ul>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Automated Follow-Up Calls Card */}
-          {followUps && followUps.length > 0 && (
-            <div className="space-y-3">
-              {followUps.map((fu: any) => {
-                const isPending = fu.status === 'pending';
-                const isInProgress = fu.status === 'in_progress';
-                const isCompleted = fu.status === 'completed';
-                const isCancelled = fu.status === 'cancelled';
-                const isFailed = fu.status === 'failed';
-
-                return (
-                  <div 
-                    key={fu.id}
-                    className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-purple-500/10 border border-amber-500/30 p-5 shadow-lg shadow-amber-500/5"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xl">⏰</span>
-                          <h3 className="text-base font-bold text-foreground">Automated Follow-Up Call</h3>
-                          {isPending && (
-                            <Badge className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                              ⏳ Scheduled Pending
-                            </Badge>
-                          )}
-                          {isInProgress && (
-                            <Badge className="bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 animate-pulse">
-                              📞 Calling Now...
-                            </Badge>
-                          )}
-                          {isCompleted && (
-                            <Badge className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                              ✅ Completed
-                            </Badge>
-                          )}
-                          {isCancelled && (
-                            <Badge className="bg-slate-500/20 text-slate-400 border border-slate-500/30">
-                              Cancelled
-                            </Badge>
-                          )}
-                          {isFailed && (
-                            <Badge className="bg-red-500/20 text-red-500 border border-red-500/30">
-                              ⚠️ Failed ({fu.errorMessage || 'Unknown error'})
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-                          <span className="font-medium text-foreground">
-                            📅 Scheduled At: <span className="text-amber-600 dark:text-amber-400 font-semibold">{formatCallDate(fu.scheduledAt)}</span>
-                          </span>
-                          {fu.preferredTimeText && (
-                            <>
-                              <span>•</span>
-                              <span>Customer Request: <strong className="text-foreground">"{fu.preferredTimeText}"</strong></span>
-                            </>
-                          )}
-                          {fu.customerName && (
-                            <>
-                              <span>•</span>
-                              <span>Lead: <strong className="text-foreground">{fu.customerName}</strong> ({fu.phoneNumber})</span>
-                            </>
-                          )}
-                        </div>
-
-                        {fu.contextNote && (
-                          <p className="text-xs text-muted-foreground italic bg-black/10 dark:bg-white/5 rounded-lg px-3 py-1.5 inline-block">
-                            💡 Context: {fu.contextNote}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Action buttons */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        {(isPending || isFailed) && (
-                          <>
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md shadow-emerald-600/20"
-                              disabled={triggeringFollowUpId === fu.id}
-                              onClick={() => handleCallNow(fu.id)}
-                            >
-                              {triggeringFollowUpId === fu.id ? (
-                                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                              ) : (
-                                <PhoneOutgoing className="h-4 w-4 mr-1.5" />
-                              )}
-                              Call Now
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-slate-400 hover:text-red-400 hover:border-red-400/50"
-                              onClick={() => handleCancelFollowUp(fu.id)}
-                            >
-                              <XCircle className="h-4 w-4 mr-1" />
-                              Cancel
-                            </Button>
-                          </>
-                        )}
-                        {isCompleted && fu.followUpCallId && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-blue-500 hover:text-blue-400"
-                            onClick={() => setLocation(`/app/calls/${fu.followUpCallId}`)}
-                          >
-                            <ArrowRight className="h-4 w-4 mr-1" />
-                            View Follow-Up Call
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           )}
 

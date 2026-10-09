@@ -18,8 +18,8 @@
 
 import { Router, Response } from "express";
 import { RouteContext, AuthRequest } from "./common";
-import { calls, agents, incomingConnections, sipCalls, plivoCalls } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { calls, agents, incomingConnections, sipCalls, plivoCalls, scheduledFollowUps } from "@shared/schema";
+import { eq, desc, sql } from "drizzle-orm";
 import * as fs from "fs";
 import { ElevenLabsService } from "../services/elevenlabs";
 import { ElevenLabsPoolService } from "../services/elevenlabs-pool";
@@ -162,6 +162,19 @@ export function createAnalyticsRoutes(ctx: RouteContext): Router {
         } catch (e: any) {
           console.warn(`[GetCall] Auto-analysis error: ${e.message}`);
         }
+      }
+
+      // Attach any scheduled follow-ups for this call
+      try {
+        const followUps = await db
+          .select()
+          .from(scheduledFollowUps)
+          .where(eq(scheduledFollowUps.callId, callWithDetails.id))
+          .orderBy(desc(scheduledFollowUps.scheduledAt));
+
+        (callWithDetails as any).followUps = followUps;
+      } catch (fErr: any) {
+        (callWithDetails as any).followUps = [];
       }
 
       res.json(callWithDetails);
