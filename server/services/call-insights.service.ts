@@ -68,24 +68,34 @@ Sentiment guide:
 - "neutral": Matter-of-fact tone
 - "negative": Frustrated, complained, or hostile`;
 
+import { OpenAIPoolService } from '../engines/plivo/services/openai-pool.service';
+
 export class CallInsightsService {
   private static openai: OpenAI | null = null;
 
-  private static getOpenAIClient(apiKey?: string): OpenAI {
+  private static async getOpenAIClient(apiKey?: string): Promise<OpenAI> {
     // If a specific API key is provided, create a new client for it
     if (apiKey) {
       return new OpenAI({ apiKey });
     }
     
-    // Otherwise use the cached client with env var
-    if (!this.openai) {
-      const envApiKey = process.env.OPENAI_API_KEY;
-      if (!envApiKey) {
-        throw new Error('OPENAI_API_KEY environment variable is not set');
+    // Try to get active credential from OpenAI Pool Service
+    try {
+      const poolCred = await OpenAIPoolService.getAvailableCredential();
+      if (poolCred?.apiKey) {
+        return new OpenAI({ apiKey: poolCred.apiKey });
       }
-      this.openai = new OpenAI({ apiKey: envApiKey });
+    } catch (poolErr) {
+      // Fall through to env
     }
-    return this.openai;
+
+    // Otherwise use the cached client with env var
+    const envApiKey = process.env.OPENAI_API_KEY;
+    if (envApiKey) {
+      return new OpenAI({ apiKey: envApiKey });
+    }
+    
+    throw new Error('No OpenAI API key available in Pool or Environment');
   }
 
   static async analyzeTranscript(
@@ -101,7 +111,7 @@ export class CallInsightsService {
     }
 
     try {
-      const openai = this.getOpenAIClient(apiKey);
+      const openai = await this.getOpenAIClient(apiKey);
       
       const userMessage = this.buildUserMessage(transcript, metadata);
       

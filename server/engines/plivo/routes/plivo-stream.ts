@@ -164,47 +164,76 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
         // Generate AI insights from transcript if available
         if (result.transcript && result.transcript.length > 50) {
           try {
-            const openaiCredential = call.openaiCredentialId
-              ? await OpenAIPoolService.getCredentialById(call.openaiCredentialId)
-              : null;
-            
-            if (openaiCredential?.apiKey) {
-              logger.info(`Generating AI insights for call ${call.id}`, undefined, 'PlivoStream');
-              const insights = await CallInsightsService.analyzeTranscript(
-                result.transcript,
-                {
-                  callId: call.id,
-                  fromNumber: call.fromNumber || undefined,
-                  toNumber: call.toNumber || undefined,
-                  duration: result.duration
-                },
-                openaiCredential.apiKey
-              );
-              
-              if (insights) {
-                await db
-                  .update(plivoCalls)
-                  .set({
-                    aiSummary: insights.aiSummary,
-                    sentiment: insights.sentiment,
-                    classification: insights.classification,
-                    keyPoints: insights.keyPoints || null,
-                    nextActions: insights.nextActions || null,
-                  })
-                  .where(eq(plivoCalls.id, call.id));
-                await db
-                  .update(calls)
-                  .set({
-                    aiSummary: insights.aiSummary,
-                    sentiment: insights.sentiment,
-                    userSentiment: insights.sentiment,
-                  })
-                  .where(eq(calls.id, call.id))
-                  .catch(() => {});
-                logger.info(`Generated AI insights for call ${call.id}: sentiment=${insights.sentiment}, classification=${insights.classification}`, undefined, 'PlivoStream');
+            let openaiApiKey: string | undefined;
+            if (call.openaiCredentialId) {
+              const openaiCredential = await OpenAIPoolService.getCredentialById(call.openaiCredentialId).catch(() => null);
+              if (openaiCredential?.apiKey) {
+                openaiApiKey = openaiCredential.apiKey;
               }
-            } else {
-              logger.warn(`No OpenAI credential available for AI analysis on call ${call.id}`, undefined, 'PlivoStream');
+            }
+            if (!openaiApiKey) {
+              const defaultCred = await OpenAIPoolService.getAvailableCredential().catch(() => null);
+              if (defaultCred?.apiKey) {
+                openaiApiKey = defaultCred.apiKey;
+              }
+            }
+            
+            logger.info(`Generating AI insights for call ${call.id}`, undefined, 'PlivoStream');
+            const insights = await CallInsightsService.analyzeTranscript(
+              result.transcript,
+              {
+                callId: call.id,
+                fromNumber: call.fromNumber || undefined,
+                toNumber: call.toNumber || undefined,
+                duration: result.duration
+              },
+              openaiApiKey
+            );
+            
+            if (insights) {
+              await db
+                .update(plivoCalls)
+                .set({
+                  aiSummary: insights.aiSummary,
+                  sentiment: insights.sentiment,
+                  classification: insights.classification,
+                  keyPoints: insights.keyPoints || null,
+                  nextActions: insights.nextActions || null,
+                })
+                .where(eq(plivoCalls.id, call.id));
+
+              // Fetch existing calls metadata and merge extracted lead details
+              const [existingCallRecord] = await db
+                .select()
+                .from(calls)
+                .where(eq(calls.id, call.id))
+                .limit(1)
+                .catch(() => []);
+
+              const existingMeta = (existingCallRecord?.metadata as Record<string, any>) || {};
+              const mergedMetadata = {
+                ...existingMeta,
+                ...(insights.customerName ? { customerName: insights.customerName } : {}),
+                ...(insights.propertyType ? { propertyType: insights.propertyType, requirement: insights.propertyType } : {}),
+                ...(insights.budget ? { budget: insights.budget } : {}),
+                ...(insights.location ? { location: insights.location } : {}),
+                ...(insights.appointmentTiming ? { appointmentTiming: insights.appointmentTiming, siteVisit: insights.appointmentTiming } : {}),
+                leadClassification: insights.classification
+              };
+
+              await db
+                .update(calls)
+                .set({
+                  aiSummary: insights.aiSummary,
+                  sentiment: insights.sentiment,
+                  userSentiment: insights.sentiment,
+                  keyPoints: insights.keyPoints || null,
+                  nextActions: insights.nextActions || null,
+                  metadata: mergedMetadata,
+                })
+                .where(eq(calls.id, call.id))
+                .catch(() => {});
+              logger.info(`Generated AI insights for call ${call.id}: sentiment=${insights.sentiment}, classification=${insights.classification}`, undefined, 'PlivoStream');
             }
           } catch (insightError: any) {
             logger.error(`Failed to generate call insights for ${call.id}`, insightError, 'PlivoStream');

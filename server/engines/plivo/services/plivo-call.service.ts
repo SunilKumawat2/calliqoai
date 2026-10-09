@@ -581,12 +581,18 @@ export class PlivoCallService {
 
       if (status === 'completed' && call.transcript && call.transcript.length > 50) {
         try {
-          // Get the OpenAI API key from the credential assigned to this call
+          // Get the OpenAI API key from the credential assigned to this call or fallback
           let openaiApiKey: string | undefined;
           if (call.openaiCredentialId) {
-            const openaiCredential = await OpenAIPoolService.getCredentialById(call.openaiCredentialId);
-            if (openaiCredential) {
+            const openaiCredential = await OpenAIPoolService.getCredentialById(call.openaiCredentialId).catch(() => null);
+            if (openaiCredential?.apiKey) {
               openaiApiKey = openaiCredential.apiKey;
+            }
+          }
+          if (!openaiApiKey) {
+            const defaultCred = await OpenAIPoolService.getAvailableCredential().catch(() => null);
+            if (defaultCred?.apiKey) {
+              openaiApiKey = defaultCred.apiKey;
             }
           }
           
@@ -607,6 +613,39 @@ export class PlivoCallService {
             updateData.classification = insights.classification;
             if (insights.keyPoints) updateData.keyPoints = insights.keyPoints;
             if (insights.nextActions) updateData.nextActions = insights.nextActions;
+
+            // Fetch existing calls metadata and merge extracted lead details
+            const [existingCallRecord] = await db
+              .select()
+              .from(calls)
+              .where(eq(calls.id, call.id))
+              .limit(1)
+              .catch(() => []);
+
+            const existingMeta = (existingCallRecord?.metadata as Record<string, any>) || {};
+            const mergedMetadata = {
+              ...existingMeta,
+              ...(insights.customerName ? { customerName: insights.customerName } : {}),
+              ...(insights.propertyType ? { propertyType: insights.propertyType, requirement: insights.propertyType } : {}),
+              ...(insights.budget ? { budget: insights.budget } : {}),
+              ...(insights.location ? { location: insights.location } : {}),
+              ...(insights.appointmentTiming ? { appointmentTiming: insights.appointmentTiming, siteVisit: insights.appointmentTiming } : {}),
+              leadClassification: insights.classification
+            };
+
+            await db
+              .update(calls)
+              .set({
+                aiSummary: insights.aiSummary,
+                sentiment: insights.sentiment,
+                userSentiment: insights.sentiment,
+                keyPoints: insights.keyPoints || null,
+                nextActions: insights.nextActions || null,
+                metadata: mergedMetadata,
+              })
+              .where(eq(calls.id, call.id))
+              .catch(() => {});
+
             logger.info(`Generated insights for call ${callId}`, { sentiment: insights.sentiment, classification: insights.classification }, 'PlivoCall');
           }
         } catch (insightError: any) {
