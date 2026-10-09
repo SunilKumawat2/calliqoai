@@ -56,6 +56,12 @@ interface Call {
   endedAt: string | null;
   classification: string | null;
   sentiment: string | null;
+  aiSummary?: string | null;
+  transcript?: string | null;
+  phoneNumber?: string | null;
+  keyPoints?: string[] | string | null;
+  nextActions?: string[] | string | null;
+  metadata?: Record<string, any> | null;
 }
 
 interface Campaign {
@@ -1024,136 +1030,237 @@ export default function CampaignDetail() {
         </TabsContent>
 
         <TabsContent value="lead-quality" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="p-6" data-testid="card-hot-leads">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card className="p-5" data-testid="card-hot-leads">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-red-500/10 rounded-lg">
                   <Flame className="h-6 w-6 text-red-500" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">{t('campaignDetail.leads.hotLeads')}</p>
-                  <p className="text-2xl font-semibold" data-testid="text-hot-leads-count">
-                    {calls.filter(c => c.classification === "hot").length}
+                  <p className="text-sm text-muted-foreground">{t('campaignDetail.leads.hotLeads', 'Hot Leads')}</p>
+                  <p className="text-2xl font-semibold text-red-500" data-testid="text-hot-leads-count">
+                    {calls.filter(c => (c.classification || (c.metadata as any)?.leadClassification) === "hot").length}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {calls.length > 0 ? Math.round((calls.filter(c => c.classification === "hot").length / calls.length) * 100) : 0}% {t('campaignDetail.leads.ofLeads')}
+                    {calls.length > 0 ? Math.round((calls.filter(c => (c.classification || (c.metadata as any)?.leadClassification) === "hot").length / calls.length) * 100) : 0}% of calls
                   </p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-6" data-testid="card-warm-leads">
+            <Card className="p-5" data-testid="card-warm-leads">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-orange-500/10 rounded-lg">
                   <ThermometerSun className="h-6 w-6 text-orange-500" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">{t('campaignDetail.leads.warmLeads')}</p>
-                  <p className="text-2xl font-semibold" data-testid="text-warm-leads-count">
-                    {calls.filter(c => c.classification === "warm").length}
+                  <p className="text-sm text-muted-foreground">{t('campaignDetail.leads.warmLeads', 'Warm Leads')}</p>
+                  <p className="text-2xl font-semibold text-orange-500" data-testid="text-warm-leads-count">
+                    {calls.filter(c => (c.classification || (c.metadata as any)?.leadClassification) === "warm").length}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {calls.length > 0 ? Math.round((calls.filter(c => c.classification === "warm").length / calls.length) * 100) : 0}% {t('campaignDetail.leads.ofLeads')}
+                    {calls.length > 0 ? Math.round((calls.filter(c => (c.classification || (c.metadata as any)?.leadClassification) === "warm").length / calls.length) * 100) : 0}% of calls
                   </p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-6" data-testid="card-lost-leads">
+            <Card className="p-5" data-testid="card-lost-leads">
               <div className="flex items-center gap-4">
                 <div className="p-3 bg-blue-500/10 rounded-lg">
                   <Snowflake className="h-6 w-6 text-blue-500" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">{t('campaignDetail.leads.lostLeads')}</p>
-                  <p className="text-2xl font-semibold" data-testid="text-lost-leads-count">
-                    {calls.filter(c => c.classification === "cold" || c.classification === "lost").length}
+                  <p className="text-sm text-muted-foreground">{t('campaignDetail.leads.lostLeads', 'Cold / Lost')}</p>
+                  <p className="text-2xl font-semibold text-blue-500" data-testid="text-lost-leads-count">
+                    {calls.filter(c => {
+                      const cls = c.classification || (c.metadata as any)?.leadClassification;
+                      return cls === "cold" || cls === "lost";
+                    }).length}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {calls.length > 0 ? Math.round((calls.filter(c => c.classification === "cold" || c.classification === "lost").length / calls.length) * 100) : 0}% {t('campaignDetail.leads.ofLeads')}
+                    {calls.length > 0 ? Math.round((calls.filter(c => {
+                      const cls = c.classification || (c.metadata as any)?.leadClassification;
+                      return cls === "cold" || cls === "lost";
+                    }).length / calls.length) * 100) : 0}% of calls
                   </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-5" data-testid="card-total-leads">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-emerald-500/10 rounded-lg">
+                  <Target className="h-6 w-6 text-emerald-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Qualified</p>
+                  <p className="text-2xl font-semibold text-emerald-500">
+                    {calls.filter(c => {
+                      const cls = c.classification || (c.metadata as any)?.leadClassification;
+                      return cls === "hot" || cls === "warm" || cls === "cold" || cls === "lost";
+                    }).length}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Captured by AI</p>
                 </div>
               </div>
             </Card>
           </div>
 
           <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">{t('campaignDetail.leads.classificationDetails')}</h3>
-            <div className="overflow-x-auto">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+              <div>
+                <h3 className="text-lg font-semibold">{t('campaignDetail.leads.classificationDetails', 'Lead Classification & Captured Details')}</h3>
+                <p className="text-sm text-muted-foreground">Dynamic lead details and AI qualification captured across all campaign contacts</p>
+              </div>
+              <Button 
+                variant="default" 
+                onClick={handleExportCSV} 
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium shadow-sm gap-2"
+                data-testid="button-download-leads-csv"
+              >
+                <Download className="h-4 w-4" />
+                Download Leads CSV
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto rounded-md border">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('campaignDetail.leads.contact')}</TableHead>
-                    <TableHead>{t('campaignDetail.leads.phone')}</TableHead>
-                    <TableHead>{t('campaignDetail.leads.classification')}</TableHead>
-                    <TableHead>{t('campaignDetail.leads.sentiment')}</TableHead>
-                    <TableHead>{t('campaignDetail.leads.callDuration')}</TableHead>
-                    <TableHead>{t('campaignDetail.recipients.actions')}</TableHead>
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="font-semibold">{t('campaignDetail.leads.contact', 'Contact')}</TableHead>
+                    <TableHead className="font-semibold">{t('campaignDetail.leads.phone', 'Phone')}</TableHead>
+                    <TableHead className="font-semibold">{t('campaignDetail.leads.classification', 'Classification')}</TableHead>
+                    <TableHead className="font-semibold">Requirement / Topic</TableHead>
+                    <TableHead className="font-semibold">Captured Details</TableHead>
+                    <TableHead className="font-semibold">{t('campaignDetail.leads.sentiment', 'Sentiment')}</TableHead>
+                    <TableHead className="font-semibold">{t('campaignDetail.leads.callDuration', 'Duration')}</TableHead>
+                    <TableHead className="font-semibold text-right">{t('campaignDetail.recipients.actions', 'Actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {calls
-                    .filter(call => call.classification === "hot" || call.classification === "warm" || call.classification === "cold" || call.classification === "lost")
+                    .filter(call => {
+                      const cls = call.classification || (call.metadata as any)?.leadClassification;
+                      return cls === "hot" || cls === "warm" || cls === "cold" || cls === "lost" || call.aiSummary;
+                    })
                     .map((call) => {
                       const contact = contacts.find(c => c.id === call.contactId);
+                      const meta = (call.metadata as Record<string, any>) || {};
+                      const cls = call.classification || meta.leadClassification;
+                      const customerName = meta.customerName || (contact && contact.firstName && contact.firstName.toLowerCase() !== 'unknown'
+                        ? `${contact.firstName} ${contact.lastName || ""}`.trim()
+                        : (contact?.phone || call.phoneNumber || "—"));
+                      const serviceReq = meta.serviceOrRequirement || meta.requirement || meta.propertyType;
+                      const leadDetails = meta.leadDetails && typeof meta.leadDetails === 'object' ? meta.leadDetails : null;
+
                       return (
-                        <TableRow key={call.id} data-testid={`row-lead-${call.id}`}>
+                        <TableRow key={call.id} data-testid={`row-lead-${call.id}`} className="hover:bg-muted/30 transition-colors">
                           <TableCell className="font-medium">
-                            {contact && contact.firstName && contact.firstName.toLowerCase() !== 'unknown'
-                              ? `${contact.firstName} ${contact.lastName || ""}`
-                              : (contact?.phone || "—")}
+                            <div className="flex flex-col">
+                              <span className="font-medium text-foreground">{customerName}</span>
+                              {contact?.email && (
+                                <span className="text-xs text-muted-foreground">{contact.email}</span>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="font-mono text-sm">
-                            {contact?.phone || "—"}
+                            {contact?.phone || call.phoneNumber || meta.phoneNumber || "—"}
                           </TableCell>
                           <TableCell>
-                            {call.classification === "hot" && (
-                              <Badge className="bg-red-500/10 text-red-500 border-red-500/20">
+                            {cls === "hot" && (
+                              <Badge className="bg-red-500/10 text-red-500 border-red-500/20 font-medium">
                                 <Flame className="h-3 w-3 mr-1" />
-                                {t('campaignDetail.leads.hot')}
+                                {t('campaignDetail.leads.hot', 'Hot 🔥')}
                               </Badge>
                             )}
-                            {call.classification === "warm" && (
-                              <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20">
+                            {cls === "warm" && (
+                              <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20 font-medium">
                                 <ThermometerSun className="h-3 w-3 mr-1" />
-                                {t('campaignDetail.leads.warm')}
+                                {t('campaignDetail.leads.warm', 'Warm')}
                               </Badge>
                             )}
-                            {(call.classification === "cold" || call.classification === "lost") && (
-                              <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20">
+                            {(cls === "cold" || cls === "lost") && (
+                              <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 font-medium">
                                 <Snowflake className="h-3 w-3 mr-1" />
-                                {t('campaignDetail.leads.lost')}
+                                {t('campaignDetail.leads.lost', 'Cold / Lost')}
                               </Badge>
+                            )}
+                            {!cls && (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">Completed</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {serviceReq ? (
+                              <span className="font-medium text-xs text-primary bg-primary/10 px-2 py-1 rounded-md inline-block">
+                                {serviceReq}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-[280px]">
+                            {leadDetails && Object.keys(leadDetails).length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5 py-1">
+                                {Object.entries(leadDetails).slice(0, 3).map(([key, val]) => (
+                                  <span key={key} className="text-[11px] bg-secondary/80 text-secondary-foreground px-2 py-0.5 rounded border border-border/50">
+                                    <strong className="font-medium">{key}:</strong> {String(val)}
+                                  </span>
+                                ))}
+                                {Object.keys(leadDetails).length > 3 && (
+                                  <span className="text-[10px] text-muted-foreground self-center">
+                                    +{Object.keys(leadDetails).length - 3} more
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground truncate block max-w-[220px]">
+                                {call.aiSummary || "—"}
+                              </span>
                             )}
                           </TableCell>
                           <TableCell>
                             {call.sentiment && (
-                              <Badge variant="outline" className="text-xs">
+                              <Badge 
+                                variant="outline" 
+                                className={`text-xs capitalize ${
+                                  call.sentiment === 'positive' ? 'border-emerald-500/30 text-emerald-500 bg-emerald-500/5' :
+                                  call.sentiment === 'negative' ? 'border-red-500/30 text-red-500 bg-red-500/5' : ''
+                                }`}
+                              >
                                 {call.sentiment}
                               </Badge>
                             )}
                           </TableCell>
-                          <TableCell className="font-mono text-sm">
+                          <TableCell className="font-mono text-sm text-muted-foreground">
                             {call.duration ? `${Math.floor(call.duration / 60)}:${(call.duration % 60).toString().padStart(2, '0')}` : "—"}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-right">
                             <Button 
                               variant="ghost" 
                               size="sm"
                               onClick={() => setLocation(`/app/calls/${call.id}`)}
                               data-testid={`button-view-lead-call-${call.id}`}
+                              className="hover:bg-primary/10 hover:text-primary"
                             >
-                              <PhoneCall className="h-4 w-4 mr-2" />
-                              {t('campaignDetail.leads.viewCall')}
+                              <PhoneCall className="h-4 w-4 mr-1.5" />
+                              View Call
                             </Button>
                           </TableCell>
                         </TableRow>
                       );
                     })}
-                  {calls.filter(c => c.classification === "hot" || c.classification === "warm" || c.classification === "cold" || c.classification === "lost").length === 0 && (
+                  {calls.filter(c => {
+                    const cls = c.classification || (c.metadata as any)?.leadClassification;
+                    return cls === "hot" || cls === "warm" || cls === "cold" || cls === "lost" || c.aiSummary;
+                  }).length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                        {t('campaignDetail.leads.noClassifiedLeads')}
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Target className="h-8 w-8 text-muted-foreground/50 mb-1" />
+                          <p className="font-medium text-foreground">{t('campaignDetail.leads.noClassifiedLeads', 'No classified leads yet.')}</p>
+                          <p className="text-xs text-muted-foreground">Complete calls in this campaign to see AI lead qualifications and dynamic details.</p>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )}

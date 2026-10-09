@@ -626,10 +626,8 @@ export class PlivoCallService {
             const mergedMetadata = {
               ...existingMeta,
               ...(insights.customerName ? { customerName: insights.customerName } : {}),
-              ...(insights.propertyType ? { propertyType: insights.propertyType, requirement: insights.propertyType } : {}),
-              ...(insights.budget ? { budget: insights.budget } : {}),
-              ...(insights.location ? { location: insights.location } : {}),
-              ...(insights.appointmentTiming ? { appointmentTiming: insights.appointmentTiming, siteVisit: insights.appointmentTiming } : {}),
+              ...(insights.serviceOrRequirement ? { serviceOrRequirement: insights.serviceOrRequirement, requirement: insights.serviceOrRequirement } : {}),
+              ...(insights.leadDetails ? { leadDetails: insights.leadDetails } : {}),
               leadClassification: insights.classification
             };
 
@@ -639,12 +637,19 @@ export class PlivoCallService {
                 aiSummary: insights.aiSummary,
                 sentiment: insights.sentiment,
                 userSentiment: insights.sentiment,
+                classification: insights.classification,
                 keyPoints: insights.keyPoints || null,
                 nextActions: insights.nextActions || null,
                 metadata: mergedMetadata,
               })
               .where(eq(calls.id, call.id))
               .catch(() => {});
+
+            // Also ensure updateData for plivoCalls has the merged metadata
+            updateData.metadata = {
+              ...((call.metadata as Record<string, any>) || {}),
+              ...mergedMetadata
+            };
 
             logger.info(`Generated insights for call ${callId}`, { sentiment: insights.sentiment, classification: insights.classification }, 'PlivoCall');
           }

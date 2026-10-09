@@ -19,7 +19,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, Status } from "./StatusBadge";
 import { Progress } from "@/components/ui/progress";
-import { MoreVertical, Play, Pause, BarChart3, Edit, Trash2, RotateCcw, AlertCircle } from "lucide-react";
+import { MoreVertical, Play, Pause, BarChart3, Edit, Trash2, RotateCcw, AlertCircle, Download } from "lucide-react";
+import { AuthStorage } from "@/lib/auth-storage";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -204,6 +205,33 @@ export function CampaignCard({
             <DropdownMenuItem onClick={onView} data-testid="button-view-details">
               <BarChart3 className="mr-2 h-4 w-4" />
               View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={async () => {
+                try {
+                  const headers: Record<string, string> = {};
+                  const authHeader = AuthStorage.getAuthHeader();
+                  if (authHeader) headers['Authorization'] = authHeader;
+                  const res = await fetch(`/api/campaigns/${id}/export`, { headers });
+                  if (!res.ok) throw new Error("Failed to export");
+                  const blob = await res.blob();
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `campaign-${name.replace(/[^a-z0-9]/gi, '-')}-leads.csv`;
+                  document.body.appendChild(a);
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                  document.body.removeChild(a);
+                  toast({ title: "Leads CSV Downloaded" });
+                } catch {
+                  toast({ title: "Failed to download leads", variant: "destructive" });
+                }
+              }} 
+              data-testid="button-export-campaign-leads"
+            >
+              <Download className="mr-2 h-4 w-4 text-emerald-500" />
+              Download Leads (CSV)
             </DropdownMenuItem>
             {onEdit && status !== "running" && status !== "completed" && status !== "in_progress" && (
               <DropdownMenuItem onClick={onEdit} data-testid="button-edit-campaign">

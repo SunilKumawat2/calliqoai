@@ -390,34 +390,76 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
         "Email",
         "Call Status",
         "Lead Classification",
+        "Sentiment",
+        "Service / Requirement",
+        "Captured Lead Details",
+        "Call Duration",
         "Duration (seconds)",
+        "Key Highlights",
+        "Next Action",
+        "AI Summary",
         "Call Started",
         "Call Ended",
-        "Transcript",
-        "AI Summary",
-        "Error Message"
+        "Recording URL"
       ];
 
       const csvRows = [headers.join(",")];
 
       for (const call of callsList) {
         const contact = call.contactId ? contactMap.get(call.contactId) : undefined;
-        const fullName = contact ? `${contact.firstName} ${contact.lastName || ""}`.trim() : "";
-        const phone = contact?.phone || "";
+        const meta = (call.metadata as Record<string, any>) || {};
+        const fullName = meta.customerName || (contact ? `${contact.firstName} ${contact.lastName || ""}`.trim() : "") || "—";
+        const phone = contact?.phone || call.phoneNumber || meta.phoneNumber || "";
         const email = contact?.email || "";
+        const classification = call.classification || meta.leadClassification || "";
+        const sentiment = call.sentiment || meta.sentiment || "";
+        const serviceReq = meta.serviceOrRequirement || meta.requirement || meta.propertyType || "";
+        
+        // Format dynamic leadDetails as clean key:value string
+        let leadDetailsStr = "";
+        if (meta.leadDetails && typeof meta.leadDetails === 'object') {
+          leadDetailsStr = Object.entries(meta.leadDetails)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(" | ");
+        }
+
+        // Format duration mm:ss
+        const durSec = call.duration || 0;
+        const durFormatted = `${Math.floor(durSec / 60)}:${(durSec % 60).toString().padStart(2, '0')}`;
+
+        // Format key points
+        let keyPointsStr = "";
+        if (Array.isArray(call.keyPoints)) {
+          keyPointsStr = call.keyPoints.join(" ; ");
+        } else if (typeof call.keyPoints === 'string') {
+          try { keyPointsStr = JSON.parse(call.keyPoints).join(" ; "); } catch { keyPointsStr = call.keyPoints; }
+        }
+
+        // Format next actions
+        let nextActionsStr = "";
+        if (Array.isArray(call.nextActions)) {
+          nextActionsStr = call.nextActions.join(" ; ");
+        } else if (typeof call.nextActions === 'string') {
+          try { nextActionsStr = JSON.parse(call.nextActions).join(" ; "); } catch { nextActionsStr = call.nextActions; }
+        }
         
         const row = [
           escapeCSV(fullName),
           escapeCSV(phone),
           escapeCSV(email),
           escapeCSV(call.status || ""),
-          escapeCSV(call.classification || ""),
-          call.duration || 0,
+          escapeCSV(classification.toUpperCase()),
+          escapeCSV(sentiment),
+          escapeCSV(serviceReq),
+          escapeCSV(leadDetailsStr),
+          escapeCSV(durFormatted),
+          durSec,
+          escapeCSV(keyPointsStr),
+          escapeCSV(nextActionsStr),
+          escapeCSV(call.aiSummary || ""),
           escapeCSV(call.startedAt ? new Date(call.startedAt).toISOString() : ""),
           escapeCSV(call.endedAt ? new Date(call.endedAt).toISOString() : ""),
-          escapeCSV(call.transcript || ""),
-          escapeCSV(call.aiSummary || ""),
-          ""
+          escapeCSV(call.recordingUrl || "")
         ];
         
         csvRows.push(row.join(","));
