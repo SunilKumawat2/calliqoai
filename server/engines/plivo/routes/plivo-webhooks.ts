@@ -18,7 +18,7 @@ import { CallSummarizationService } from '../services/call-summarization.service
 import { AudioBridgeService } from '../services/audio-bridge.service';
 import { db } from '../../../db';
 import { plivoCalls, plivoPhoneNumbers, agents, users, flowExecutions, calls } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, or, sql } from 'drizzle-orm';
 import { OpenAIPoolService } from '../services/openai-pool.service';
 import type { PlivoCallStatus } from '../types';
 import { logger } from '../../../utils/logger';
