@@ -21,6 +21,10 @@ export interface CallInsights {
   location?: string | null;
   appointmentTiming?: string | null;
   leadDetails?: Record<string, string>;
+  followUpRequested?: boolean;
+  followUpPreferredTime?: string | null;
+  followUpScheduledIso?: string | null;
+  followUpReason?: string | null;
   keyPoints?: string[];
   nextActions?: string[];
 }
@@ -31,6 +35,10 @@ export interface CallMetadata {
   toNumber?: string;
   agentName?: string;
   duration?: number;
+  userId?: string;
+  campaignId?: string;
+  contactId?: string;
+  agentId?: string;
 }
 
 const SYSTEM_PROMPT = `You are an expert multi-industry AI conversation analyst.
@@ -45,6 +53,9 @@ Respond ONLY with valid JSON in this exact structure:
     "<Specific Field Name 1>": "<Extracted Value 1>",
     "<Specific Field Name 2>": "<Extracted Value 2>"
   },
+  "followUpRequested": true | false,
+  "followUpPreferredTime": "Specific preferred callback time requested by customer (e.g. 'Today after 5:00 PM', 'Tomorrow 10:00 AM', 'In 2 hours', 'Shaam 6 baje', 'Kal dopahar 2 baje') or null",
+  "followUpReason": "Reason for follow-up (e.g. 'User is busy driving / requested callback at 5 PM') or null",
   "sentiment": "positive" | "neutral" | "negative",
   "classification": "hot" | "warm" | "cold" | "lost",
   "keyPoints": [
@@ -58,6 +69,11 @@ Respond ONLY with valid JSON in this exact structure:
     "Action item 2"
   ]
 }
+
+Guidelines for "followUpRequested" & "followUpPreferredTime":
+- Set "followUpRequested": true if the customer asks to call back later, specifies a time, says they are busy/driving/at office/in meeting, or asks for a follow-up call.
+- Extract the exact requested time phrase in "followUpPreferredTime" (e.g. "After 5 PM today", "Kal subah 10 baje", "Tomorrow morning", "After 2 hours").
+- If no follow-up was requested, set "followUpRequested": false and "followUpPreferredTime": null.
 
 Guidelines for "leadDetails":
 Extract ALL relevant business fields discussed during the conversation as clean key-value pairs with proper capitalization.
@@ -171,11 +187,34 @@ export class CallInsightsService {
       }
       insights.keyPoints = keyPoints;
 
+      // Auto-schedule follow-up call if requested by caller
+      if (insights.followUpRequested && metadata.callId) {
+        try {
+          const { FollowUpSchedulerService } = await import('./follow-up-scheduler.service');
+          await FollowUpSchedulerService.scheduleFromInsights({
+            callId: metadata.callId,
+            userId: metadata.userId,
+            agentId: metadata.agentId,
+            campaignId: metadata.campaignId,
+            contactId: metadata.contactId,
+            phoneNumber: metadata.fromNumber,
+            customerName: insights.customerName,
+            preferredTimeText: insights.followUpPreferredTime,
+            isoHint: insights.followUpScheduledIso,
+            contextNote: insights.followUpReason || insights.aiSummary,
+          });
+        } catch (fErr: any) {
+          logger.warn(`Auto-schedule follow-up error for call ${metadata.callId}: ${fErr.message}`, undefined, source);
+        }
+      }
+
       logger.info(`Successfully analyzed call ${metadata.callId}`, {
         sentiment: insights.sentiment,
         classification: insights.classification,
         customerName: insights.customerName,
-        phone: metadata.fromNumber
+        phone: metadata.fromNumber,
+        followUpRequested: insights.followUpRequested,
+        preferredTime: insights.followUpPreferredTime
       }, source);
 
       return insights;

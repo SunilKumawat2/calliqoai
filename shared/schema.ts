@@ -3147,6 +3147,35 @@ export const insertPhoneReleaseRetryQueueSchema = createInsertSchema(phoneReleas
   createdAt: true,
   updatedAt: true,
 });
-export type InsertPhoneReleaseRetryQueue = z.infer<typeof insertPhoneReleaseRetryQueueSchema>;
-export type PhoneReleaseRetryQueue = typeof phoneReleaseRetryQueue.$inferSelect;
-export type PhoneReleaseRetryQueueEntry = typeof phoneReleaseRetryQueue.$inferSelect;
+export const scheduledFollowUps = pgTable("scheduled_follow_ups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  campaignId: varchar("campaign_id"),
+  contactId: varchar("contact_id"),
+  callId: varchar("call_id"),
+  agentId: varchar("agent_id"),
+  phoneNumber: text("phone_number").notNull(),
+  customerName: text("customer_name"),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  preferredTimeText: text("preferred_time_text"),
+  contextNote: text("context_note"),
+  status: text("status").notNull().default("pending"), // 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'failed'
+  followUpCallId: varchar("follow_up_call_id"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  scheduledFollowUpsScheduledAtIdx: index("scheduled_follow_ups_scheduled_at_idx").on(table.scheduledAt),
+  scheduledFollowUpsStatusIdx: index("scheduled_follow_ups_status_idx").on(table.status),
+  scheduledFollowUpsUserIdIdx: index("scheduled_follow_ups_user_id_idx").on(table.userId),
+}));
+
+export const insertScheduledFollowUpSchema = createInsertSchema(scheduledFollowUps).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertScheduledFollowUp = z.infer<typeof insertScheduledFollowUpSchema>;
+export type ScheduledFollowUp = typeof scheduledFollowUps.$inferSelect;
+

@@ -132,6 +132,15 @@ export default function CampaignDetail() {
     },
   });
 
+  const { data: campaignFollowUps = [] } = useQuery<any[]>({
+    queryKey: [`/api/followups?campaignId=${id}`],
+    enabled: !!id,
+    queryFn: async () => {
+      const res = await apiRequest('GET', `/api/followups?campaignId=${id}`);
+      return res.json();
+    }
+  });
+
   const pauseMutation = useMutation({
     mutationFn: async () => apiRequest("POST", `/api/campaigns/${id}/pause`),
     onSuccess: () => {
@@ -1154,13 +1163,21 @@ export default function CampaignDetail() {
                       const serviceReq = meta.serviceOrRequirement || meta.requirement || meta.propertyType;
                       const leadDetails = meta.leadDetails && typeof meta.leadDetails === 'object' ? meta.leadDetails : null;
 
+                      const followUp = campaignFollowUps.find((fu: any) => fu.callId === call.id || (contact && fu.contactId === contact.id) || (contact && fu.phoneNumber === contact.phone) || fu.phoneNumber === call.phoneNumber);
+
                       return (
                         <TableRow key={call.id} data-testid={`row-lead-${call.id}`} className="hover:bg-muted/30 transition-colors">
                           <TableCell className="font-medium">
-                            <div className="flex flex-col">
+                            <div className="flex flex-col gap-1">
                               <span className="font-medium text-foreground">{customerName}</span>
                               {contact?.email && (
                                 <span className="text-xs text-muted-foreground">{contact.email}</span>
+                              )}
+                              {followUp && (
+                                <Badge className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 text-[10px] font-medium w-fit gap-1">
+                                  <span>⏰ Follow-up:</span>
+                                  <strong>{followUp.preferredTimeText || (followUp.status === 'completed' ? 'Completed' : 'Scheduled')}</strong>
+                                </Badge>
                               )}
                             </div>
                           </TableCell>

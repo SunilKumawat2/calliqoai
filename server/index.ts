@@ -52,6 +52,7 @@ import { resyncSipAgentTransferTools, resyncSipTrunkConfigs, resyncAppointmentWe
 import { CRMLeadProcessor } from "./engines/crm/lead-processor.service";
 import { deductCallCredits } from "./services/credit-service";
 import { PlivoPhoneService } from "./engines/plivo/services/plivo-phone.service";
+import { FollowUpSchedulerService } from "./services/follow-up-scheduler.service";
 
 // Register CRMLeadProcessor globally so that dynamically loaded plugins can access it
 (global as any).CRMLeadProcessor = CRMLeadProcessor;
@@ -647,6 +648,9 @@ app.use((req, res, next) => {
 
       // Start daily un-billed call detection sweep across all telephony engines.
       startCreditBackfillMonitor();
+
+      // Start Automated AI Follow-Up Calling Service
+      FollowUpSchedulerService.startScheduler();
 
       // Start worker that retries failed provider phone-number releases
       startPhoneReleaseRetryWorker();

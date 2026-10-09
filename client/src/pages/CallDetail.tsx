@@ -25,6 +25,8 @@ import { ArrowLeft, ArrowRight, Play, Pause, Download, Loader2, Phone, Clock, Ca
 import { format } from "date-fns";
 import { AuthStorage } from "@/lib/auth-storage";
 import { formatSipEndpoint } from "@/lib/formatters";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 interface Contact {
   id: string;
@@ -95,6 +97,46 @@ export default function CallDetail() {
     }
   });
   const systemTimezone = publicSettings?.system_timezone || "UTC";
+
+  const { toast } = useToast();
+  const [triggeringFollowUpId, setTriggeringFollowUpId] = useState<string | null>(null);
+
+  const { data: followUps = [], refetch: refetchFollowUps } = useQuery<any[]>({
+    queryKey: [`/api/followups?callId=${id}`],
+    enabled: !!id,
+    queryFn: async () => {
+      const res = await apiRequest('GET', `/api/followups?callId=${id}`);
+      return res.json();
+    }
+  });
+
+  const handleCallNow = async (followUpId: string) => {
+    try {
+      setTriggeringFollowUpId(followUpId);
+      const res = await apiRequest('POST', `/api/followups/${followUpId}/call-now`);
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: "Follow-Up Call Initiated", description: "The automated AI follow-up call is now in progress." });
+        refetchFollowUps();
+      } else {
+        toast({ title: "Call Failed", description: data.error || "Failed to trigger call", variant: "destructive" });
+      }
+    } catch (e: any) {
+      toast({ title: "Call Error", description: e.message, variant: "destructive" });
+    } finally {
+      setTriggeringFollowUpId(null);
+    }
+  };
+
+  const handleCancelFollowUp = async (followUpId: string) => {
+    try {
+      await apiRequest('DELETE', `/api/followups/${followUpId}`);
+      toast({ title: "Follow-Up Cancelled", description: "The scheduled follow-up call has been cancelled." });
+      refetchFollowUps();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  };
 
   const formatCallDate = (dateString: string | null) => {
     if (!dateString) return "";
@@ -1021,6 +1063,125 @@ export default function CallDetail() {
                   </ul>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Automated Follow-Up Calls Card */}
+          {followUps && followUps.length > 0 && (
+            <div className="space-y-3">
+              {followUps.map((fu: any) => {
+                const isPending = fu.status === 'pending';
+                const isInProgress = fu.status === 'in_progress';
+                const isCompleted = fu.status === 'completed';
+                const isCancelled = fu.status === 'cancelled';
+                const isFailed = fu.status === 'failed';
+
+                return (
+                  <div 
+                    key={fu.id}
+                    className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-purple-500/10 border border-amber-500/30 p-5 shadow-lg shadow-amber-500/5"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xl">⏰</span>
+                          <h3 className="text-base font-bold text-foreground">Automated Follow-Up Call</h3>
+                          {isPending && (
+                            <Badge className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                              ⏳ Scheduled Pending
+                            </Badge>
+                          )}
+                          {isInProgress && (
+                            <Badge className="bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 animate-pulse">
+                              📞 Calling Now...
+                            </Badge>
+                          )}
+                          {isCompleted && (
+                            <Badge className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                              ✅ Completed
+                            </Badge>
+                          )}
+                          {isCancelled && (
+                            <Badge className="bg-slate-500/20 text-slate-400 border border-slate-500/30">
+                              Cancelled
+                            </Badge>
+                          )}
+                          {isFailed && (
+                            <Badge className="bg-red-500/20 text-red-500 border border-red-500/30">
+                              ⚠️ Failed ({fu.errorMessage || 'Unknown error'})
+                            </Badge>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+                          <span className="font-medium text-foreground">
+                            📅 Scheduled At: <span className="text-amber-600 dark:text-amber-400 font-semibold">{formatCallDate(fu.scheduledAt)}</span>
+                          </span>
+                          {fu.preferredTimeText && (
+                            <>
+                              <span>•</span>
+                              <span>Customer Request: <strong className="text-foreground">"{fu.preferredTimeText}"</strong></span>
+                            </>
+                          )}
+                          {fu.customerName && (
+                            <>
+                              <span>•</span>
+                              <span>Lead: <strong className="text-foreground">{fu.customerName}</strong> ({fu.phoneNumber})</span>
+                            </>
+                          )}
+                        </div>
+
+                        {fu.contextNote && (
+                          <p className="text-xs text-muted-foreground italic bg-black/10 dark:bg-white/5 rounded-lg px-3 py-1.5 inline-block">
+                            💡 Context: {fu.contextNote}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {(isPending || isFailed) && (
+                          <>
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md shadow-emerald-600/20"
+                              disabled={triggeringFollowUpId === fu.id}
+                              onClick={() => handleCallNow(fu.id)}
+                            >
+                              {triggeringFollowUpId === fu.id ? (
+                                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                              ) : (
+                                <PhoneOutgoing className="h-4 w-4 mr-1.5" />
+                              )}
+                              Call Now
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-slate-400 hover:text-red-400 hover:border-red-400/50"
+                              onClick={() => handleCancelFollowUp(fu.id)}
+                            >
+                              <XCircle className="h-4 w-4 mr-1" />
+                              Cancel
+                            </Button>
+                          </>
+                        )}
+                        {isCompleted && fu.followUpCallId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-blue-500 hover:text-blue-400"
+                            onClick={() => setLocation(`/app/calls/${fu.followUpCallId}`)}
+                          >
+                            <ArrowRight className="h-4 w-4 mr-1" />
+                            View Follow-Up Call
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
