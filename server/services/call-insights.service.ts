@@ -14,6 +14,11 @@ export interface CallInsights {
   aiSummary: string;
   sentiment: 'positive' | 'neutral' | 'negative';
   classification: 'hot' | 'warm' | 'cold' | 'lost';
+  customerName?: string | null;
+  propertyType?: string | null;
+  budget?: string | null;
+  location?: string | null;
+  appointmentTiming?: string | null;
   keyPoints?: string[];
   nextActions?: string[];
 }
@@ -26,27 +31,41 @@ export interface CallMetadata {
   duration?: number;
 }
 
-const SYSTEM_PROMPT = `You are an AI call analyst. Analyze the following call transcript and provide structured insights.
+const SYSTEM_PROMPT = `You are an expert AI call analyst. Analyze the call conversation transcript (Hindi, English, or Hinglish) and extract structured insights and captured lead details.
 
 Respond ONLY with valid JSON in this exact format:
 {
-  "aiSummary": "2-3 sentence summary of the call conversation and outcome",
+  "aiSummary": "2-3 sentence clear summary of the customer conversation, requirement, and outcome",
+  "customerName": "Customer name if mentioned, otherwise null",
+  "propertyType": "Property or service type (e.g. 2BHK Flat, Villa, Plot, Clinic Consultation, Puja Booking) or null",
+  "budget": "Customer budget (e.g. ₹50 Lakh) or null",
+  "location": "Preferred location or city or null",
+  "appointmentTiming": "Site visit or appointment date/time (e.g. Sunday 10:00 AM) or null",
   "sentiment": "positive" | "neutral" | "negative",
   "classification": "hot" | "warm" | "cold" | "lost",
-  "keyPoints": ["key point 1", "key point 2"],
-  "nextActions": ["recommended action 1", "recommended action 2"]
+  "keyPoints": [
+    "Customer Name: ...",
+    "Requirement: ...",
+    "Budget: ...",
+    "Location: ...",
+    "Site Visit / Timing: ..."
+  ],
+  "nextActions": [
+    "recommended action 1",
+    "recommended action 2"
+  ]
 }
 
 Classification guide:
-- "hot": Caller showed strong interest, ready to buy/proceed
+- "hot": Caller showed strong interest, requested visit/booking, ready to proceed
 - "warm": Caller showed moderate interest, needs follow-up
 - "cold": Caller showed little interest, unlikely to convert
 - "lost": Caller explicitly declined or hung up early
 
 Sentiment guide:
-- "positive": Friendly tone, expressed satisfaction
-- "neutral": Professional/matter-of-fact tone
-- "negative": Frustrated, complained, or was hostile`;
+- "positive": Friendly, cooperative tone, expressed interest
+- "neutral": Matter-of-fact tone
+- "negative": Frustrated, complained, or hostile`;
 
 export class CallInsightsService {
   private static openai: OpenAI | null = null;
