@@ -636,6 +636,23 @@ export function setupPlivoWebhooks(app: Express, baseUrl: string): void {
         return;
       }
 
+function normalizeVoiceForRealtime(voice?: string): string {
+  const valid = ['alloy', 'echo', 'shimmer', 'ash', 'coral', 'sage', 'verse', 'ballad'];
+  if (!voice) return 'shimmer';
+  const v = voice.toLowerCase().trim();
+  if (valid.includes(v)) return v;
+  return 'shimmer';
+}
+
+function normalizeModelForRealtime(model?: string): string {
+  if (!model) return 'gpt-realtime-1.5';
+  const m = model.toLowerCase().trim();
+  if (m.includes('mini') || m === 'gpt-4o-mini') {
+    return 'gpt-realtime-mini';
+  }
+  return 'gpt-realtime-1.5';
+}
+
       // Create incoming call record
       let callRecord: any = null;
       try {
@@ -648,8 +665,8 @@ export function setupPlivoWebhooks(app: Express, baseUrl: string): void {
           userId: agent.userId,
           openaiCredentialId: openaiCredential.id,
           plivoCredentialId: phoneNumber.plivoCredentialId || undefined,
-          voice: agent.elevenLabsVoiceId || agent.openaiVoice || agent.tts_voice || 'shimmer',
-          model: agent.llmModel || agent.openaiModel || 'gpt-4o-mini',
+          voice: normalizeVoiceForRealtime(agent.openaiVoice || agent.tts_voice || agent.elevenLabsVoiceId),
+          model: normalizeModelForRealtime(agent.llmModel || agent.openaiModel),
           systemPrompt: agent.systemPrompt,
           firstMessage: agent.firstMessage,
         });

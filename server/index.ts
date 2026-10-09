@@ -51,6 +51,7 @@ import { sql } from "drizzle-orm";
 import { resyncSipAgentTransferTools, resyncSipTrunkConfigs, resyncAppointmentWebhookUrls, resyncFormWebhookUrls, resyncMessagingWebhookUrls } from "./services/sip-transfer-resync";
 import { CRMLeadProcessor } from "./engines/crm/lead-processor.service";
 import { deductCallCredits } from "./services/credit-service";
+import { PlivoPhoneService } from "./engines/plivo/services/plivo-phone.service";
 
 // Register CRMLeadProcessor globally so that dynamically loaded plugins can access it
 (global as any).CRMLeadProcessor = CRMLeadProcessor;
@@ -638,6 +639,11 @@ app.use((req, res, next) => {
       
       // Start phone number billing cron job
       startPhoneBillingCron();
+
+      // Ensure all active Plivo phone numbers are bound to Plivo Voice Application
+      PlivoPhoneService.syncAllActivePhoneNumbers().catch((err: any) => {
+        console.warn('⚠️ [PlivoPhone] Startup sync warning:', err.message);
+      });
 
       // Start daily un-billed call detection sweep across all telephony engines.
       startCreditBackfillMonitor();

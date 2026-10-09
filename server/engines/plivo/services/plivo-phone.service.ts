@@ -487,16 +487,70 @@ export class PlivoPhoneService {
   }
 
   /**
-   * Configure webhook URLs for a phone number (for incoming calls)
-   * 
-   * Plivo requires creating an Application with webhook URLs, then
-   * assigning that application's app_id to the phone number.
-   * 
-   * SDK methods:
-   * - client.applications.create(params) - creates app with answer_url, etc.
-   * - client.numbers.update(number, { app_id }) - assigns app to number
+  /**
+   * Get or create global voice application in Plivo
    */
-  static async configureWebhooks(phoneNumberId: string, baseUrl: string): Promise<void> {
+  static async getOrCreateGlobalVoiceApp(client: plivo.Client, customBaseUrl?: string): Promise<string> {
+    const domain = customBaseUrl || process.env.APP_URL || 'https://calliqoai.com';
+    const baseUrl = domain.startsWith('http') ? domain.replace(/\/+$/, '') : `https://${domain}`;
+    const answerUrl = `${baseUrl}/api/plivo/incoming`;
+    const hangupUrl = `${baseUrl}/api/plivo/voice/status`;
+    const appName = 'CallIQoAI_Voice_App';
+
+    try {
+      const appsResponse = await client.applications.list({ limit: 100 }) as unknown as PlivoApplicationListResponse;
+      const appsList: PlivoApplication[] = Array.isArray(appsResponse) ? (appsResponse as unknown as PlivoApplication[]) : (appsResponse?.objects || []);
+      const existingApp = appsList.find((app: PlivoApplication) => 
+        app.app_name === appName || app.appName === appName
+      );
+
+      if (existingApp) {
+        const appId = existingApp.appId || existingApp.app_id || '';
+        const currentAnswer = (existingApp as any).answer_url || existingApp.answerUrl;
+        if (currentAnswer !== answerUrl) {
+          try {
+            await client.applications.update(appId, {
+              answerUrl,
+              hangupUrl,
+              answerMethod: 'POST',
+              hangupMethod: 'POST',
+              fallbackAnswerUrl: answerUrl,
+              fallbackMethod: 'POST',
+            } as any);
+            logger.info(`Updated CallIQoAI_Voice_App URLs to ${answerUrl}`, undefined, 'PlivoPhone');
+          } catch (updateErr: any) {
+            logger.warn(`Could not update existing app: ${updateErr.message}`, undefined, 'PlivoPhone');
+          }
+        }
+        return appId;
+      }
+
+      // Create app
+      const appResponse = await client.applications.create(
+        appName,
+        {
+          answerUrl,
+          hangupUrl,
+          answerMethod: 'POST',
+          hangupMethod: 'POST',
+          fallbackAnswerUrl: answerUrl,
+          fallbackMethod: 'POST',
+        } as any
+      ) as unknown as { appId?: string; app_id?: string };
+
+      const newAppId = appResponse.appId || appResponse.app_id || '';
+      logger.info(`Created new CallIQoAI_Voice_App with ID ${newAppId}`, undefined, 'PlivoPhone');
+      return newAppId;
+    } catch (e: any) {
+      logger.error(`Error ensuring global voice app: ${e.message}`, e, 'PlivoPhone');
+      throw e;
+    }
+  }
+
+  /**
+   * Configure webhook URLs for a phone number (for incoming calls)
+   */
+  static async configureWebhooks(phoneNumberId: string, baseUrl?: string): Promise<void> {
     logger.info(`Configuring webhooks for ${phoneNumberId}`, undefined, 'PlivoPhone');
 
     const [phoneRecord] = await db
@@ -512,91 +566,14 @@ export class PlivoPhoneService {
     const { client } = await this.getPlivoClient(phoneRecord.plivoCredentialId || undefined);
 
     try {
-      const answerUrl = `${baseUrl}/api/plivo/incoming`;
-      const hangupUrl = `${baseUrl}/api/plivo/voice/status`;
-
-      const appNameSettingResult = await db.select().from(globalSettings).where(eq(globalSettings.key, 'app_name')).limit(1);
-      const appNameRaw = appNameSettingResult[0]?.value;
-      const platformName = (typeof appNameRaw === 'string' ? appNameRaw.trim() : '') || 'platform';
-      const appName = `${platformName}-${phoneRecord.phoneNumber}`;
-
-      // Create or update a Plivo Application with the webhook URLs
-      let appId: string;
-      
-      // First, try to find and delete any existing app with this name
-      // This ensures a clean configuration
-      try {
-        const appsResponse = await client.applications.list({ limit: 100 }) as unknown as PlivoApplicationListResponse;
-        const appsList: PlivoApplication[] = Array.isArray(appsResponse) ? appsResponse as unknown as PlivoApplication[] : (appsResponse?.objects || []);
-        const existingApp = appsList.find((app: PlivoApplication) => 
-          app.app_name === appName || app.appName === appName
-        );
-        
-        if (existingApp) {
-          const existingAppId = existingApp.appId || existingApp.app_id;
-          logger.info(`Deleting existing application ${existingAppId}`, undefined, 'PlivoPhone');
-          try {
-            await client.applications.delete(existingAppId!);
-            logger.info(`Deleted old application ${existingAppId}`, undefined, 'PlivoPhone');
-          } catch (deleteError: any) {
-            logger.info(`Could not delete app (may be in use): ${deleteError.message}`, undefined, 'PlivoPhone');
-          }
-        }
-      } catch (listError: any) {
-        logger.info(`Could not list apps: ${listError.message}`, undefined, 'PlivoPhone');
-      }
-
-      // Now create a fresh application
-      try {
-        const appResponse = await client.applications.create(
-          appName, // app_name
-          {
-            answerUrl,
-            answerMethod: 'POST',
-            hangupUrl,
-            hangupMethod: 'POST',
-            fallbackAnswerUrl: answerUrl,
-            fallbackMethod: 'POST',
-          }
-        ) as unknown as { appId?: string; app_id?: string };
-        appId = appResponse.appId || appResponse.app_id || '';
-        logger.info(`Created new application ${appId} for ${phoneRecord.phoneNumber}`, undefined, 'PlivoPhone');
-      } catch (createError: any) {
-        // If creation still fails (app not deleted), find and update existing
-        logger.info(`Could not create app, finding existing: ${createError.message}`, undefined, 'PlivoPhone');
-        
-        const appsResponse = await client.applications.list({ limit: 100 }) as unknown as PlivoApplicationListResponse;
-        const appsList: PlivoApplication[] = Array.isArray(appsResponse) ? appsResponse as unknown as PlivoApplication[] : (appsResponse?.objects || []);
-        const existingApp = appsList.find((app: PlivoApplication) => 
-          app.app_name === appName || app.appName === appName
-        );
-        
-        if (existingApp) {
-          appId = existingApp.appId || existingApp.app_id || '';
-          logger.info(`Using existing application ${appId}`, undefined, 'PlivoPhone');
-          
-          // Update the existing app with new URLs
-          await client.applications.update(appId, {
-            answerUrl,
-            answerMethod: 'POST',
-            hangupUrl,
-            hangupMethod: 'POST',
-          } as any);
-          logger.info(`Updated application URLs`, undefined, 'PlivoPhone');
-        } else {
-          throw createError;
-        }
-      }
-
-      // Assign the application to the phone number
-      // NOTE: Plivo SDK expects snake_case 'app_id', not camelCase 'appId'
+      const appId = await this.getOrCreateGlobalVoiceApp(client, baseUrl);
       logger.info(`Assigning app ${appId} to number ${phoneRecord.plivoNumberId}`, undefined, 'PlivoPhone');
+
       const updateResult = await client.numbers.update(phoneRecord.plivoNumberId, {
-        app_id: appId,
         appId: appId,
+        app_id: appId,
       } as any);
       logger.info(`Number update result`, updateResult, 'PlivoPhone');
-
       logger.info(`Webhooks configured for ${phoneRecord.phoneNumber} via app ${appId}`, undefined, 'PlivoPhone');
     } catch (error: any) {
       logger.error('Webhook configuration failed', error, 'PlivoPhone');
@@ -607,7 +584,7 @@ export class PlivoPhoneService {
   /**
    * Assign an incoming agent to a phone number
    */
-  static async assignAgent(phoneNumberId: string, agentId: string): Promise<PlivoPhoneNumberRecord> {
+  static async assignAgent(phoneNumberId: string, agentId: string, baseUrl?: string): Promise<PlivoPhoneNumberRecord> {
     logger.info(`Assigning agent ${agentId} to number ${phoneNumberId}`, undefined, 'PlivoPhone');
 
     const [updatedNumber] = await db
@@ -623,7 +600,37 @@ export class PlivoPhoneService {
       throw new Error('Phone number not found');
     }
 
+    // Automatically bind the phone number to the voice app so incoming calls immediately work
+    try {
+      await this.configureWebhooks(phoneNumberId, baseUrl);
+    } catch (whErr: any) {
+      logger.warn(`Could not automatically configure webhooks on assign: ${whErr.message}`, undefined, 'PlivoPhone');
+    }
+
     return updatedNumber;
+  }
+
+  /**
+   * Sync all active Plivo phone numbers with the voice application
+   */
+  static async syncAllActivePhoneNumbers(baseUrl?: string): Promise<void> {
+    try {
+      const activeNumbers = await db
+        .select()
+        .from(plivoPhoneNumbers)
+        .where(eq(plivoPhoneNumbers.status, 'active'));
+
+      logger.info(`[PlivoPhone] Ensuring webhooks for ${activeNumbers.length} active Plivo numbers...`, undefined, 'PlivoPhone');
+      for (const num of activeNumbers) {
+        try {
+          await this.configureWebhooks(num.id, baseUrl);
+        } catch (err: any) {
+          logger.warn(`[PlivoPhone] Could not bind ${num.phoneNumber}: ${err.message}`, undefined, 'PlivoPhone');
+        }
+      }
+    } catch (error: any) {
+      logger.error(`[PlivoPhone] syncAllActivePhoneNumbers failed: ${error.message}`, error, 'PlivoPhone');
+    }
   }
 
   /**
