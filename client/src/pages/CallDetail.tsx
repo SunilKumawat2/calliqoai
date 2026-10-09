@@ -14,7 +14,7 @@
  * Respect the author's rights and Envato licensing terms.
  * ============================================================
  */
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
@@ -75,8 +75,10 @@ interface Call {
 export default function CallDetail() {
   const { id } = useParams();
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [recordingBlobUrl, setRecordingBlobUrl] = useState<string | null>(null);
   const [isRecordingLoading, setIsRecordingLoading] = useState<boolean>(false);
@@ -346,21 +348,22 @@ export default function CallDetail() {
     ? formatSipEndpoint(call.toNumber, call.engine) || "Your number"
     : formatSipEndpoint(call.fromNumber, call.engine) || "Your number";
   
-  const queryClient = (window as any).__queryClient;
-  const [isReanalyzing, setIsReanalyzing] = useState(false);
-
   const handleReanalyze = async () => {
+    if (!call?.id) return;
     setIsReanalyzing(true);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const authHeader = AuthStorage.getAuthHeader();
+      if (authHeader) headers['Authorization'] = authHeader;
+
       const res = await fetch(`/api/calls/${call.id}/reanalyze`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${AuthStorage.getAccessToken()}`
-        }
+        headers,
+        credentials: 'include'
       });
       if (res.ok) {
-        window.location.reload();
+        await queryClient.invalidateQueries({ queryKey: [`/api/calls/${id}`] });
+        await queryClient.invalidateQueries({ queryKey: ["/api/calls"] });
       }
     } catch (e) {
       console.error('Failed to re-analyze call:', e);
