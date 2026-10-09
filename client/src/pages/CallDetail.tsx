@@ -387,6 +387,19 @@ export default function CallDetail() {
       }
     });
 
+    const finalKeyPoints = [...rawKeyPoints];
+    if (name && !finalKeyPoints.some(kp => kp.toLowerCase().includes('customer name') || kp.toLowerCase().startsWith('name:'))) {
+      finalKeyPoints.unshift(`Customer Name: ${name}`);
+    }
+    if (phone && !finalKeyPoints.some(kp => kp.toLowerCase().includes('phone') || kp.toLowerCase().includes('number:'))) {
+      const nameIdx = finalKeyPoints.findIndex(kp => kp.toLowerCase().includes('customer name') || kp.toLowerCase().startsWith('name:'));
+      if (nameIdx !== -1) {
+        finalKeyPoints.splice(nameIdx + 1, 0, `Phone Number: ${phone}`);
+      } else {
+        finalKeyPoints.unshift(`Phone Number: ${phone}`);
+      }
+    }
+
     const hasLeadData = Boolean(name || propertyType || budget || location || siteVisit);
 
     return {
@@ -397,7 +410,7 @@ export default function CallDetail() {
       propertyType,
       siteVisit,
       hasLeadData,
-      keyPoints: rawKeyPoints,
+      keyPoints: finalKeyPoints,
       nextActions: rawNextActions
     };
   })();

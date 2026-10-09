@@ -31,12 +31,12 @@ export interface CallMetadata {
   duration?: number;
 }
 
-const SYSTEM_PROMPT = `You are an expert AI call analyst. Analyze the call conversation transcript (Hindi, English, or Hinglish) and extract structured insights and captured lead details.
+const SYSTEM_PROMPT = `You are an expert AI call analyst. Analyze the call conversation transcript (Hindi, English, or Hinglish) and extract structured insights and captured lead details dynamically.
 
 Respond ONLY with valid JSON in this exact format:
 {
   "aiSummary": "2-3 sentence clear summary of the customer conversation, requirement, and outcome",
-  "customerName": "Customer name if mentioned, otherwise null",
+  "customerName": "Customer name if mentioned in transcript, otherwise null",
   "propertyType": "Property or service type (e.g. 2BHK Flat, Villa, Plot, Clinic Consultation, Puja Booking) or null",
   "budget": "Customer budget (e.g. ₹50 Lakh) or null",
   "location": "Preferred location or city or null",
@@ -44,7 +44,8 @@ Respond ONLY with valid JSON in this exact format:
   "sentiment": "positive" | "neutral" | "negative",
   "classification": "hot" | "warm" | "cold" | "lost",
   "keyPoints": [
-    "Customer Name: ...",
+    "Customer Name: <Name if mentioned>",
+    "Phone Number: <Caller phone number>",
     "Requirement: ...",
     "Budget: ...",
     "Location: ...",
@@ -54,7 +55,7 @@ Respond ONLY with valid JSON in this exact format:
     "recommended action 1",
     "recommended action 2"
   ]
-}
+}`;
 
 Classification guide:
 - "hot": Caller showed strong interest, requested visit/booking, ready to proceed
@@ -134,9 +135,26 @@ export class CallInsightsService {
         return null;
       }
 
+      // Dynamically guarantee Customer Name and Phone Number in keyPoints
+      const keyPoints = Array.isArray(insights.keyPoints) ? [...insights.keyPoints] : [];
+      if (insights.customerName && !keyPoints.some(kp => kp.toLowerCase().includes('customer name') || kp.toLowerCase().startsWith('name:'))) {
+        keyPoints.unshift(`Customer Name: ${insights.customerName}`);
+      }
+      if (metadata.fromNumber && !keyPoints.some(kp => kp.toLowerCase().includes('phone') || kp.toLowerCase().includes('number:'))) {
+        const nameIdx = keyPoints.findIndex(kp => kp.toLowerCase().includes('customer name') || kp.toLowerCase().startsWith('name:'));
+        if (nameIdx !== -1) {
+          keyPoints.splice(nameIdx + 1, 0, `Phone Number: ${metadata.fromNumber}`);
+        } else {
+          keyPoints.unshift(`Phone Number: ${metadata.fromNumber}`);
+        }
+      }
+      insights.keyPoints = keyPoints;
+
       logger.info(`Successfully analyzed call ${metadata.callId}`, {
         sentiment: insights.sentiment,
-        classification: insights.classification
+        classification: insights.classification,
+        customerName: insights.customerName,
+        phone: metadata.fromNumber
       }, source);
 
       return insights;
