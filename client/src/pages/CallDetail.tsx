@@ -387,6 +387,51 @@ export default function CallDetail() {
       }
     });
 
+    // Intelligent fallback extraction from text and summary if structured keys were missing
+    const combinedText = [...rawKeyPoints, call?.aiSummary || ''].join('. ');
+    
+    if (!budget) {
+      const budgetMatch = combinedText.match(/(?:budget\s+(?:is|of|around)?\s*[:]?\s*(?:₹|rs\.?|inr)?\s*[\d,.]+\s*(?:lakh|crore|cr|k|lac|lacs|lakhs)?)/i);
+      if (budgetMatch) {
+        budget = budgetMatch[0].replace(/^budget\s+(?:is|of|around)?\s*[:]?\s*/i, '').trim();
+      }
+    }
+
+    if (!propertyType) {
+      if (/\bvilla\b/i.test(combinedText)) propertyType = 'Villa';
+      else if (/3\s*bhk/i.test(combinedText)) propertyType = '3 BHK Flat';
+      else if (/2\s*bhk/i.test(combinedText)) propertyType = '2 BHK Flat';
+      else if (/1\s*bhk/i.test(combinedText)) propertyType = '1 BHK Flat';
+      else if (/\bplot\b|\bland\b/i.test(combinedText)) propertyType = 'Plot / Land';
+      else if (/commercial/i.test(combinedText)) propertyType = 'Commercial Space';
+      else if (/\bflat\b|\bapartment\b/i.test(combinedText)) propertyType = 'Apartment / Flat';
+    }
+
+    if (!location) {
+      if (/flexible\s+(?:with|in)?\s+location/i.test(combinedText) || /location\s+is\s+flexible/i.test(combinedText)) {
+        location = 'Flexible / Open';
+      } else {
+        const locMatch = combinedText.match(/(?:location\s+(?:is|in|at)?\s*[:]?\s*([A-Za-z0-9\s,]+?)(?:\.|$|with|and))/i);
+        if (locMatch && locMatch[1]) {
+          location = locMatch[1].trim();
+        }
+      }
+    }
+
+    if (!siteVisit) {
+      const visitMatch = combinedText.match(/(?:site\s*visit|appointment|visit)\s+(?:scheduled|booked|set)?\s*(?:for|at|on)\s+([A-Za-z0-9\s,:]+?)(?:\.|$)/i);
+      if (visitMatch && visitMatch[1]) {
+        siteVisit = visitMatch[1].trim();
+      }
+    }
+
+    if (!name) {
+      const nameMatch = combinedText.match(/(?:customer|caller|client)(?:,\s*|\s+is\s+|\s*:\s*)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
+      if (nameMatch && nameMatch[1] && !['is', 'the', 'looking', 'interested', 'flexible', 'customer'].includes(nameMatch[1].toLowerCase())) {
+        name = nameMatch[1].trim();
+      }
+    }
+
     const finalKeyPoints = [...rawKeyPoints];
     if (name && !finalKeyPoints.some(kp => kp.toLowerCase().includes('customer name') || kp.toLowerCase().startsWith('name:'))) {
       finalKeyPoints.unshift(`Customer Name: ${name}`);
