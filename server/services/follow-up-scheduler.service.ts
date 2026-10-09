@@ -8,7 +8,7 @@
 
 import { db } from '../db';
 import { eq, and, lte, desc, sql } from 'drizzle-orm';
-import { scheduledFollowUps, calls, plivoCalls, agents, plivoPhoneNumbers, users, type ScheduledFollowUp } from '../../shared/schema';
+import { scheduledFollowUps, calls, plivoCalls, agents, plivoPhoneNumbers, users, contacts, type ScheduledFollowUp } from '../../shared/schema';
 import { logger } from '../utils/logger';
 import { PlivoCallService } from '../engines/plivo/services/plivo-call.service';
 import type { OpenAIVoice, OpenAIRealtimeModel } from '../engines/plivo/types/plivo.types';
@@ -187,14 +187,10 @@ export class FollowUpSchedulerService {
     contextNote?: string | null;
   }): Promise<ScheduledFollowUp | null> {
     try {
-      let userId = params.userId;
-      let phoneNumber = params.phoneNumber;
-      let agentId = params.agentId;
-      let campaignId = params.campaignId;
-      let contactId = params.contactId;
+      let customerName = params.customerName;
 
-      // If missing details, look up call in DB
-      if ((!userId || !phoneNumber) && params.callId) {
+      // If missing details or to ensure correct destination phone number, look up call in DB
+      if (params.callId) {
         const [callRec] = await db
           .select()
           .from(calls)
@@ -204,24 +200,34 @@ export class FollowUpSchedulerService {
 
         if (callRec) {
           userId = userId || callRec.userId;
-          phoneNumber = phoneNumber || callRec.fromNumber || callRec.phoneNumber;
           agentId = agentId || callRec.agentId;
           campaignId = campaignId || callRec.campaignId;
           contactId = contactId || callRec.contactId;
-        } else {
-          const [plivoRec] = await db
-            .select()
-            .from(plivoCalls)
-            .where(eq(plivoCalls.id, params.callId))
-            .limit(1)
-            .catch(() => []);
 
-          if (plivoRec) {
-            userId = userId || plivoRec.userId;
-            phoneNumber = phoneNumber || plivoRec.fromNumber || plivoRec.toNumber;
-            agentId = agentId || plivoRec.agentId;
-            campaignId = campaignId || plivoRec.campaignId;
-            contactId = contactId || plivoRec.contactId;
+          // For outbound campaign calls, the customer is the toNumber, not the fromNumber!
+          const isIncoming = callRec.callDirection === 'incoming';
+          if (isIncoming) {
+            phoneNumber = callRec.fromNumber || callRec.phoneNumber || phoneNumber;
+          } else {
+            phoneNumber = callRec.toNumber || callRec.phoneNumber || phoneNumber;
+          }
+        }
+      }
+
+      // If contactId is present, verify customer name and phone
+      if (contactId) {
+        const [contactRec] = await db
+          .select()
+          .from(contacts)
+          .where(eq(contacts.id, contactId))
+          .limit(1)
+          .catch(() => []);
+
+        if (contactRec) {
+          if (contactRec.phone) phoneNumber = contactRec.phone;
+          const fullName = [contactRec.firstName, contactRec.lastName].filter(Boolean).join(' ').trim();
+          if (fullName && fullName.toLowerCase() !== 'unknown') {
+            customerName = customerName || fullName;
           }
         }
       }
@@ -239,7 +245,7 @@ export class FollowUpSchedulerService {
         callId: params.callId,
         agentId,
         phoneNumber,
-        customerName: params.customerName,
+        customerName,
         preferredTimeText: params.preferredTimeText,
         scheduledAt,
         contextNote: params.contextNote || `Customer requested a follow-up callback.`,
@@ -401,13 +407,18 @@ export class FollowUpSchedulerService {
         return { success: false, error: 'No active AI agent found' };
       }
 
-      // Resolve Outbound Plivo Phone Number
+      // Resolve Outbound Plivo Phone Number (MUST be active!)
       let plivoPhone: any = null;
-      // 1. Try finding number assigned to user
+      // 1. Try finding active number assigned to user
       const userPhones = await db
         .select()
         .from(plivoPhoneNumbers)
-        .where(eq(plivoPhoneNumbers.userId, followUp.userId))
+        .where(
+          and(
+            eq(plivoPhoneNumbers.userId, followUp.userId),
+            eq(plivoPhoneNumbers.status, 'active')
+          )
+        )
         .limit(1);
 
       if (userPhones.length > 0) {
@@ -421,10 +432,25 @@ export class FollowUpSchedulerService {
       if (!plivoPhone) {
         await db.update(scheduledFollowUps).set({
           status: 'failed',
-          errorMessage: 'No outbound Plivo phone number configured',
+          errorMessage: 'No active outbound Plivo phone number configured on account',
           updatedAt: new Date(),
         }).where(eq(scheduledFollowUps.id, id));
-        return { success: false, error: 'No outbound phone number configured' };
+        return { success: false, error: 'No active outbound Plivo phone number configured' };
+      }
+
+      // Resolve destination number (ensure it's the customer, not the Plivo fromNumber)
+      let destinationNumber = followUp.phoneNumber;
+      if (destinationNumber === plivoPhone.phoneNumber) {
+        if (followUp.contactId) {
+          const [contact] = await db.select().from(contacts).where(eq(contacts.id, followUp.contactId)).limit(1).catch(() => []);
+          if (contact?.phone) destinationNumber = contact.phone;
+        }
+        if (destinationNumber === plivoPhone.phoneNumber && followUp.callId) {
+          const [origCall] = await db.select().from(calls).where(eq(calls.id, followUp.callId)).limit(1).catch(() => []);
+          if (origCall?.toNumber && origCall.toNumber !== plivoPhone.phoneNumber) {
+            destinationNumber = origCall.toNumber;
+          }
+        }
       }
 
       // Construct Follow-up Context Injection Prompt
@@ -434,7 +460,7 @@ export class FollowUpSchedulerService {
 
       const baseSystemPrompt = agentRecord.systemPrompt || 'You are a professional AI assistant.';
       const followUpContext = `\n\n[AUTOMATED FOLLOW-UP CALL CONTEXT]:
-You are now calling back ${customerName} at ${followUp.phoneNumber} because during a previous call they requested to be called back (${preferredTime}).
+You are now calling back ${customerName} at ${destinationNumber} because during a previous call they requested to be called back (${preferredTime}).
 Previous context / notes: "${contextNote}".
 Guidelines:
 1. Warmly greet ${customerName} and mention that you are calling back as requested earlier.
@@ -453,7 +479,7 @@ Guidelines:
       // Initiate outbound Plivo call
       const { callUuid, plivoCall } = await PlivoCallService.initiateCall({
         fromNumber: plivoPhone.phoneNumber,
-        toNumber: followUp.phoneNumber,
+        toNumber: destinationNumber,
         userId: followUp.userId,
         campaignId: followUp.campaignId || undefined,
         contactId: followUp.contactId || undefined,

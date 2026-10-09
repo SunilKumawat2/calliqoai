@@ -815,15 +815,15 @@ class DbStorage {
       db.select().from(twilioOpenaiCalls).where(eq(twilioOpenaiCalls.campaignId, campaignId)),
       db.select().from(sipCalls).where(eq(sipCalls.campaignId, campaignId))
     ]);
-    const unified = [];
+    const rawList = [];
     for (const c of elevenLabsCalls) {
-      unified.push({
+      rawList.push({
         ...c,
-        engine: "elevenlabs"
+        engine: c.engine || "elevenlabs"
       });
     }
     for (const c of plivoCallsList) {
-      unified.push({
+      rawList.push({
         id: c.id,
         contactId: c.contactId,
         userId: c.userId,
@@ -836,14 +836,17 @@ class DbStorage {
         sentiment: c.sentiment,
         transcript: c.transcript,
         aiSummary: c.aiSummary,
+        keyPoints: c.keyPoints,
+        nextActions: c.nextActions,
+        metadata: c.metadata,
         recordingUrl: c.recordingUrl,
         phoneNumber: c.toNumber,
         callDirection: c.callDirection,
-        engine: "plivo"
+        engine: "plivo-openai"
       });
     }
     for (const c of twilioOpenaiCallsList) {
-      unified.push({
+      rawList.push({
         id: c.id,
         contactId: c.contactId,
         userId: c.userId,
@@ -856,6 +859,9 @@ class DbStorage {
         sentiment: c.sentiment,
         transcript: c.transcript,
         aiSummary: c.aiSummary,
+        keyPoints: c.keyPoints,
+        nextActions: c.nextActions,
+        metadata: c.metadata,
         recordingUrl: c.recordingUrl,
         phoneNumber: c.toNumber,
         callDirection: c.callDirection,
@@ -863,7 +869,7 @@ class DbStorage {
       });
     }
     for (const c of sipCallsList) {
-      unified.push({
+      rawList.push({
         id: c.id,
         contactId: c.contactId,
         userId: c.userId,
@@ -876,12 +882,32 @@ class DbStorage {
         sentiment: c.sentiment,
         transcript: typeof c.transcript === "string" ? c.transcript : JSON.stringify(c.transcript),
         aiSummary: c.aiSummary,
+        keyPoints: c.keyPoints,
+        nextActions: c.nextActions,
+        metadata: c.metadata,
         recordingUrl: c.recordingUrl,
         phoneNumber: c.direction === "inbound" ? c.fromNumber : c.toNumber,
         callDirection: c.direction === "inbound" ? "incoming" : "outgoing",
         engine: c.engine || "sip"
       });
     }
+    const contactMap = /* @__PURE__ */ new Map();
+    for (const call of rawList) {
+      const key = call.contactId || call.id;
+      if (!contactMap.has(key)) {
+        contactMap.set(key, call);
+      } else {
+        const existing = contactMap.get(key);
+        const existingScore = (existing.classification ? 10 : 0) + (existing.duration ? 5 : 0) + (existing.transcript ? 5 : 0) + (existing.status === "completed" ? 2 : 0);
+        const currentScore = (call.classification ? 10 : 0) + (call.duration ? 5 : 0) + (call.transcript ? 5 : 0) + (call.status === "completed" ? 2 : 0);
+        if (currentScore > existingScore) {
+          contactMap.set(key, { ...existing, ...call });
+        } else {
+          contactMap.set(key, { ...call, ...existing });
+        }
+      }
+    }
+    const unified = Array.from(contactMap.values());
     return unified.sort((a, b) => {
       const timeA = a.startedAt ? new Date(a.startedAt).getTime() : 0;
       const timeB = b.startedAt ? new Date(b.startedAt).getTime() : 0;
