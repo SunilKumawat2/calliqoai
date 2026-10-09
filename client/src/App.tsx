@@ -46,6 +46,7 @@ import Agents from "@/pages/Agents";
 import TestAgents from "@/pages/TestAgents";
 import Voices from "@/pages/Voices";
 import PhoneNumbers from "@/pages/PhoneNumbers";
+import TestPhoneNumbers from "@/pages/TestPhoneNumbers";
 import AllContacts from "@/pages/AllContacts";
 import Settings from "@/pages/Settings";
 import Login from "@/pages/Login";
@@ -344,6 +345,10 @@ function UserRouter() {
                 <Route path="/app/incoming-connections" component={IncomingConnections} />
                 <Route path="/app/voices" component={Voices} />
                 <Route path="/app/phone-numbers" component={PhoneNumbers} />
+                <Route path="/app/test-phone-numbers" component={TestPhoneNumbers} />
+                <Route path="/app/test_phone_numbers" component={TestPhoneNumbers} />
+                <Route path="/test-phone-numbers" component={TestPhoneNumbers} />
+                <Route path="/test_phone_numbers" component={TestPhoneNumbers} />
                 <Route path="/app/google-callback" component={GoogleCallbackPage} />
                 <Route path="/app/tools" component={ToolsPage} />
                 <Route path="/app/flows/new" component={FlowBuilderPage} />
@@ -440,6 +445,10 @@ function TeamMemberRouter() {
                 <Route path="/app/incoming-connections" component={IncomingConnections} />
                 <Route path="/app/voices" component={Voices} />
                 <Route path="/app/phone-numbers" component={PhoneNumbers} />
+                <Route path="/app/test-phone-numbers" component={TestPhoneNumbers} />
+                <Route path="/app/test_phone_numbers" component={TestPhoneNumbers} />
+                <Route path="/test-phone-numbers" component={TestPhoneNumbers} />
+                <Route path="/test_phone_numbers" component={TestPhoneNumbers} />
                 <Route path="/app/flows/new" component={FlowBuilderPage} />
                 <Route path="/app/flows/execution">
                   <Redirect to="/app/flows?tab=execution" />

@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/popover";
 import { Search, ChevronDown, Play, Pause, Volume2, Loader2, Check } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+
 interface AccountVoice {
   voice_id: string;
   name: string;
@@ -39,6 +41,7 @@ interface VoiceSearchPickerProps {
   value: string;
   onChange: (voiceId: string) => void;
   placeholder?: string;
+  className?: string;
 }
 
 function generateAvatarColor(name: string): string {
@@ -177,6 +180,7 @@ export default function VoiceSearchPicker({
   value, 
   onChange,
   placeholder,
+  className,
 }: VoiceSearchPickerProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -268,7 +272,7 @@ export default function VoiceSearchPicker({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-between font-normal overflow-hidden"
+          className={cn("w-full justify-between font-normal overflow-hidden", className)}
           data-testid="voice-picker-trigger"
         >
           {selectedVoice ? (

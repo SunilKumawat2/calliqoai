@@ -4,6 +4,7 @@ import { Play, Pause, Square, Loader2, Volume2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AuthStorage } from "@/lib/auth-storage";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 
 interface OpenAIVoicePreviewButtonProps {
   voiceId: string | null;
@@ -11,6 +12,7 @@ interface OpenAIVoicePreviewButtonProps {
   speed?: number;
   previewText?: string;
   language?: string;
+  className?: string;
 }
 
 async function fetchOpenAIVoicePreview(
@@ -73,7 +75,6 @@ const sanitizeTextForPreview = (text: string, lang?: string): string => {
   } else {
     sanitized = sanitized.replace(/!/g, ".");
   }
-  
   return sanitized;
 };
 
@@ -83,6 +84,7 @@ export default function OpenAIVoicePreviewButton({
   speed = 1.0,
   previewText,
   language,
+  className,
 }: OpenAIVoicePreviewButtonProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -177,6 +179,7 @@ export default function OpenAIVoicePreviewButton({
         size="icon"
         onClick={audioUrl && isPlaying ? stopPlayback : quickPreview}
         disabled={!voiceId || isLoading}
+        className={cn("flex-shrink-0", className)}
         data-testid="button-openai-voice-preview"
         title={voiceName ? `Preview ${voiceName}` : "Preview voice"}
       >

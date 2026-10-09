@@ -1,9 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import {
   Plus,
   ArrowLeft,
   ArrowRight,
   Check,
+  CheckCircle2,
   Headphones,
   UserCheck,
   CalendarCheck,
@@ -31,6 +33,19 @@ import {
   ChevronLeft,
   ChevronRight,
   Cpu,
+  Trash2,
+  Search,
+  Bot,
+  ExternalLink,
+  Layers,
+  Loader2,
+  Play,
+  Volume2,
+  Sliders,
+  Edit,
+  Pencil,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
@@ -43,11 +58,72 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { queryClient, apiRequest } from '@/lib/queryClient';
+import { SUPPORTED_LANGUAGES, getLanguageLabel, isProviderSupported } from "@/lib/languages";
+import { LanguageOptionLabel } from "@/components/LanguageProviderBadges";
+import VoiceSearchPicker from '@/components/VoiceSearchPicker';
+import VoicePreviewButton from '@/components/VoicePreviewButton';
+import OpenAIVoicePreviewButton from '@/components/OpenAIVoicePreviewButton';
 import './TestAgents.css';
 
 type CallDirection = 'inbound' | 'outbound';
 type NumberType = 'international' | 'indian';
-type CallingTier = 'premium' | 'standard' | 'essential';
+export type TelephonyProviderKey =
+  | 'twilio'
+  | 'twilio_openai'
+  | 'plivo_elevenlabs'
+  | 'plivo'
+  | 'custom-voice-engine';
+
+export interface TelephonyProviderOption {
+  id: TelephonyProviderKey;
+  title: string;
+  badge?: string;
+  description: string;
+  credits: string;
+  tooltip: string;
+}
+
+export const INTERNATIONAL_TELEPHONY_OPTIONS: TelephonyProviderOption[] = [
+  {
+    id: 'twilio',
+    title: 'Premium Calling',
+    credits: '10 Credits/min',
+    tooltip:
+      'Highest-quality, natural-sounding conversations with advanced voices and faster responses. Best for sales, demos, and high-value customer calls.',
+  },
+  {
+    id: 'twilio_openai',
+    title: 'Standard Calling',
+    credits: '6 Credits/min',
+    tooltip:
+      'Balanced conversational AI voice performance, fast latency and optimized per-minute cost.',
+  },
+];
+
+export const INDIAN_TELEPHONY_OPTIONS: TelephonyProviderOption[] = [
+  {
+    id: 'plivo_elevenlabs',
+    title: 'Premium Calling',
+    credits: '10 Credits/min',
+    tooltip:
+      'Highest-quality, natural-sounding conversations with advanced voices and faster responses. Best for sales, demos, and high-value customer calls.',
+  },
+  {
+    id: 'plivo',
+    title: 'Standard Calling',
+    credits: '6 Credits/min',
+    tooltip:
+      'Balanced conversational AI voice performance, fast latency and optimized per-minute cost.',
+  },
+  {
+    id: 'custom-voice-engine',
+    title: 'Essential Calling',
+    credits: '4 Credits/min',
+    tooltip:
+      'High efficiency multi-lingual regional voice models for volume calling.',
+  },
+];
 
 interface LiveAgentTemplate {
   id: string;
@@ -338,27 +414,6 @@ const ALL_SYSTEM_TEMPLATES: LiveAgentTemplate[] = [
   },
 ];
 
-const TIER_DETAILS = {
-  premium: {
-    title: 'Premium Calling',
-    credits: '10 Credits/min',
-    tooltip:
-      'Highest-quality, natural-sounding conversations with advanced voices and faster responses. Best for sales, demos, and high-value customer calls.',
-  },
-  standard: {
-    title: 'Standard Calling',
-    credits: '6 Credits/min',
-    tooltip:
-      'Balanced conversational AI voice performance, fast latency and optimized per-minute cost.',
-  },
-  essential: {
-    title: 'Essential Calling',
-    credits: '4 Credits/min',
-    tooltip:
-      'High efficiency Indian & multi-lingual regional voice models for volume calling.',
-  },
-};
-
 const VOICE_OPTIONS = [
   { id: 'roger', name: 'Roger - Laid-Back, Casual, Resonant' },
   { id: 'coral', name: 'Ananya - Natural, Warm, Female Executive' },
@@ -366,6 +421,17 @@ const VOICE_OPTIONS = [
   { id: 'jessica', name: 'Jessica - Expressive, Friendly' },
   { id: 'shimmer', name: 'Priya - Polite, Fluent Hindi/Hinglish' },
   { id: 'echo', name: 'David - Deep, Authoritative' },
+];
+
+const OPENAI_VOICES = [
+  { value: 'alloy', label: 'Alloy', description: 'Neutral, balanced voice' },
+  { value: 'echo', label: 'Echo', description: 'Warm, conversational voice' },
+  { value: 'shimmer', label: 'Shimmer', description: 'Clear, expressive voice' },
+  { value: 'ash', label: 'Ash', description: 'Soft, gentle voice' },
+  { value: 'ballad', label: 'Ballad', description: 'Melodic, storytelling voice' },
+  { value: 'coral', label: 'Coral', description: 'Bright, energetic voice' },
+  { value: 'sage', label: 'Sage', description: 'Authoritative, professional voice' },
+  { value: 'verse', label: 'Verse', description: 'Dynamic, rhythmic voice' },
 ];
 
 const DYNAMIC_VARIABLES = [
@@ -519,28 +585,97 @@ const AGENT_TOOL_CATEGORIES: AgentToolCategory[] = [
 const PAGE_SIZE = 6;
 
 export default function TestAgents() {
+  const [, setLocation] = useLocation();
   const [isCreating, setIsCreating] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [callDirection, setCallDirection] = useState<CallDirection>('inbound');
   const [selectedUseCase, setSelectedUseCase] = useState<string>(ALL_SYSTEM_TEMPLATES[0].id);
   const [templatePage, setTemplatePage] = useState(1);
 
+  // Agent List View States (Step 0)
+  const [agentSearch, setAgentSearch] = useState('');
+  const [agentFilter, setAgentFilter] = useState<'all' | 'inbound' | 'outbound'>('all');
+  const [agentListPage, setAgentListPage] = useState(1);
+  const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
+  const [editingAgent, setEditingAgent] = useState<any | null>(null);
+
+  // Auto-reset page to 1 when search query or category filter changes
+  useEffect(() => {
+    setAgentListPage(1);
+  }, [agentSearch, agentFilter]);
+
   // Step 3 Form States
   const [agentName, setAgentName] = useState('');
   const [numberType, setNumberType] = useState<NumberType>('international');
-  const [callingTier, setCallingTier] = useState<CallingTier>('premium');
-  const [language, setLanguage] = useState('English');
-  const [voice, setVoice] = useState('roger');
+  const [telephonyProvider, setTelephonyProvider] = useState<TelephonyProviderKey>('twilio');
+  const [language, setLanguage] = useState('en');
+  const [voice, setVoice] = useState('21m00Tcm4TlvDq8ikWAM');
   const [voiceTone, setVoiceTone] = useState('Confident');
   const [personality, setPersonality] = useState('Professional');
   const [responseDelay, setResponseDelay] = useState<number>(1.5);
   const [hoveredTooltip, setHoveredTooltip] = useState<string | null>(null);
+
+  // Auto-validate language and voice support when telephony provider changes
+  useEffect(() => {
+    const isEleven = telephonyProvider === 'twilio' || telephonyProvider === 'plivo_elevenlabs';
+    const pType = isEleven ? 'elevenlabs' : 'openai';
+    const isSupported = telephonyProvider === 'custom-voice-engine'
+      ? ['en', 'es', 'de', 'fr', 'nl', 'it', 'ja'].includes(language)
+      : isProviderSupported(language, pType);
+    if (!isSupported) {
+      setLanguage('en');
+    }
+
+    if (telephonyProvider === 'twilio_openai' || telephonyProvider === 'plivo') {
+      const isOpenAiVoice = OPENAI_VOICES.some((v) => v.value === voice);
+      if (!isOpenAiVoice) {
+        setVoice('shimmer');
+      }
+    } else if (isEleven) {
+      const isOpenAiVoice = OPENAI_VOICES.some((v) => v.value === voice);
+      if (isOpenAiVoice) {
+        setVoice('21m00Tcm4TlvDq8ikWAM');
+      }
+    }
+  }, [telephonyProvider]);
+
+  const { data: elevenLabsVoices = [] } = useQuery<any[]>({
+    queryKey: ['/api/elevenlabs/voices'],
+    staleTime: 60000,
+  });
+
+  const activeTelephonyOptions = useMemo(() => {
+    return numberType === 'international'
+      ? INTERNATIONAL_TELEPHONY_OPTIONS
+      : INDIAN_TELEPHONY_OPTIONS;
+  }, [numberType]);
+
+  const activeTelephonyOption = useMemo(() => {
+    return (
+      activeTelephonyOptions.find((o) => o.id === telephonyProvider) ||
+      activeTelephonyOptions[0]
+    );
+  }, [activeTelephonyOptions, telephonyProvider]);
+
+  const selectedVoiceName = useMemo(() => {
+    if (telephonyProvider === 'twilio_openai' || telephonyProvider === 'plivo') {
+      const found = OPENAI_VOICES.find((v) => v.value === voice);
+      return found ? found.label : voice;
+    }
+    const foundEl = elevenLabsVoices.find((v: any) => v.voice_id === voice);
+    if (foundEl) return foundEl.name;
+    const foundLegacy = VOICE_OPTIONS.find((v) => v.id === voice);
+    if (foundLegacy) return foundLegacy.name.split(' - ')[0];
+    return voice || 'Default Voice';
+  }, [telephonyProvider, voice, elevenLabsVoices]);
 
   // Step 4 Form States (Configure Prompts)
   const [systemPrompt, setSystemPrompt] = useState(ALL_SYSTEM_TEMPLATES[0].systemPrompt);
   const [firstMessage, setFirstMessage] = useState(ALL_SYSTEM_TEMPLATES[0].firstMessage);
   const [selectedKnowledgeBases, setSelectedKnowledgeBases] = useState<string[]>(['kb-1']);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [expandedSystemPrompt, setExpandedSystemPrompt] = useState(false);
+  const [expandedFirstMessage, setExpandedFirstMessage] = useState(false);
 
   // Step 5 Form States (Agent Tools)
   const [selectedTools, setSelectedTools] = useState<string[]>([
@@ -622,6 +757,174 @@ export default function TestAgents() {
     },
   });
 
+  // Fetch all created agents across standard and custom voice engine
+  const { data: standardAgents = [], isLoading: standardLoading } = useQuery<any[]>({
+    queryKey: ['/api/agents'],
+  });
+
+  const { data: cveAgents = [], isLoading: cveLoading } = useQuery<any[]>({
+    queryKey: ['/api/voice-engine/agents'],
+    queryFn: async () => {
+      try {
+        const headers: Record<string, string> = {};
+        const authHeader = AuthStorage.getAuthHeader();
+        if (authHeader) headers['Authorization'] = authHeader;
+        const res = await fetch('/api/voice-engine/agents', { headers });
+        if (!res.ok) return [];
+        return await res.json();
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const allUserAgents = useMemo(() => {
+    const list: any[] = [];
+    if (Array.isArray(standardAgents)) {
+      list.push(...standardAgents.map((a: any) => ({ ...a, source: 'standard' })));
+    }
+    if (Array.isArray(cveAgents)) {
+      list.push(...cveAgents.map((a: any) => ({ ...a, source: 'cve' })));
+    }
+    return list;
+  }, [standardAgents, cveAgents]);
+
+  const filteredAgents = useMemo(() => {
+    return allUserAgents.filter((agent) => {
+      const q = agentSearch.trim().toLowerCase();
+      const matchSearch =
+        !q ||
+        (agent.name || '').toLowerCase().includes(q) ||
+        (agent.systemPrompt || '').toLowerCase().includes(q) ||
+        (agent.language || '').toLowerCase().includes(q) ||
+        (agent.telephonyProvider || '').toLowerCase().includes(q);
+
+      if (!matchSearch) return false;
+
+      if (agentFilter === 'inbound') {
+        return agent.type === 'incoming' || !agent.type;
+      }
+      if (agentFilter === 'outbound') {
+        return agent.type === 'flow' || agent.type === 'outbound';
+      }
+      return true;
+    });
+  }, [allUserAgents, agentSearch, agentFilter]);
+
+  const AGENTS_PER_PAGE = 9;
+  const totalAgentPages = Math.max(1, Math.ceil(filteredAgents.length / AGENTS_PER_PAGE));
+
+  const paginatedAgents = useMemo(() => {
+    const start = (agentListPage - 1) * AGENTS_PER_PAGE;
+    return filteredAgents.slice(start, start + AGENTS_PER_PAGE);
+  }, [filteredAgents, agentListPage]);
+
+  const handleDeleteAgent = async (agent: any) => {
+    if (!window.confirm(`Are you sure you want to delete "${agent.name}"?`)) return;
+    try {
+      setDeletingAgentId(agent.id);
+      const endpoint =
+        agent.source === 'cve'
+          ? `/api/voice-engine/agents/${agent.id}`
+          : `/api/agents/${agent.id}`;
+      await apiRequest('DELETE', endpoint);
+      queryClient.invalidateQueries({ queryKey: ['/api/agents'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/voice-engine/agents'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/agents/metrics'] });
+      toast({
+        title: 'Agent deleted',
+        description: `"${agent.name}" was removed successfully.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Error deleting agent',
+        description: err.message || 'Failed to delete agent',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingAgentId(null);
+    }
+  };
+
+  const handleEditAgent = (agent: any) => {
+    setEditingAgent(agent);
+    setAgentName(agent.name || '');
+    setCallDirection(agent.type === 'flow' || agent.type === 'outbound' ? 'outbound' : 'inbound');
+
+    const prov = (agent.telephonyProvider || (agent.source === 'cve' ? 'custom-voice-engine' : 'twilio')) as TelephonyProviderKey;
+    setTelephonyProvider(prov);
+    setNumberType(
+      prov === 'plivo' || prov === 'plivo_elevenlabs' || prov === 'custom-voice-engine'
+        ? 'indian'
+        : 'international'
+    );
+    setLanguage(agent.language || 'en');
+    setVoice(agent.openaiVoice || agent.ttsVoice || agent.elevenLabsVoiceId || '21m00Tcm4TlvDq8ikWAM');
+    setVoiceTone(agent.voiceTone || 'Confident');
+    setPersonality(agent.personality || 'Professional');
+    setResponseDelay(agent.turnTimeout || 1.5);
+    setSystemPrompt(agent.systemPrompt || '');
+    setFirstMessage(agent.firstMessage || '');
+    setSelectedKnowledgeBases(agent.knowledgeBaseIds || ['kb-1']);
+
+    const tools: string[] = [];
+    if (agent.transferEnabled) tools.push('call_transfer');
+    if (agent.appointmentBookingEnabled) tools.push('appointment_booking');
+    if (agent.endConversationEnabled) tools.push('end_conversation');
+    if (agent.messagingEmailEnabled) tools.push('email_sending');
+    if (agent.messagingWhatsappEnabled) tools.push('whatsapp_messaging');
+    setSelectedTools(tools.length > 0 ? tools : ['call_transfer', 'end_conversation']);
+
+    setCurrentStep(3);
+    setIsCreating(true);
+  };
+
+  const getAgentProviderInfo = (agent: any) => {
+    if (agent.source === 'cve' || agent.telephonyProvider === 'custom-voice-engine') {
+      return {
+        tier: 'Essential Calling',
+        engine: 'Custom Voice Engine',
+        badgeColor: '#38bdf8',
+        bg: 'rgba(56, 189, 248, 0.12)',
+        border: 'rgba(56, 189, 248, 0.3)',
+      };
+    }
+    if (agent.telephonyProvider === 'twilio_openai') {
+      return {
+        tier: 'Standard Calling',
+        engine: 'Twilio + OpenAI Realtime',
+        badgeColor: '#a78bfa',
+        bg: 'rgba(167, 139, 250, 0.12)',
+        border: 'rgba(167, 139, 250, 0.3)',
+      };
+    }
+    if (agent.telephonyProvider === 'plivo_elevenlabs') {
+      return {
+        tier: 'Premium Calling',
+        engine: 'Plivo + ElevenLabs',
+        badgeColor: '#00E575',
+        bg: 'rgba(0, 229, 117, 0.12)',
+        border: 'rgba(0, 229, 117, 0.3)',
+      };
+    }
+    if (agent.telephonyProvider === 'plivo') {
+      return {
+        tier: 'Standard Calling',
+        engine: 'Plivo + OpenAI',
+        badgeColor: '#fb923c',
+        bg: 'rgba(251, 146, 60, 0.12)',
+        border: 'rgba(251, 146, 60, 0.3)',
+      };
+    }
+    return {
+      tier: 'Premium Calling',
+      engine: 'Twilio + ElevenLabs',
+      badgeColor: '#00E575',
+      bg: 'rgba(0, 229, 117, 0.12)',
+      border: 'rgba(0, 229, 117, 0.3)',
+    };
+  };
+
   const liveInternationalNumber = useMemo(() => {
     const allTwilio = [
       ...(Array.isArray(twilioUserNumbers) ? twilioUserNumbers : []),
@@ -672,8 +975,21 @@ export default function TestAgents() {
     }
     const merged: LiveAgentTemplate[] = [...ALL_SYSTEM_TEMPLATES];
     for (const apiTmpl of apiTemplates) {
-      const exists = merged.find((t) => t.name.toLowerCase() === (apiTmpl.name || '').toLowerCase());
+      const name = (apiTmpl.name || '').trim().toLowerCase();
+      const exists = merged.find((t) => t.name.toLowerCase() === name || t.id === apiTmpl.id);
       if (!exists) {
+        const sysPrompt = apiTmpl.systemPrompt || apiTmpl.system_prompt || apiTmpl.prompt || '';
+        const firstMsg = apiTmpl.firstMessage || apiTmpl.first_message || '';
+        let vars: string[] = [];
+        if (Array.isArray(apiTmpl.variables)) {
+          vars = apiTmpl.variables;
+        } else if (typeof apiTmpl.variables === 'string') {
+          try {
+            vars = JSON.parse(apiTmpl.variables);
+          } catch {
+            vars = [];
+          }
+        }
         merged.push({
           id: apiTmpl.id || `custom-${apiTmpl.name}`,
           name: apiTmpl.name,
@@ -681,11 +997,11 @@ export default function TestAgents() {
           category: apiTmpl.category || 'Custom',
           description: apiTmpl.description || 'Custom prompt template for conversational AI agent.',
           icon: GitFork,
-          systemPrompt: apiTmpl.systemPrompt || apiTmpl.prompt || '',
-          firstMessage: apiTmpl.firstMessage || '',
-          variables: apiTmpl.variables || ['company_name', 'agent_name'],
-          suggestedVoiceTone: apiTmpl.suggestedVoiceTone,
-          suggestedPersonality: apiTmpl.suggestedPersonality,
+          systemPrompt: sysPrompt,
+          firstMessage: firstMsg,
+          variables: vars.length > 0 ? vars : ['company_name', 'agent_name'],
+          suggestedVoiceTone: apiTmpl.suggestedVoiceTone || 'Confident',
+          suggestedPersonality: apiTmpl.suggestedPersonality || 'Professional',
           toneNote: 'Custom configured workflow',
           usageCount: 0,
         });
@@ -710,10 +1026,12 @@ export default function TestAgents() {
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
   const getTemplateVariables = (tmpl: LiveAgentTemplate): string[] => {
-    const raw = (tmpl.systemPrompt + ' ' + tmpl.firstMessage).match(/\{\{([a-zA-Z0-9_-]+)\}\}/g) || [];
-    const extracted = Array.from(new Set(raw.map((m) => m.replace(/[{}]/g, ''))));
-    if (extracted.length > 0) return extracted;
-    return tmpl.variables || [];
+    const raw = ((tmpl.systemPrompt || '') + ' ' + (tmpl.firstMessage || '')).match(/\{\{([a-zA-Z0-9_-]+)\}\}/g) || [];
+    const extracted = raw.map((m) => m.replace(/[{}]/g, ''));
+    const declared = Array.isArray(tmpl.variables) ? tmpl.variables : [];
+    const combined = Array.from(new Set([...declared, ...extracted]));
+    if (combined.length > 0) return combined;
+    return ['company_name', 'agent_name'];
   };
 
   const handleOpenVariableModal = (tmpl: LiveAgentTemplate) => {
@@ -770,19 +1088,110 @@ export default function TestAgents() {
   const handleCreateAgent = async () => {
     setIsSubmitting(true);
     try {
+      const finalAgentName = agentName.trim() || `${selectedTemplateObj.title} Agent`;
+      const isCve = telephonyProvider === 'custom-voice-engine';
+      const isOpenAI = telephonyProvider === 'twilio_openai' || telephonyProvider === 'plivo';
+      const isElevenLabs = telephonyProvider === 'twilio' || telephonyProvider === 'plivo_elevenlabs';
+
+      const transferPhone = (numberType === 'international' ? liveInternationalNumber : liveIndianNumber) || '+15678901234';
+
+      let payload: any;
+      let endpoint = '';
+      let method = 'POST';
+
+      if (isCve) {
+        payload = {
+          name: finalAgentName,
+          description: selectedTemplateObj.description || '',
+          systemPrompt: systemPrompt,
+          firstMessage: firstMessage || 'Hello! How can I help you today?',
+          language: language || 'en',
+          llmModel: 'openai/gpt-4o-mini',
+          temperature: 0.7,
+          maxTokens: 500,
+          ttsVoice: voice || 'aura-asteria-en',
+          ttsProvider: 'deepgram',
+          sttProvider: 'deepgram',
+          interruptible: true,
+          silenceTimeoutMs: 5000,
+          maxDurationSeconds: 600,
+          type: 'incoming',
+          knowledgeBaseIds: selectedKnowledgeBases || [],
+          transferEnabled: selectedTools.includes('call_transfer'),
+          transferPhoneNumber: selectedTools.includes('call_transfer') ? transferPhone : '',
+          appointmentBookingEnabled: selectedTools.includes('appointment_booking'),
+          endConversationEnabled: selectedTools.includes('end_conversation'),
+          messagingEmailEnabled: selectedTools.includes('email_sending'),
+          messagingWhatsappEnabled: selectedTools.includes('whatsapp_messaging'),
+        };
+      } else {
+        payload = {
+          type: 'incoming',
+          name: finalAgentName,
+          voiceTone: voiceTone || 'Confident',
+          personality: personality || 'Professional',
+          systemPrompt: systemPrompt,
+          firstMessage: firstMessage || 'Hello! How can I help you today?',
+          language: language || 'en',
+          llmModel: 'gpt-4o-mini',
+          temperature: 0.7,
+          voiceStability: 0.5,
+          voiceSimilarityBoost: 0.85,
+          voiceSpeed: 1.0,
+          turnTimeout: responseDelay || 1.5,
+          telephonyProvider: telephonyProvider,
+          elevenLabsVoiceId: isElevenLabs ? (voice || '21m00Tcm4TlvDq8ikWAM') : undefined,
+          openaiVoice: isOpenAI ? (voice || 'shimmer') : undefined,
+          openaiModel: isOpenAI ? 'gpt-realtime-1.5' : undefined,
+          knowledgeBaseIds: selectedKnowledgeBases || [],
+          transferEnabled: selectedTools.includes('call_transfer'),
+          transferPhoneNumber: selectedTools.includes('call_transfer') ? transferPhone : '',
+          endConversationEnabled: selectedTools.includes('end_conversation'),
+          appointmentBookingEnabled: selectedTools.includes('appointment_booking'),
+          messagingEmailEnabled: selectedTools.includes('email_sending'),
+          messagingWhatsappEnabled: selectedTools.includes('whatsapp_messaging'),
+          detectLanguageEnabled: false,
+        };
+      }
+
+      if (editingAgent) {
+        if (isCve || editingAgent.source === 'cve') {
+          endpoint = `/api/voice-engine/agents/${editingAgent.id}`;
+          method = 'PUT';
+        } else {
+          endpoint = `/api/agents/${editingAgent.id}`;
+          method = 'PATCH';
+        }
+      } else {
+        endpoint = isCve ? '/api/voice-engine/agents' : '/api/agents';
+        method = 'POST';
+      }
+
+      const res = await apiRequest(method, endpoint, payload);
+      await res.json();
+
+      queryClient.invalidateQueries({ queryKey: ['/api/agents'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/agents/metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/voice-engine/agents'] });
+
       toast({
-        title: 'Agent Created Successfully! 🎉',
-        description: `Your agent "${agentName || selectedTemplateObj.title + ' Agent'}" is now configured and ready to handle calls.`,
+        title: editingAgent ? 'Agent Updated Successfully! ✨' : 'Agent Created Successfully! 🎉',
+        description: editingAgent
+          ? `Your agent "${finalAgentName}" has been updated.`
+          : `Your agent "${finalAgentName}" is now active and ready for campaigns and calls.`,
       });
+
       setTimeout(() => {
         setIsCreating(false);
+        setEditingAgent(null);
         setCurrentStep(1);
         setIsSubmitting(false);
-      }, 1200);
-    } catch {
+      }, 1000);
+    } catch (err: any) {
+      console.error('Failed to save agent:', err);
       toast({
-        title: 'Error creating agent',
-        description: 'Something went wrong. Please try again.',
+        title: editingAgent ? 'Error updating agent' : 'Error creating agent',
+        description: err.message || 'Something went wrong while saving the agent. Please try again.',
         variant: 'destructive',
       });
       setIsSubmitting(false);
@@ -791,14 +1200,21 @@ export default function TestAgents() {
 
   // Handle click on "+ Create Agents"
   const handleStartCreate = () => {
+    setEditingAgent(null);
+    setAgentName('');
+    setSystemPrompt(ALL_SYSTEM_TEMPLATES[0].systemPrompt);
+    setFirstMessage(ALL_SYSTEM_TEMPLATES[0].firstMessage);
+    setSelectedTools(['call_transfer', 'end_conversation']);
+    setSelectedKnowledgeBases(['kb-1']);
     setIsCreating(true);
     setCurrentStep(1);
   };
 
   // Handle Back button in wizard
   const handleBack = () => {
-    if (currentStep === 1) {
+    if (currentStep === 1 || (editingAgent && currentStep === 3)) {
       setIsCreating(false);
+      setEditingAgent(null);
     } else {
       setCurrentStep((prev) => prev - 1);
     }
@@ -861,7 +1277,7 @@ export default function TestAgents() {
               </h1>
             </div>
 
-            <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <button className="create-agent-btn" onClick={handleStartCreate}>
                 <Plus style={{ width: '1rem', height: '1rem', strokeWidth: 3 }} />
                 <span>Create Agents</span>
@@ -869,18 +1285,304 @@ export default function TestAgents() {
             </div>
           </div>
 
-          <div className="empty-state-box">
-            <div className="empty-state-icon">
-              <Plus style={{ width: '2rem', height: '2rem' }} />
+          {/* Search & Filter Bar */}
+          <div className="agent-filter-toolbar">
+            <div className="agent-search-box">
+              <Search className="search-icon" style={{ width: '1rem', height: '1rem', color: '#94a3b8' }} />
+              <input
+                type="text"
+                value={agentSearch}
+                onChange={(e) => setAgentSearch(e.target.value)}
+                placeholder="Search agents by name, prompt, or language..."
+                className="agent-search-input"
+              />
+              {agentSearch && (
+                <button
+                  type="button"
+                  onClick={() => setAgentSearch('')}
+                  className="search-clear-btn"
+                >
+                  ✕
+                </button>
+              )}
             </div>
-            <h3 className="empty-state-title">No custom agents in this view yet</h3>
-            <p className="empty-state-desc">
-              Click the button above to launch the 6-step creation wizard.
-            </p>
-            <button className="create-agent-btn" onClick={handleStartCreate}>
-              + Create Agents
-            </button>
+
+            <div className="agent-filter-pills">
+              <button
+                type="button"
+                onClick={() => setAgentFilter('all')}
+                className={`filter-pill-btn ${agentFilter === 'all' ? 'active' : ''}`}
+              >
+                All Agents ({allUserAgents.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAgentFilter('inbound')}
+                className={`filter-pill-btn ${agentFilter === 'inbound' ? 'active' : ''}`}
+              >
+                Inbound ({allUserAgents.filter((a) => a.type === 'incoming' || !a.type).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAgentFilter('outbound')}
+                className={`filter-pill-btn ${agentFilter === 'outbound' ? 'active' : ''}`}
+              >
+                Outbound ({allUserAgents.filter((a) => a.type === 'flow' || a.type === 'outbound').length})
+              </button>
+            </div>
           </div>
+
+          {/* Loading State */}
+          {(standardLoading || cveLoading) && (
+            <div className="agent-loading-grid">
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="agent-skeleton-card">
+                  <div className="skeleton-line title" />
+                  <div className="skeleton-line subtitle" />
+                  <div className="skeleton-box" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Empty State: When no agents exist at all */}
+          {!(standardLoading || cveLoading) && allUserAgents.length === 0 && (
+            <div className="empty-state-box">
+              <div className="empty-state-icon">
+                <Bot style={{ width: '2.25rem', height: '2.25rem', color: '#00E575' }} />
+              </div>
+              <h3 className="empty-state-title">No AI Agents created yet</h3>
+              <p className="empty-state-desc">
+                Get started by launching our multi-step creation wizard to build your first intelligent conversational AI agent.
+              </p>
+              <button className="create-agent-btn" onClick={handleStartCreate}>
+                <Plus style={{ width: '1rem', height: '1rem', strokeWidth: 3 }} />
+                <span>+ Create Your First Agent</span>
+              </button>
+            </div>
+          )}
+
+          {/* Filter Empty State: When search returns 0 results */}
+          {!(standardLoading || cveLoading) && allUserAgents.length > 0 && filteredAgents.length === 0 && (
+            <div className="empty-state-box">
+              <div className="empty-state-icon">
+                <Search style={{ width: '2rem', height: '2rem', color: '#94a3b8' }} />
+              </div>
+              <h3 className="empty-state-title">No agents match your filter</h3>
+              <p className="empty-state-desc">
+                No agents found matching &quot;{agentSearch}&quot;. Try adjusting your search query or filter tab.
+              </p>
+              <button
+                type="button"
+                className="btn-clear-search"
+                onClick={() => {
+                  setAgentSearch('');
+                  setAgentFilter('all');
+                }}
+              >
+                Clear Search & Filters
+              </button>
+            </div>
+          )}
+
+          {/* Real Created Agents Grid */}
+          {!(standardLoading || cveLoading) && filteredAgents.length > 0 && (
+            <>
+              <div className="created-agents-grid">
+                {paginatedAgents.map((agent: any) => {
+                  const prov = getAgentProviderInfo(agent);
+                  const isInbound = agent.type === 'incoming' || !agent.type;
+                  const isDeleting = deletingAgentId === agent.id;
+
+                  const activeTools = [
+                    agent.transferEnabled && 'Call Transfer',
+                    agent.appointmentBookingEnabled && 'Booking',
+                    agent.endConversationEnabled && 'End Call',
+                    agent.messagingEmailEnabled && 'Email',
+                    agent.messagingWhatsappEnabled && 'WhatsApp',
+                    agent.detectLanguageEnabled && 'Auto-Language',
+                  ].filter(Boolean) as string[];
+
+                  return (
+                    <div key={agent.id} className="created-agent-card">
+                      {/* Card Top Row */}
+                      <div className="agent-card-header">
+                        <div className="agent-card-title-group">
+                          <div className="agent-avatar-icon">
+                            <Bot style={{ width: '1.25rem', height: '1.25rem', color: '#00E575' }} />
+                          </div>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <h3 className="agent-card-name">{agent.name}</h3>
+                              <span className={`direction-badge ${isInbound ? 'inbound' : 'outbound'}`}>
+                                {isInbound ? 'Inbound' : 'Outbound'}
+                              </span>
+                            </div>
+                            <span className="agent-created-date">
+                              {agent.createdAt ? new Date(agent.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Ready'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditAgent(agent);
+                            }}
+                            title="Edit Agent"
+                            className="agent-edit-btn"
+                          >
+                            <Pencil style={{ width: '0.85rem', height: '0.85rem' }} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteAgent(agent);
+                            }}
+                            disabled={isDeleting}
+                            title="Delete Agent"
+                            className="agent-delete-btn"
+                          >
+                            {isDeleting ? (
+                              <Loader2 style={{ width: '1rem', height: '1rem', animation: 'spin 1s linear infinite' }} />
+                            ) : (
+                              <Trash2 style={{ width: '1rem', height: '1rem' }} />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Metadata & Engine Badges */}
+                      <div className="agent-meta-pills">
+                        <div
+                          className="meta-pill provider-pill"
+                          style={{
+                            background: prov.bg,
+                            borderColor: prov.border,
+                            color: prov.badgeColor,
+                          }}
+                        >
+                          <Sparkles style={{ width: '0.75rem', height: '0.75rem' }} />
+                          <span>{prov.tier} ({prov.engine})</span>
+                        </div>
+
+                        <div className="meta-pill lang-pill">
+                          <Globe style={{ width: '0.75rem', height: '0.75rem', color: '#60a5fa' }} />
+                          <span>{getLanguageLabel(agent.language || 'en')}</span>
+                        </div>
+
+                        {(agent.openaiVoice || agent.ttsVoice || agent.elevenLabsVoiceId) && (
+                          <div className="meta-pill voice-pill">
+                            <Volume2 style={{ width: '0.75rem', height: '0.75rem', color: '#34d399' }} />
+                            <span className="truncate-text" style={{ maxWidth: '120px' }}>
+                              {agent.openaiVoice || agent.ttsVoice || (agent.elevenLabsVoiceId ? 'ElevenLabs' : 'Voice')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* System Prompt / First Message Preview */}
+                      <div className="agent-prompt-preview">
+                        <div className="prompt-preview-header">
+                          <MessageSquare style={{ width: '0.8rem', height: '0.8rem', color: '#10b981' }} />
+                          <span>Prompt Preview</span>
+                        </div>
+                        <p className="prompt-preview-text">
+                          {agent.firstMessage || agent.systemPrompt || 'No initial prompt configured.'}
+                        </p>
+                      </div>
+
+                      {/* Active Tools Tags */}
+                      {activeTools.length > 0 && (
+                        <div className="agent-tools-row">
+                          {activeTools.map((toolName) => (
+                            <span key={toolName} className="agent-tool-tag">
+                              <span className="tool-dot" />
+                              {toolName}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Card Footer Actions */}
+                      <div className="agent-card-footer">
+                        <div className="agent-model-info">
+                          <Cpu style={{ width: '0.8rem', height: '0.8rem', color: '#94a3b8' }} />
+                          <span>{agent.llmModel || 'gpt-4o-mini'}</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setLocation('/app/campaigns')}
+                          className="btn-use-campaign"
+                        >
+                          <span>Use in Campaign</span>
+                          <ArrowRight style={{ width: '0.85rem', height: '0.85rem' }} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Agent List Pagination Controls (9 items per page) */}
+              {filteredAgents.length > AGENTS_PER_PAGE && (
+                <div className="template-pagination-bar" style={{ marginTop: '2rem' }}>
+                  <div className="pagination-info">
+                    Showing {(agentListPage - 1) * AGENTS_PER_PAGE + 1}–{Math.min(agentListPage * AGENTS_PER_PAGE, filteredAgents.length)} of {filteredAgents.length} agents
+                  </div>
+
+                  <div className="pagination-controls">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAgentListPage((p) => Math.max(p - 1, 1));
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      disabled={agentListPage === 1}
+                      className="pagination-nav-btn"
+                    >
+                      <ChevronLeft style={{ width: '0.9rem', height: '0.9rem' }} />
+                      <span>Previous</span>
+                    </button>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      {Array.from({ length: totalAgentPages }, (_, i) => i + 1).map((pageNum) => (
+                        <button
+                          key={pageNum}
+                          type="button"
+                          onClick={() => {
+                            setAgentListPage(pageNum);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className={`pagination-page-btn ${agentListPage === pageNum ? 'active' : ''}`}
+                        >
+                          {pageNum}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAgentListPage((p) => Math.min(p + 1, totalAgentPages));
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      disabled={agentListPage === totalAgentPages}
+                      className="pagination-nav-btn"
+                    >
+                      <span>Next</span>
+                      <ChevronRight style={{ width: '0.9rem', height: '0.9rem' }} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       ) : (
         // ------------------ CREATE WIZARD ------------------
@@ -1112,8 +1814,8 @@ export default function TestAgents() {
                   <div
                     onClick={() => {
                       setNumberType('international');
-                      if (callingTier === 'essential') {
-                        setCallingTier('premium');
+                      if (telephonyProvider !== 'twilio' && telephonyProvider !== 'twilio_openai') {
+                        setTelephonyProvider('twilio');
                       }
                     }}
                     className={`number-card ${numberType === 'international' ? 'selected' : ''}`}
@@ -1129,17 +1831,20 @@ export default function TestAgents() {
                         {liveInternationalNumber}
                       </p>
                     </div>
-
-                    {numberType === 'international' && (
-                      <div className="number-tooltip">
-                        Highest-quality, natural-sounding conversations with advanced voices and faster responses. Best for sales, demos, and high-value customer calls.
-                      </div>
-                    )}
                   </div>
 
                   {/* Indian Number */}
                   <div
-                    onClick={() => setNumberType('indian')}
+                    onClick={() => {
+                      setNumberType('indian');
+                      if (
+                        telephonyProvider !== 'plivo_elevenlabs' &&
+                        telephonyProvider !== 'plivo' &&
+                        telephonyProvider !== 'custom-voice-engine'
+                      ) {
+                        setTelephonyProvider('plivo_elevenlabs');
+                      }
+                    }}
                     className={`number-card ${numberType === 'indian' ? 'selected' : ''}`}
                   >
                     <div className="card-icon-box" style={{ width: '2.75rem', height: '2.75rem', margin: 0 }}>
@@ -1153,46 +1858,34 @@ export default function TestAgents() {
                         {liveIndianNumber}
                       </p>
                     </div>
-
-                    {numberType === 'indian' && (
-                      <div className="number-tooltip">
-                        Optimized for domestic calls in India with ultra-low latency telecom routing.
-                      </div>
-                    )}
                   </div>
                 </div>
 
                 {/* 3. Calling Tiers */}
                 <div className={numberType === 'international' ? 'two-col-grid' : 'three-col-grid'}>
-                  {(
-                    (numberType === 'international'
-                      ? ['premium', 'standard']
-                      : ['premium', 'standard', 'essential']
-                    ) as CallingTier[]
-                  ).map((tierKey) => {
-                    const tier = TIER_DETAILS[tierKey];
-                    const isSelected = callingTier === tierKey;
+                  {activeTelephonyOptions.map((opt) => {
+                    const isSelected = telephonyProvider === opt.id;
 
                     return (
                       <div
-                        key={tierKey}
-                        onClick={() => setCallingTier(tierKey)}
+                        key={opt.id}
+                        onClick={() => setTelephonyProvider(opt.id)}
                         className={`tier-card ${isSelected ? 'selected' : ''}`}
                       >
                         <div>
-                          <h4 className="tier-title">{tier.title}</h4>
-                          <p className="tier-credits">{tier.credits}</p>
+                          <h4 className="tier-title">{opt.title}</h4>
+                          <p className="tier-credits">{opt.credits}</p>
                         </div>
 
                         <div
                           className="info-tooltip-btn"
-                          onMouseEnter={() => setHoveredTooltip(tierKey)}
+                          onMouseEnter={() => setHoveredTooltip(opt.id)}
                           onMouseLeave={() => setHoveredTooltip(null)}
                         >
                           <Info style={{ width: '0.85rem', height: '0.85rem' }} />
 
-                          {hoveredTooltip === tierKey && (
-                            <div className="tier-popup-tooltip">{tier.tooltip}</div>
+                          {hoveredTooltip === opt.id && (
+                            <div className="tier-popup-tooltip">{opt.tooltip}</div>
                           )}
                         </div>
                       </div>
@@ -1203,19 +1896,50 @@ export default function TestAgents() {
                 {/* 4. Language & Voice Dropdowns */}
                 <div className="two-col-grid">
                   <div className="form-group">
-                    <label className="form-label">Language</label>
+                    <label className="form-label">
+                      <span>Language</span>
+                      <span className="form-label-required">*</span>
+                    </label>
                     <Select value={language} onValueChange={setLanguage}>
                       <SelectTrigger className="form-input" style={{ height: '3rem' }}>
-                        <SelectValue placeholder="Select Language" />
+                        <SelectValue placeholder="Select Language">
+                          {SUPPORTED_LANGUAGES.find((l) => l.value === language) ? (
+                            <LanguageOptionLabel
+                              label={SUPPORTED_LANGUAGES.find((l) => l.value === language)!.label}
+                              providers={telephonyProvider === 'custom-voice-engine' ? [] : SUPPORTED_LANGUAGES.find((l) => l.value === language)!.providers}
+                              compact
+                            />
+                          ) : (
+                            getLanguageLabel(language)
+                          )}
+                        </SelectValue>
                       </SelectTrigger>
-                      <SelectContent style={{ backgroundColor: '#141822', borderColor: '#222836', color: '#ffffff' }}>
-                        <SelectItem value="English">English</SelectItem>
-                        <SelectItem value="Hindi">Hindi (Hinglish)</SelectItem>
-                        <SelectItem value="Spanish">Spanish</SelectItem>
-                        <SelectItem value="French">French</SelectItem>
-                        <SelectItem value="German">German</SelectItem>
+                      <SelectContent style={{ backgroundColor: '#141822', borderColor: '#222836', color: '#ffffff', maxHeight: '280px', overflowY: 'auto' }}>
+                        {SUPPORTED_LANGUAGES
+                          .filter((lang) => {
+                            if (telephonyProvider === 'custom-voice-engine') {
+                              const deepgramTtsLangs = ['en', 'es', 'de', 'fr', 'nl', 'it', 'ja'];
+                              return deepgramTtsLangs.includes(lang.value);
+                            }
+                            const isElevenLabs = telephonyProvider === 'twilio' || telephonyProvider === 'plivo_elevenlabs';
+                            const providerType = isElevenLabs ? 'elevenlabs' : 'openai';
+                            return isProviderSupported(lang.value, providerType);
+                          })
+                          .map((lang) => (
+                            <SelectItem key={lang.value} value={lang.value}>
+                              <LanguageOptionLabel
+                                label={lang.label}
+                                providers={telephonyProvider === 'custom-voice-engine' ? [] : lang.providers}
+                                compact
+                              />
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
+                    <p style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.375rem', display: 'flex', alignItems: 'flex-start', gap: '0.35rem' }}>
+                      <Info style={{ width: '0.875rem', height: '0.875rem', color: '#3b82f6', flexShrink: 0, marginTop: '2px' }} />
+                      <span>Provide the system prompt and first message in the selected language for better performance and higher accuracy.</span>
+                    </p>
                   </div>
 
                   <div className="form-group">
@@ -1223,18 +1947,52 @@ export default function TestAgents() {
                       <span>Voice</span>
                       <span className="form-label-required">*</span>
                     </label>
-                    <Select value={voice} onValueChange={setVoice}>
-                      <SelectTrigger className="form-input" style={{ height: '3rem' }}>
-                        <SelectValue placeholder="Select Voice" />
-                      </SelectTrigger>
-                      <SelectContent style={{ backgroundColor: '#141822', borderColor: '#222836', color: '#ffffff' }}>
-                        {VOICE_OPTIONS.map((v) => (
-                          <SelectItem key={v.id} value={v.id}>
-                            {v.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {telephonyProvider === 'twilio_openai' || telephonyProvider === 'plivo' ? (
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Select value={voice} onValueChange={setVoice}>
+                            <SelectTrigger className="form-input" style={{ height: '3rem' }}>
+                              <SelectValue placeholder="Select Voice" />
+                            </SelectTrigger>
+                            <SelectContent style={{ backgroundColor: '#141822', borderColor: '#222836', color: '#ffffff' }}>
+                              {OPENAI_VOICES.map((v) => (
+                                <SelectItem key={v.value} value={v.value}>
+                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <span style={{ fontWeight: 500 }}>{v.label}</span>
+                                    <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{v.description}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <OpenAIVoicePreviewButton
+                          voiceId={voice}
+                          voiceName={OPENAI_VOICES.find((v) => v.value === voice)?.label}
+                          speed={1.0}
+                          language={language || 'en'}
+                          previewText={firstMessage || 'Hello! Thank you for calling. How can I help you today?'}
+                          className="h-12 w-12 border-[#222836] bg-[#141822] text-white hover:bg-[#1a202c] hover:text-white rounded-lg"
+                        />
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <VoiceSearchPicker
+                            value={voice}
+                            onChange={(voiceId) => setVoice(voiceId)}
+                            placeholder="Select a voice..."
+                            className="h-12 bg-[#141822] border-[#222836] text-white hover:bg-[#1a202c] hover:text-white rounded-lg"
+                          />
+                        </div>
+                        <VoicePreviewButton
+                          voiceId={voice}
+                          previewText={firstMessage || 'Hello! Thank you for calling. How can I help you today?'}
+                          language={language || 'en'}
+                          compact
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1301,117 +2059,229 @@ export default function TestAgents() {
 
           {/* ================= STEP 4: PROMPTS & KNOWLEDGE BASE ================= */}
           {currentStep === 4 && (
-            <div>
-              <div className="step-header">
-                <h1 className="step-title">Configure Prompts & Knowledge</h1>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div className="step-header" style={{ marginBottom: '0.5rem' }}>
+                <h1 className="step-title">Configure Prompts</h1>
                 <p className="step-subtitle">
-                  Define how your agent talks, its behavior rules, and what data it references.
+                  Customize what your agent says and how it behaves
                 </p>
               </div>
 
+              {/* 1. System Prompt Card */}
               <div className="form-card-container">
-                {/* System Prompt Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label className="form-label" style={{ margin: 0 }}>
-                    System Prompt *
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowTemplateModal(true)}
-                    className="btn-link-preset"
-                  >
-                    <LayoutTemplate style={{ width: '0.9rem', height: '0.9rem' }} />
-                    <span>Use Template</span>
-                  </button>
-                </div>
-
-                {/* System Prompt Textarea */}
-                <textarea
-                  rows={8}
-                  value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
-                  placeholder="You are an AI assistant who..."
-                  className="form-textarea"
-                />
-
-                {/* Dynamic Variables Chips */}
-                <div>
-                  <span className="field-hint" style={{ display: 'block', marginBottom: '0.5rem' }}>
-                    Click to insert dynamic variable:
-                  </span>
-                  <div className="chips-container">
-                    {DYNAMIC_VARIABLES.map((v) => (
+                <div className="prompt-split-grid">
+                  {/* Left Column: Textarea & Header */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                      <div>
+                        <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff', margin: 0 }}>
+                          System Prompt
+                        </h3>
+                        <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '0.2rem 0 0 0' }}>
+                          Define your agent's role, responsibilities, tone and behavior.
+                        </p>
+                      </div>
                       <button
-                        key={v}
                         type="button"
-                        onClick={() => handleInsertVariable(v)}
-                        className="var-chip-btn"
+                        onClick={() => setShowTemplateModal(true)}
+                        className="template-btn"
                       >
-                        {v}
+                        <LayoutTemplate style={{ width: '0.95rem', height: '0.95rem' }} />
+                        <span>Use Template</span>
                       </button>
-                    ))}
+                    </div>
+
+                    <div style={{ marginTop: '0.35rem' }}>
+                      <textarea
+                        rows={7}
+                        value={systemPrompt}
+                        onChange={(e) => setSystemPrompt(e.target.value)}
+                        placeholder="Write the system prompt here..."
+                        className="form-textarea"
+                        maxLength={4000}
+                      />
+                      <div className="char-counter">
+                        {systemPrompt.length}/4000
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Tips Box */}
+                  <div className="tips-container-box">
+                    <div className="tips-title">
+                      <Sparkles style={{ width: '1.05rem', height: '1.05rem' }} />
+                      <span>Tips for a great system prompt</span>
+                    </div>
+                    <ul className="tips-list">
+                      <li className="tips-item">
+                        <CheckCircle2 style={{ width: '1rem', height: '1rem', color: '#00E575', flexShrink: 0, marginTop: '1px' }} />
+                        <span>Clearly define the agent's role</span>
+                      </li>
+                      <li className="tips-item">
+                        <CheckCircle2 style={{ width: '1rem', height: '1rem', color: '#00E575', flexShrink: 0, marginTop: '1px' }} />
+                        <span>Include key responsibilities</span>
+                      </li>
+                      <li className="tips-item">
+                        <CheckCircle2 style={{ width: '1rem', height: '1rem', color: '#00E575', flexShrink: 0, marginTop: '1px' }} />
+                        <span>Mention tone and communication style</span>
+                      </li>
+                      <li className="tips-item">
+                        <CheckCircle2 style={{ width: '1rem', height: '1rem', color: '#00E575', flexShrink: 0, marginTop: '1px' }} />
+                        <span>Add do's and don'ts</span>
+                      </li>
+                      <li className="tips-item">
+                        <CheckCircle2 style={{ width: '1rem', height: '1rem', color: '#00E575', flexShrink: 0, marginTop: '1px' }} />
+                        <span>Use dynamic variable where needed</span>
+                      </li>
+                    </ul>
                   </div>
                 </div>
+              </div>
 
-                {/* First Message */}
-                <div className="form-group" style={{ marginTop: '0.5rem' }}>
-                  <label className="form-label">First Message (Greeting)</label>
-                  <input
-                    type="text"
-                    value={firstMessage}
-                    onChange={(e) => setFirstMessage(e.target.value)}
-                    placeholder="Hello! How can I help you today?"
-                    className="form-input"
-                  />
-                  <span className="field-hint">
-                    The initial greeting sentence the agent speaks when the call connects.
-                  </span>
+              {/* 2. First Message Card */}
+              <div className="form-card-container">
+                <div className="prompt-split-grid">
+                  {/* Left Column: First Message Textarea & Header */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff', margin: 0 }}>
+                        First Message
+                      </h3>
+                      <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '0.2rem 0 0 0' }}>
+                        This is the first message your agent will say to start the conversion
+                      </p>
+                    </div>
+
+                    <div style={{ marginTop: '0.35rem' }}>
+                      <textarea
+                        rows={4}
+                        value={firstMessage}
+                        onChange={(e) => setFirstMessage(e.target.value)}
+                        placeholder="Write the first message here..."
+                        className="form-textarea"
+                        maxLength={500}
+                      />
+                      <div className="char-counter">
+                        {firstMessage.length}/500
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Example Box */}
+                  <div className="example-container-box">
+                    <div className="tips-title" style={{ color: '#00E575' }}>
+                      <MessageSquare style={{ width: '1rem', height: '1rem' }} />
+                      <span>Tips for a great system prompt</span>
+                    </div>
+                    <div className="example-quote">
+                      "Hi &#123;&#123;first_name&#125;&#125;, this is Sarah from ABC Corp. How's your day going?"
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFirstMessage("Hi {{first_name}}, this is Sarah from ABC Corp. How's your day going?")}
+                      className="use-example-btn"
+                    >
+                      Use Example
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Available Dynamic Variables Card */}
+              <div className="form-card-container">
+                <div className="prompt-split-grid">
+                  {/* Left Column: Variables Buttons */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff', margin: 0 }}>
+                        Available Dynamic Variables
+                      </h3>
+                      <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '0.2rem 0 0 0' }}>
+                        Click to insert variables. They will be replaced with actual data during conversations.
+                      </p>
+                    </div>
+
+                    <div className="variables-wrap-row">
+                      {DYNAMIC_VARIABLES.map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => handleInsertVariable(v)}
+                          className="variable-badge-btn"
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Info Box */}
+                  <div className="tips-container-box" style={{ background: 'rgba(7, 28, 18, 0.4)' }}>
+                    <div className="tips-title">
+                      <Sparkles style={{ width: '1rem', height: '1rem' }} />
+                      <span>What are the dynamic</span>
+                    </div>
+                    <p style={{ fontSize: '0.775rem', color: '#cbd5e1', lineHeight: 1.5, margin: 0 }}>
+                      These placeholders automatically pull contact data from your campaign CSV and personalize the conversation.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Knowledge Base (Optional) Card */}
+              <div className="form-card-container">
+                <div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff', margin: 0 }}>
+                    Knowledge Base (Optional)
+                  </h3>
+                  <p style={{ fontSize: '0.8rem', color: '#94a3b8', margin: '0.2rem 0 0 0' }}>
+                    Select the knowledge base document(s) to train this agent.
+                  </p>
                 </div>
 
-                {/* Knowledge Base Checkboxes */}
-                <div className="form-group" style={{ marginTop: '0.5rem' }}>
-                  <label className="form-label">Attach Knowledge Base</label>
-                  <div className="kb-items-grid">
-                    {MOCK_KNOWLEDGE_BASES.map((kb) => {
-                      const IconComp = kb.icon;
-                      const isChecked = selectedKnowledgeBases.includes(kb.id);
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '1rem',
+                    marginTop: '0.5rem',
+                  }}
+                >
+                  {MOCK_KNOWLEDGE_BASES.map((kb) => {
+                    const isChecked = selectedKnowledgeBases.includes(kb.id);
 
-                      return (
-                        <div
-                          key={kb.id}
-                          onClick={() => toggleKnowledgeBase(kb.id)}
-                          className={`kb-checkbox-card ${isChecked ? 'selected' : ''}`}
-                        >
+                    return (
+                      <div
+                        key={kb.id}
+                        onClick={() => toggleKnowledgeBase(kb.id)}
+                        className={`kb-card ${isChecked ? 'selected' : ''}`}
+                      >
+                        <div className="kb-checkbox-box">
+                          {isChecked && (
+                            <Check style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 3 }} />
+                          )}
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div
                             style={{
-                              width: '1rem',
-                              height: '1rem',
-                              borderRadius: '4px',
-                              border: isChecked ? '1px solid #00E575' : '1px solid #475569',
-                              backgroundColor: isChecked ? '#00E575' : 'transparent',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0,
+                              fontSize: '0.825rem',
+                              fontWeight: 600,
+                              color: '#ffffff',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
                             }}
                           >
-                            {isChecked && <Check style={{ width: '0.75rem', height: '0.75rem', color: '#000000', strokeWidth: 4 }} />}
+                            {kb.title}
                           </div>
-
-                          <IconComp style={{ width: '1.1rem', height: '1.1rem', color: isChecked ? '#00E575' : '#94a3b8', flexShrink: 0 }} />
-
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {kb.title}
-                            </div>
-                            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                              {kb.type}
-                            </div>
+                          <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                            {kb.type}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1421,17 +2291,17 @@ export default function TestAgents() {
           {currentStep === 5 && (
             <div>
               <div className="step-header">
-                <h1 className="step-title">Agent Tools & Integrations</h1>
+                <h1 className="step-title">Agent Tools</h1>
                 <p className="step-subtitle">
-                  Empower your agent with tools to take real-time actions during conversations.
+                  Choose the actions your AI agent can perform during and after conversations. You can configure each tool after enabling it.
                 </p>
               </div>
 
-              <div className="tools-categories-list">
+              <div className="tools-grid-container">
                 {AGENT_TOOL_CATEGORIES.map((cat) => (
-                  <div key={cat.category} className="tool-category-card">
-                    <h3 className="category-title">{cat.category}</h3>
-                    <div className="tools-card-grid">
+                  <div key={cat.category}>
+                    <h3 className="tools-category-header">{cat.category}</h3>
+                    <div className="tool-group-card">
                       {cat.items.map((tool) => {
                         const isSelected = selectedTools.includes(tool.id);
 
@@ -1439,36 +2309,21 @@ export default function TestAgents() {
                           <div
                             key={tool.id}
                             onClick={() => toggleTool(tool.id)}
-                            className={`tool-option-card ${isSelected ? 'selected' : ''}`}
+                            className={`tool-item-row ${isSelected ? 'selected' : ''}`}
                           >
-                            <div className="tool-card-content">
-                              <div
-                                style={{
-                                  width: '1.1rem',
-                                  height: '1.1rem',
-                                  borderRadius: '4px',
-                                  border: isSelected ? '1px solid #00E575' : '1px solid #475569',
-                                  backgroundColor: isSelected ? '#00E575' : 'transparent',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexShrink: 0,
-                                  marginTop: '2px',
-                                }}
-                              >
-                                {isSelected && (
-                                  <Check style={{ width: '0.8rem', height: '0.8rem', color: '#000000', strokeWidth: 4 }} />
-                                )}
-                              </div>
+                            <div className="tool-checkbox-box">
+                              {isSelected && (
+                                <Check style={{ width: '0.75rem', height: '0.75rem', color: '#000000', strokeWidth: 4 }} />
+                              )}
+                            </div>
 
-                              <div>
-                                <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#ffffff', margin: '0 0 0.25rem 0' }}>
-                                  {tool.title}
-                                </h4>
-                                <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0, lineHeight: 1.4 }}>
-                                  {tool.description}
-                                </p>
-                              </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <h4 className="tool-title">
+                                {tool.title}
+                              </h4>
+                              <p className="tool-desc">
+                                {tool.description}
+                              </p>
                             </div>
                           </div>
                         );
@@ -1484,104 +2339,161 @@ export default function TestAgents() {
           {currentStep === 6 && (
             <div>
               <div className="step-header">
-                <h1 className="step-title">Review & Deploy Agent</h1>
+                <h1 className="step-title">Review Your Agent</h1>
                 <p className="step-subtitle">
-                  Verify your configuration before launching your AI agent.
+                  Everything looks good! Review and create your agent.
                 </p>
               </div>
 
-              <div className="review-box">
-                <h3 className="review-section-title">
-                  Agent Summary
-                </h3>
-
-                {/* 2-Column Specs Grid */}
-                <div className="review-grid">
-                  <div>
-                    <span className="review-meta-label">Agent Name</span>
-                    <span className="review-meta-value">{agentName || selectedTemplateObj.title + ' Agent'}</span>
-                  </div>
-
-                  <div>
-                    <span className="review-meta-label">Direction & Use Case</span>
-                    <span className="review-meta-value" style={{ textTransform: 'capitalize' }}>
-                      {callDirection} • {selectedTemplateObj.title}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="review-meta-label">Voice & Accent</span>
+              <div className="review-card-container">
+                {/* 4-Column Metadata Grid */}
+                <div className="review-grid-4col">
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">Use Case</span>
                     <span className="review-meta-value">
-                      {VOICE_OPTIONS.find((v) => v.id === voice)?.name.split(' - ')[0] || voice} ({language})
+                      {selectedTemplateObj?.title || 'Survey & Feedback'}
                     </span>
                   </div>
 
-                  <div>
-                    <span className="review-meta-label">Voice Tone & Personality</span>
-                    <span className="review-meta-value">{voiceTone} • {personality}</span>
-                  </div>
-
-                  <div>
-                    <span className="review-meta-label">Phone Number</span>
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">Name</span>
                     <span className="review-meta-value">
-                      {numberType === 'international' ? `International (${liveInternationalNumber})` : `Indian (${liveIndianNumber})`} • {TIER_DETAILS[callingTier]?.title || callingTier}
+                      {agentName || (selectedTemplateObj?.title ? selectedTemplateObj.title + ' Agent' : 'John Doe')}
                     </span>
                   </div>
 
-                  <div>
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">Telephony Provider</span>
+                    <span className="review-meta-value">
+                      {numberType === 'international' ? 'International Number' : 'Indian Number'}
+                    </span>
+                  </div>
+
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">{activeTelephonyOption?.title || 'Premium Calling'}</span>
+                    <span className="review-meta-value">
+                      {activeTelephonyOption?.credits || '10 Credits/min'}
+                    </span>
+                  </div>
+
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">Voice</span>
+                    <span className="review-meta-value">
+                      {selectedVoiceName || voice}
+                    </span>
+                  </div>
+
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">Language</span>
+                    <span className="review-meta-value">
+                      {getLanguageLabel(language) || 'English'}
+                    </span>
+                  </div>
+
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">Voice Tone</span>
+                    <span className="review-meta-value">
+                      {voiceTone || 'Confident'}
+                    </span>
+                  </div>
+
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">Personality</span>
+                    <span className="review-meta-value">
+                      {personality || 'Professional'}
+                    </span>
+                  </div>
+
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">Voice Speed</span>
+                    <span className="review-meta-value">
+                      1.00x
+                    </span>
+                  </div>
+
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">Knowledge Base</span>
+                    <span className="review-meta-value">
+                      {selectedKnowledgeBases.length > 0
+                        ? selectedKnowledgeBases
+                            .map((kbId) => MOCK_KNOWLEDGE_BASES.find((k) => k.id === kbId)?.title || kbId)
+                            .join(', ')
+                        : 'None'}
+                    </span>
+                  </div>
+
+                  <div className="review-meta-group">
+                    <span className="review-meta-label">Enable Call Transfer</span>
+                    <span className="review-meta-value">
+                      {selectedTools.includes('call_transfer')
+                        ? (liveInternationalNumber || liveIndianNumber || '+1 (567) 890-1234')
+                        : (selectedTools.length > 0 ? selectedTools.map(t => t.replace(/_/g, ' ')).join(', ') : '+1 (567) 890-1234')}
+                    </span>
+                  </div>
+
+                  <div className="review-meta-group">
                     <span className="review-meta-label">Response Delay</span>
-                    <span className="review-meta-value">{responseDelay} seconds</span>
+                    <span className="review-meta-value">
+                      {responseDelay.toFixed(2)}s
+                    </span>
                   </div>
                 </div>
 
-                {/* Section: Attached Knowledge Base */}
-                <div style={{ marginTop: '0.5rem' }}>
-                  <span className="review-meta-label">Knowledge Bases Attached</span>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
-                    {selectedKnowledgeBases.length > 0 ? (
-                      selectedKnowledgeBases.map((kbId) => {
-                        const kb = MOCK_KNOWLEDGE_BASES.find((k) => k.id === kbId);
-                        return (
-                          <span key={kbId} className="review-tag">
-                            {kb?.title || kbId}
-                          </span>
-                        );
-                      })
-                    ) : (
-                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>None attached</span>
+                {/* System Prompt Section */}
+                <div className="review-text-section">
+                  <div className="review-text-header">
+                    <span className="review-meta-label">System Prompt</span>
+                    {systemPrompt && systemPrompt.length > 200 && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedSystemPrompt((prev) => !prev)}
+                        className="btn-toggle-prompt"
+                      >
+                        <span>{expandedSystemPrompt ? 'View Less' : 'View More'}</span>
+                        {expandedSystemPrompt ? (
+                          <ChevronUp style={{ width: '0.85rem', height: '0.85rem' }} />
+                        ) : (
+                          <ChevronDown style={{ width: '0.85rem', height: '0.85rem' }} />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  <div className={`review-text-box ${expandedSystemPrompt ? 'expanded' : 'collapsed'}`}>
+                    <p className="review-text-content">
+                      {systemPrompt || 'No system prompt configured.'}
+                    </p>
+                    {!expandedSystemPrompt && systemPrompt && systemPrompt.length > 200 && (
+                      <div className="review-text-gradient-overlay" />
                     )}
                   </div>
                 </div>
 
-                {/* Section: Active Agent Tools */}
-                <div>
-                  <span className="review-meta-label">Active Tools & Capabilities</span>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.35rem' }}>
-                    {selectedTools.length > 0 ? (
-                      selectedTools.map((tId) => (
-                        <span key={tId} className="review-tag active">
-                          ✓ {tId.replace(/_/g, ' ')}
-                        </span>
-                      ))
-                    ) : (
-                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>No tools selected</span>
+                {/* First Message Section */}
+                <div className="review-text-section">
+                  <div className="review-text-header">
+                    <span className="review-meta-label">First Message</span>
+                    {firstMessage && firstMessage.length > 200 && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedFirstMessage((prev) => !prev)}
+                        className="btn-toggle-prompt"
+                      >
+                        <span>{expandedFirstMessage ? 'View Less' : 'View More'}</span>
+                        {expandedFirstMessage ? (
+                          <ChevronUp style={{ width: '0.85rem', height: '0.85rem' }} />
+                        ) : (
+                          <ChevronDown style={{ width: '0.85rem', height: '0.85rem' }} />
+                        )}
+                      </button>
                     )}
                   </div>
-                </div>
-
-                {/* Section: System Prompt Preview */}
-                <div>
-                  <span className="review-meta-label">System Prompt Preview</span>
-                  <div className="review-preview-box">
-                    {systemPrompt || 'No prompt configured.'}
-                  </div>
-                </div>
-
-                {/* Section: First Message */}
-                <div>
-                  <span className="review-meta-label">First Message</span>
-                  <div className="review-preview-box">
-                    {firstMessage || 'No initial message configured.'}
+                  <div className={`review-text-box ${expandedFirstMessage ? 'expanded' : 'collapsed'}`}>
+                    <p className="review-text-content">
+                      {firstMessage || 'No initial message configured.'}
+                    </p>
+                    {!expandedFirstMessage && firstMessage && firstMessage.length > 200 && (
+                      <div className="review-text-gradient-overlay" />
+                    )}
                   </div>
                 </div>
               </div>
@@ -1709,7 +2621,7 @@ export default function TestAgents() {
                 className="btn-create-agent"
               >
                 <Wand2 style={{ width: '1rem', height: '1rem', strokeWidth: 2.5 }} />
-                <span>{isSubmitting ? 'Creating Agent...' : 'Create Agent'}</span>
+                <span>{isSubmitting ? (editingAgent ? 'Updating Agent...' : 'Creating Agent...') : (editingAgent ? 'Update Agent' : 'Create Agent')}</span>
               </button>
             ) : (
               <button onClick={handleNext} className="btn-next">
