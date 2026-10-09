@@ -55,7 +55,7 @@ Respond ONLY with valid JSON in this exact format:
     "recommended action 1",
     "recommended action 2"
   ]
-}`;
+}
 
 Classification guide:
 - "hot": Caller showed strong interest, requested visit/booking, ready to proceed
