@@ -21,7 +21,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, ArrowRight, Play, Pause, Download, Loader2, Phone, Clock, Calendar, MessageSquare, PhoneIncoming, PhoneOutgoing, CheckCircle2, XCircle, User, Volume2, Heart, Target, Mail, Bot, ChevronLeft, ChevronRight, Globe, AlertTriangle, RotateCcw, RotateCw, MapPin, IndianRupee, Home, CalendarCheck, Sparkles, CheckSquare, Tag, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Play, Pause, Download, Loader2, Phone, Clock, Calendar, MessageSquare, PhoneIncoming, PhoneOutgoing, CheckCircle2, XCircle, User, UserCheck, Volume2, Heart, Target, Mail, Bot, ChevronLeft, ChevronRight, Globe, AlertTriangle, RotateCcw, RotateCw, MapPin, IndianRupee, Home, CalendarCheck, Sparkles, CheckSquare, Tag, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
 import { AuthStorage } from "@/lib/auth-storage";
 import { formatSipEndpoint } from "@/lib/formatters";
