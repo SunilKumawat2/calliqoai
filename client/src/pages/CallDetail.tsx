@@ -363,59 +363,31 @@ export default function CallDetail() {
 
     let name = contact && contact.firstName && contact.firstName.toLowerCase() !== 'unknown' 
       ? `${contact.firstName} ${contact.lastName || ''}`.trim() 
-      : null;
+      : (call?.metadata as any)?.customerName || null;
     let phone = contact?.phone || call?.fromNumber || call?.phoneNumber || null;
-    let location: string | null = null;
-    let budget: string | null = null;
-    let propertyType: string | null = null;
-    let siteVisit: string | null = null;
+    let location: string | null = (call?.metadata as any)?.location || null;
+    let budget: string | null = (call?.metadata as any)?.budget || null;
+    let propertyType: string | null = (call?.metadata as any)?.propertyType || (call?.metadata as any)?.requirement || null;
+    let siteVisit: string | null = (call?.metadata as any)?.appointmentTiming || (call?.metadata as any)?.siteVisit || null;
 
     rawKeyPoints.forEach((kp: string) => {
-      const lower = kp.toLowerCase();
-      if (!name && (lower.includes('name:') || lower.includes('customer name') || lower.includes('सुनील') || lower.includes('sunil'))) {
-        const match = kp.match(/(?:name[:\s]+|customer\s+name[:\s]+)(.+)/i);
-        if (match) name = match[1].trim();
-        else if (kp.includes(':')) name = kp.split(':')[1].trim();
-        else name = kp.trim();
-      }
-      if (lower.includes('budget') || lower.includes('₹') || lower.includes('lakh') || lower.includes('cr')) {
-        budget = kp.includes(':') ? kp.split(':')[1].trim() : kp.trim();
-      }
-      if (lower.includes('villa') || lower.includes('flat') || lower.includes('plot') || lower.includes('1bhk') || lower.includes('2bhk') || lower.includes('3bhk') || lower.includes('requirement') || lower.includes('property')) {
-        propertyType = kp.includes(':') ? kp.split(':')[1].trim() : kp.trim();
-      }
-      if (lower.includes('location') || lower.includes('area') || lower.includes('city') || lower.includes('flexible')) {
-        location = kp.includes(':') ? kp.split(':')[1].trim() : kp.trim();
-      }
-      if (lower.includes('site visit') || lower.includes('visit') || lower.includes('appointment') || lower.includes('timing') || lower.includes('sunday')) {
-        siteVisit = kp.includes(':') ? kp.split(':')[1].trim() : kp.trim();
+      const trimmed = (kp || '').trim();
+      const lower = trimmed.toLowerCase();
+      
+      if (!name && (lower.startsWith('customer name:') || lower.startsWith('name:'))) {
+        name = trimmed.split(':')[1]?.trim() || null;
+      } else if (!budget && (lower.startsWith('budget:') || lower.startsWith('price:'))) {
+        budget = trimmed.split(':')[1]?.trim() || null;
+      } else if (!propertyType && (lower.startsWith('property:') || lower.startsWith('property type:') || lower.startsWith('requirement:') || lower.startsWith('service:'))) {
+        propertyType = trimmed.split(':')[1]?.trim() || null;
+      } else if (!location && (lower.startsWith('location:') || lower.startsWith('preferred location:') || lower.startsWith('area:') || lower.startsWith('city:'))) {
+        location = trimmed.split(':')[1]?.trim() || null;
+      } else if (!siteVisit && (lower.startsWith('site visit:') || lower.startsWith('timing:') || lower.startsWith('appointment:') || lower.startsWith('slot:'))) {
+        siteVisit = trimmed.split(':')[1]?.trim() || null;
       }
     });
 
-    if (call?.transcript && (!name || !propertyType || !budget || !siteVisit)) {
-      const t = call.transcript;
-      if (!name) {
-        const nMatch = t.match(/सुनील|Sunil/i);
-        if (nMatch) name = "Sunil (सुनील जी)";
-      }
-      if (!budget) {
-        const bMatch = t.match(/(?:₹?\s*\d+\s*(?:लाख|lakh|cr|crore))/i);
-        if (bMatch) budget = bMatch[0].trim();
-      }
-      if (!propertyType) {
-        const pMatch = t.match(/(?:villa|विल्ला|flat|फ़्लैट|plot|प्लॉट|1bhk|2bhk|3bhk)/i);
-        if (pMatch) propertyType = pMatch[0].trim();
-      }
-      if (!siteVisit) {
-        const sMatch = t.match(/(?:sunday|रविवार|morning|सुबह|10\s*बजे|10\s*am)/i);
-        if (sMatch) siteVisit = "Sunday, 10:00 AM";
-      }
-      if (!location) {
-        if (t.toLowerCase().includes('flexible') || t.includes('पसंद')) {
-          location = "Flexible / Open";
-        }
-      }
-    }
+    const hasLeadData = Boolean(name || propertyType || budget || location || siteVisit);
 
     return {
       name,
@@ -424,6 +396,7 @@ export default function CallDetail() {
       budget,
       propertyType,
       siteVisit,
+      hasLeadData,
       keyPoints: rawKeyPoints,
       nextActions: rawNextActions
     };
@@ -792,106 +765,120 @@ export default function CallDetail() {
             </div>
           </div>
 
-          {/* Captured Lead & Customer Information Card */}
-          <div className="relative overflow-hidden rounded-xl bg-slate-900/40 dark:bg-slate-900/60 border border-slate-800 p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-                  <UserCheck className="h-5 w-5" />
+          {/* Captured Lead & Customer Information Card - ONLY shown if lead data was captured */}
+          {parsedLeadDetails.hasLeadData && (
+            <div className="relative overflow-hidden rounded-xl bg-slate-900/40 dark:bg-slate-900/60 border border-slate-800 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                    <UserCheck className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold text-foreground">Captured Lead Information</h3>
+                    <p className="text-xs text-muted-foreground">Extracted from live conversation</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-semibold text-foreground">Captured Lead Information</h3>
-                  <p className="text-xs text-muted-foreground">Extracted from live conversation</p>
-                </div>
+                {parsedLeadDetails.siteVisit && (
+                  <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 px-3 py-1 text-xs gap-1.5 font-medium">
+                    <CalendarCheck className="h-3.5 w-3.5" />
+                    Appointment / Visit Scheduled
+                  </Badge>
+                )}
               </div>
-              {parsedLeadDetails.siteVisit && (
-                <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 px-3 py-1 text-xs gap-1.5 font-medium">
-                  <CalendarCheck className="h-3.5 w-3.5" />
-                  Site Visit Scheduled
-                </Badge>
-              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {/* Customer Name */}
+                {parsedLeadDetails.name && (
+                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
+                      <User className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-slate-400">Customer Name</p>
+                      <p className="text-sm font-semibold text-white truncate mt-0.5">
+                        {parsedLeadDetails.name}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Phone Number */}
+                {parsedLeadDetails.phone && (
+                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                      <Phone className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-slate-400">Phone Number</p>
+                      <p className="text-sm font-semibold text-white font-mono truncate mt-0.5">
+                        {parsedLeadDetails.phone}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Requirement / Property Type */}
+                {parsedLeadDetails.propertyType && (
+                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
+                      <Home className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-slate-400">Requirement / Service</p>
+                      <p className="text-sm font-semibold text-white truncate mt-0.5">
+                        {parsedLeadDetails.propertyType}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Budget */}
+                {parsedLeadDetails.budget && (
+                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                      <IndianRupee className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-slate-400">Budget Range</p>
+                      <p className="text-sm font-semibold text-white truncate mt-0.5">
+                        {parsedLeadDetails.budget}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Location */}
+                {parsedLeadDetails.location && (
+                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center shrink-0 mt-0.5">
+                      <MapPin className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-slate-400">Preferred Location</p>
+                      <p className="text-sm font-semibold text-white truncate mt-0.5">
+                        {parsedLeadDetails.location}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Site Visit / Timing */}
+                {parsedLeadDetails.siteVisit && (
+                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center shrink-0 mt-0.5">
+                      <CalendarCheck className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-slate-400">Appointment / Timing</p>
+                      <p className="text-sm font-semibold text-emerald-400 truncate mt-0.5">
+                        {parsedLeadDetails.siteVisit}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {/* Customer Name */}
-              <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                <div className="h-8 w-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
-                  <User className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-slate-400">Customer Name</p>
-                  <p className="text-sm font-semibold text-white truncate mt-0.5">
-                    {parsedLeadDetails.name || contact?.firstName || "Sunil (सुनील जी)"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Phone Number */}
-              <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                <div className="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                  <Phone className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-slate-400">Phone Number</p>
-                  <p className="text-sm font-semibold text-white font-mono truncate mt-0.5">
-                    {parsedLeadDetails.phone || primaryNumber || "+91 7023088303"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Requirement / Property Type */}
-              <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                <div className="h-8 w-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
-                  <Home className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-slate-400">Requirement / Property</p>
-                  <p className="text-sm font-semibold text-white truncate mt-0.5">
-                    {parsedLeadDetails.propertyType || "Villa"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Budget */}
-              <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                <div className="h-8 w-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
-                  <IndianRupee className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-slate-400">Budget Range</p>
-                  <p className="text-sm font-semibold text-white truncate mt-0.5">
-                    {parsedLeadDetails.budget || "₹50 Lakh"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Location */}
-              <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                <div className="h-8 w-8 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center shrink-0 mt-0.5">
-                  <MapPin className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-slate-400">Preferred Location</p>
-                  <p className="text-sm font-semibold text-white truncate mt-0.5">
-                    {parsedLeadDetails.location || "Flexible / Open"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Site Visit / Timing */}
-              <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                <div className="h-8 w-8 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center shrink-0 mt-0.5">
-                  <CalendarCheck className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-slate-400">Site Visit / Timing</p>
-                  <p className="text-sm font-semibold text-emerald-400 truncate mt-0.5">
-                    {parsedLeadDetails.siteVisit || "Sunday, 10:00 AM"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          )}
 
           {/* Key Highlights & Next Actions Grid */}
           {(parsedLeadDetails.keyPoints?.length > 0 || parsedLeadDetails.nextActions?.length > 0) && (
