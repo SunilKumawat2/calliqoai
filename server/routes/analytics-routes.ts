@@ -18,13 +18,14 @@
 
 import { Router, Response } from "express";
 import { RouteContext, AuthRequest } from "./common";
-import { calls, agents, incomingConnections, sipCalls } from "@shared/schema";
+import { calls, agents, incomingConnections, sipCalls, plivoCalls } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import * as fs from "fs";
 import { ElevenLabsService } from "../services/elevenlabs";
 import { ElevenLabsPoolService } from "../services/elevenlabs-pool";
 import { getTwilioClient } from "../services/twilio-connector";
 import { fetchElevenLabsConversation } from "./webhook-routes";
+import { CallInsightsService } from "../services/call-insights.service";
 import PDFDocument from "pdfkit";
 
 function formatDurationPDF(seconds: number): string {
@@ -103,10 +104,146 @@ export function createAnalyticsRoutes(ctx: RouteContext): Router {
         return res.status(403).json({ error: "Access denied" });
       }
 
+      // Auto-extract AI insights if transcript exists but summary or lead details are missing
+      if (callWithDetails.transcript && typeof callWithDetails.transcript === 'string' && callWithDetails.transcript.trim().length > 30 && (!callWithDetails.aiSummary || !callWithDetails.metadata?.leadDetails)) {
+        try {
+          const insights = await CallInsightsService.analyzeTranscript(
+            callWithDetails.transcript,
+            {
+              callId: callWithDetails.id,
+              fromNumber: callWithDetails.fromNumber || callWithDetails.phoneNumber,
+              toNumber: callWithDetails.toNumber,
+              agentName: callWithDetails.agent?.name,
+              duration: callWithDetails.duration
+            }
+          );
+
+          if (insights) {
+            const existingMeta = (callWithDetails.metadata as Record<string, any>) || {};
+            const mergedMetadata = {
+              ...existingMeta,
+              ...(insights.customerName ? { customerName: insights.customerName } : {}),
+              ...(insights.serviceOrRequirement ? { serviceOrRequirement: insights.serviceOrRequirement, requirement: insights.serviceOrRequirement } : {}),
+              ...(insights.leadDetails ? { leadDetails: insights.leadDetails } : {}),
+              leadClassification: insights.classification
+            };
+
+            callWithDetails.aiSummary = insights.aiSummary;
+            callWithDetails.sentiment = insights.sentiment;
+            callWithDetails.classification = insights.classification;
+            callWithDetails.keyPoints = insights.keyPoints || null;
+            callWithDetails.nextActions = insights.nextActions || null;
+            callWithDetails.metadata = mergedMetadata;
+
+            await db.update(plivoCalls)
+              .set({
+                aiSummary: insights.aiSummary,
+                sentiment: insights.sentiment,
+                classification: insights.classification,
+                keyPoints: insights.keyPoints || null,
+                nextActions: insights.nextActions || null,
+                metadata: mergedMetadata,
+              })
+              .where(eq(plivoCalls.id, callWithDetails.id))
+              .catch(() => {});
+
+            await db.update(calls)
+              .set({
+                aiSummary: insights.aiSummary,
+                sentiment: insights.sentiment,
+                userSentiment: insights.sentiment,
+                keyPoints: insights.keyPoints || null,
+                nextActions: insights.nextActions || null,
+                metadata: mergedMetadata,
+              })
+              .where(eq(calls.id, callWithDetails.id))
+              .catch(() => {});
+          }
+        } catch (e: any) {
+          console.warn(`[GetCall] Auto-analysis error: ${e.message}`);
+        }
+      }
+
       res.json(callWithDetails);
     } catch (error: any) {
       console.error("Get call error:", error);
       res.status(500).json({ error: "Failed to get call" });
+    }
+  });
+
+  // Re-analyze / Extract lead insights from transcript on demand
+  router.post("/api/calls/:id/reanalyze", authenticateHybrid, async (req: AuthRequest, res: Response) => {
+    try {
+      const callWithDetails = await storage.getCallWithDetails(req.params.id);
+      if (!callWithDetails) {
+        return res.status(404).json({ error: "Call not found" });
+      }
+
+      if (callWithDetails.userId !== req.userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      if (!callWithDetails.transcript || typeof callWithDetails.transcript !== 'string' || callWithDetails.transcript.trim().length < 20) {
+        return res.status(400).json({ error: "Transcript is empty or too short to analyze" });
+      }
+
+      const insights = await CallInsightsService.analyzeTranscript(
+        callWithDetails.transcript,
+        {
+          callId: callWithDetails.id,
+          fromNumber: callWithDetails.fromNumber || callWithDetails.phoneNumber,
+          toNumber: callWithDetails.toNumber,
+          agentName: callWithDetails.agent?.name,
+          duration: callWithDetails.duration
+        }
+      );
+
+      if (!insights) {
+        return res.status(500).json({ error: "Failed to generate AI insights" });
+      }
+
+      const existingMeta = (callWithDetails.metadata as Record<string, any>) || {};
+      const mergedMetadata = {
+        ...existingMeta,
+        ...(insights.customerName ? { customerName: insights.customerName } : {}),
+        ...(insights.serviceOrRequirement ? { serviceOrRequirement: insights.serviceOrRequirement, requirement: insights.serviceOrRequirement } : {}),
+        ...(insights.leadDetails ? { leadDetails: insights.leadDetails } : {}),
+        leadClassification: insights.classification
+      };
+
+      await db.update(plivoCalls)
+        .set({
+          aiSummary: insights.aiSummary,
+          sentiment: insights.sentiment,
+          classification: insights.classification,
+          keyPoints: insights.keyPoints || null,
+          nextActions: insights.nextActions || null,
+          metadata: mergedMetadata,
+        })
+        .where(eq(plivoCalls.id, callWithDetails.id))
+        .catch(() => {});
+
+      await db.update(calls)
+        .set({
+          aiSummary: insights.aiSummary,
+          sentiment: insights.sentiment,
+          userSentiment: insights.sentiment,
+          keyPoints: insights.keyPoints || null,
+          nextActions: insights.nextActions || null,
+          metadata: mergedMetadata,
+        })
+        .where(eq(calls.id, callWithDetails.id))
+        .catch(() => {});
+
+      const updatedCall = await storage.getCallWithDetails(req.params.id);
+      res.json({
+        success: true,
+        call: updatedCall,
+        insights
+      });
+    } catch (err: any) {
+      console.error("Re-analyze error:", err);
+      res.status(500).json({ error: err.message || "Failed to re-analyze call" });
     }
   });
 

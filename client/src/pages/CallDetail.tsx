@@ -346,6 +346,29 @@ export default function CallDetail() {
     ? formatSipEndpoint(call.toNumber, call.engine) || "Your number"
     : formatSipEndpoint(call.fromNumber, call.engine) || "Your number";
   
+  const queryClient = (window as any).__queryClient;
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
+
+  const handleReanalyze = async () => {
+    setIsReanalyzing(true);
+    try {
+      const res = await fetch(`/api/calls/${call.id}/reanalyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${AuthStorage.getAccessToken()}`
+        }
+      });
+      if (res.ok) {
+        window.location.reload();
+      }
+    } catch (e) {
+      console.error('Failed to re-analyze call:', e);
+    } finally {
+      setIsReanalyzing(false);
+    }
+  };
+  
   const parsedLeadDetails = (() => {
     let rawKeyPoints: string[] = [];
     if (Array.isArray(call?.keyPoints)) {
@@ -361,104 +384,181 @@ export default function CallDetail() {
       try { rawNextActions = JSON.parse(call.nextActions); } catch { rawNextActions = [call.nextActions]; }
     }
 
+    const meta = (call?.metadata as any) || {};
+    const leadDict: Record<string, string> = { ...(meta.leadDetails || {}) };
+
     let name = contact && contact.firstName && contact.firstName.toLowerCase() !== 'unknown' 
       ? `${contact.firstName} ${contact.lastName || ''}`.trim() 
-      : (call?.metadata as any)?.customerName || null;
+      : meta.customerName || meta.yajman_name || meta.patient_name || meta.student_name || null;
     let phone = contact?.phone || call?.fromNumber || call?.phoneNumber || null;
-    let location: string | null = (call?.metadata as any)?.location || null;
-    let budget: string | null = (call?.metadata as any)?.budget || null;
-    let propertyType: string | null = (call?.metadata as any)?.propertyType || (call?.metadata as any)?.requirement || null;
-    let siteVisit: string | null = (call?.metadata as any)?.appointmentTiming || (call?.metadata as any)?.siteVisit || null;
 
+    // Process all rawKeyPoints into dynamic fields
     rawKeyPoints.forEach((kp: string) => {
       const trimmed = (kp || '').trim();
-      const lower = trimmed.toLowerCase();
-      
-      if (!name && (lower.startsWith('customer name:') || lower.startsWith('name:'))) {
-        name = trimmed.split(':')[1]?.trim() || null;
-      } else if (!budget && (lower.startsWith('budget:') || lower.startsWith('price:'))) {
-        budget = trimmed.split(':')[1]?.trim() || null;
-      } else if (!propertyType && (lower.startsWith('property:') || lower.startsWith('property type:') || lower.startsWith('requirement:') || lower.startsWith('service:'))) {
-        propertyType = trimmed.split(':')[1]?.trim() || null;
-      } else if (!location && (lower.startsWith('location:') || lower.startsWith('preferred location:') || lower.startsWith('area:') || lower.startsWith('city:'))) {
-        location = trimmed.split(':')[1]?.trim() || null;
-      } else if (!siteVisit && (lower.startsWith('site visit:') || lower.startsWith('timing:') || lower.startsWith('appointment:') || lower.startsWith('slot:'))) {
-        siteVisit = trimmed.split(':')[1]?.trim() || null;
+      if (trimmed.includes(':')) {
+        const parts = trimmed.split(':');
+        const k = parts[0]?.trim();
+        const v = parts.slice(1).join(':')?.trim();
+        if (k && v && !leadDict[k] && !['ai summary', 'summary', 'next action'].includes(k.toLowerCase())) {
+          leadDict[k] = v;
+        }
       }
     });
 
-    // Intelligent fallback extraction from text and summary if structured keys were missing
-    const combinedText = [...rawKeyPoints, call?.aiSummary || ''].join('. ');
-    
-    if (!budget) {
-      const budgetMatch = combinedText.match(/(?:budget\s+(?:is|of|around)?\s*[:]?\s*(?:₹|rs\.?|inr)?\s*[\d,.]+\s*(?:lakh|crore|cr|k|lac|lacs|lakhs)?)/i);
-      if (budgetMatch) {
-        budget = budgetMatch[0].replace(/^budget\s+(?:is|of|around)?\s*[:]?\s*/i, '').trim();
+    // Extract any specific metadata keys if present
+    if (name && !leadDict['Customer Name'] && !leadDict['Yajman Name'] && !leadDict['Patient Name'] && !leadDict['Student Name']) {
+      leadDict['Customer Name'] = name;
+    }
+    if (phone && !leadDict['Phone Number']) {
+      leadDict['Phone Number'] = phone;
+    }
+    if (meta.serviceOrRequirement && !leadDict['Service / Requirement']) {
+      leadDict['Service / Requirement'] = meta.serviceOrRequirement;
+    }
+    if (meta.propertyType && !leadDict['Property Type']) {
+      leadDict['Property Type'] = meta.propertyType;
+    }
+    if (meta.budget && !leadDict['Budget']) {
+      leadDict['Budget'] = meta.budget;
+    }
+    if (meta.location && !leadDict['Location']) {
+      leadDict['Location'] = meta.location;
+    }
+    if (meta.appointmentTiming && !leadDict['Appointment / Timing']) {
+      leadDict['Appointment / Timing'] = meta.appointmentTiming;
+    }
+
+    // Convert leadDict into structured fields list
+    const fields: Array<{ label: string; value: string; iconType: string; color: string }> = [];
+    const seenKeys = new Set<string>();
+
+    Object.entries(leadDict).forEach(([k, v]) => {
+      if (!v || typeof v !== 'string' || v.trim().length === 0 || v === 'null' || v === 'undefined') return;
+      const cleanKey = k.replace(/^[_\s]+|[_\s]+$/g, '').replace(/_/g, ' ');
+      const formattedLabel = cleanKey.charAt(0).toUpperCase() + cleanKey.slice(1);
+      const lowerKey = formattedLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (seenKeys.has(lowerKey)) return;
+      seenKeys.add(lowerKey);
+
+      let iconType = 'info';
+      let color = 'blue';
+
+      if (/name|customer|caller|yajman|patient|student|voter|parent|client/i.test(formattedLabel)) {
+        iconType = 'user';
+        color = 'blue';
+      } else if (/phone|mobile|contact|cell/i.test(formattedLabel)) {
+        iconType = 'phone';
+        color = 'emerald';
+      } else if (/puja|service|property|requirement|doctor|specialty|department|class|course|subject|hospital/i.test(formattedLabel)) {
+        iconType = 'service';
+        color = 'purple';
+      } else if (/budget|fee|price|cost|amount|rate|rent|rupee/i.test(formattedLabel)) {
+        iconType = 'budget';
+        color = 'amber';
+      } else if (/location|city|address|area|constituency|place|branch|flat|premise/i.test(formattedLabel)) {
+        iconType = 'location';
+        color = 'rose';
+      } else if (/date|time|timing|muhurat|slot|visit|appointment|schedule|day/i.test(formattedLabel)) {
+        iconType = 'calendar';
+        color = 'cyan';
+      } else if (/gotra|mode|type|status|category|preference|satisfaction|board/i.test(formattedLabel)) {
+        iconType = 'tag';
+        color = 'indigo';
       }
-    }
 
-    if (!propertyType) {
-      if (/\bvilla\b/i.test(combinedText)) propertyType = 'Villa';
-      else if (/3\s*bhk/i.test(combinedText)) propertyType = '3 BHK Flat';
-      else if (/2\s*bhk/i.test(combinedText)) propertyType = '2 BHK Flat';
-      else if (/1\s*bhk/i.test(combinedText)) propertyType = '1 BHK Flat';
-      else if (/\bplot\b|\bland\b/i.test(combinedText)) propertyType = 'Plot / Land';
-      else if (/commercial/i.test(combinedText)) propertyType = 'Commercial Space';
-      else if (/\bflat\b|\bapartment\b/i.test(combinedText)) propertyType = 'Apartment / Flat';
-    }
+      fields.push({
+        label: formattedLabel,
+        value: v.trim(),
+        iconType,
+        color
+      });
+    });
 
-    if (!location) {
-      if (/flexible\s+(?:with|in)?\s+location/i.test(combinedText) || /location\s+is\s+flexible/i.test(combinedText)) {
-        location = 'Flexible / Open';
-      } else {
-        const locMatch = combinedText.match(/(?:location\s+(?:is|in|at)?\s*[:]?\s*([A-Za-z0-9\s,]+?)(?:\.|$|with|and))/i);
-        if (locMatch && locMatch[1]) {
-          location = locMatch[1].trim();
-        }
-      }
-    }
-
-    if (!siteVisit) {
-      const visitMatch = combinedText.match(/(?:site\s*visit|appointment|visit)\s+(?:scheduled|booked|set)?\s*(?:for|at|on)\s+([A-Za-z0-9\s,:]+?)(?:\.|$)/i);
-      if (visitMatch && visitMatch[1]) {
-        siteVisit = visitMatch[1].trim();
-      }
-    }
-
-    if (!name) {
-      const nameMatch = combinedText.match(/(?:customer|caller|client)(?:,\s*|\s+is\s+|\s*:\s*)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
-      if (nameMatch && nameMatch[1] && !['is', 'the', 'looking', 'interested', 'flexible', 'customer'].includes(nameMatch[1].toLowerCase())) {
-        name = nameMatch[1].trim();
-      }
-    }
-
-    const finalKeyPoints = [...rawKeyPoints];
-    if (name && !finalKeyPoints.some(kp => kp.toLowerCase().includes('customer name') || kp.toLowerCase().startsWith('name:'))) {
-      finalKeyPoints.unshift(`Customer Name: ${name}`);
-    }
-    if (phone && !finalKeyPoints.some(kp => kp.toLowerCase().includes('phone') || kp.toLowerCase().includes('number:'))) {
-      const nameIdx = finalKeyPoints.findIndex(kp => kp.toLowerCase().includes('customer name') || kp.toLowerCase().startsWith('name:'));
-      if (nameIdx !== -1) {
-        finalKeyPoints.splice(nameIdx + 1, 0, `Phone Number: ${phone}`);
-      } else {
-        finalKeyPoints.unshift(`Phone Number: ${phone}`);
-      }
-    }
-
-    const hasLeadData = Boolean(name || propertyType || budget || location || siteVisit);
+    const hasLeadData = fields.length > 0;
+    const classification = (call?.classification || meta.leadClassification || 'warm').toLowerCase();
 
     return {
       name,
       phone,
-      location,
-      budget,
-      propertyType,
-      siteVisit,
+      fields,
       hasLeadData,
-      keyPoints: finalKeyPoints,
+      classification,
+      keyPoints: rawKeyPoints,
       nextActions: rawNextActions
     };
   })();
+
+  // Helper to render field icons
+  const renderFieldIcon = (iconType: string) => {
+    switch (iconType) {
+      case 'user':
+        return <User className="h-4 w-4" />;
+      case 'phone':
+        return <Phone className="h-4 w-4" />;
+      case 'service':
+        return <Sparkles className="h-4 w-4" />;
+      case 'budget':
+        return <IndianRupee className="h-4 w-4" />;
+      case 'location':
+        return <MapPin className="h-4 w-4" />;
+      case 'calendar':
+        return <CalendarCheck className="h-4 w-4" />;
+      case 'tag':
+        return <Tag className="h-4 w-4" />;
+      default:
+        return <CheckCircle2 className="h-4 w-4" />;
+    }
+  };
+
+  const getFieldIconBg = (color: string) => {
+    switch (color) {
+      case 'blue':
+        return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+      case 'emerald':
+        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+      case 'purple':
+        return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+      case 'amber':
+        return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+      case 'rose':
+        return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+      case 'cyan':
+        return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
+      case 'indigo':
+        return 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20';
+      default:
+        return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
+    }
+  };
+
+  const renderClassificationBadge = (classification: string) => {
+    if (classification === 'hot') {
+      return (
+        <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-3 py-1 text-xs gap-1.5 font-semibold">
+          🔥 Hot Lead / High Intent
+        </Badge>
+      );
+    }
+    if (classification === 'warm') {
+      return (
+        <Badge className="bg-blue-500/15 text-blue-400 border border-blue-500/30 px-3 py-1 text-xs gap-1.5 font-semibold">
+          ⚡ Warm Lead / Follow-Up Needed
+        </Badge>
+      );
+    }
+    if (classification === 'cold') {
+      return (
+        <Badge className="bg-slate-500/15 text-slate-300 border border-slate-500/30 px-3 py-1 text-xs gap-1.5 font-semibold">
+          ❄️ Cold Lead
+        </Badge>
+      );
+    }
+    return (
+      <Badge className="bg-rose-500/15 text-rose-400 border border-rose-500/30 px-3 py-1 text-xs gap-1.5 font-semibold">
+        ❌ Lost / Declined
+      </Badge>
+    );
+  };
 
   // For widget calls, show widget name instead of Unknown
   const contactName = call.widgetId 
@@ -811,19 +911,42 @@ export default function CallDetail() {
           <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50/80 via-blue-50/50 to-slate-50 dark:from-indigo-950/40 dark:via-blue-950/30 dark:to-slate-950/40 border border-indigo-100/50 dark:border-indigo-900/30 p-6">
             <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-indigo-500/10 to-transparent rounded-full -mr-16 -mt-16" />
             <div className="relative">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-8 w-8 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center">
-                  <MessageSquare className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center">
+                    <MessageSquare className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-indigo-900 dark:text-indigo-100">AI Summary</h3>
                 </div>
-                <h3 className="text-lg font-semibold text-indigo-900 dark:text-indigo-100">AI Summary</h3>
+                {call.transcript && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs gap-1.5 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950"
+                    onClick={handleReanalyze}
+                    disabled={isReanalyzing}
+                  >
+                    {isReanalyzing ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                        {call.aiSummary ? "Re-Analyze Insights" : "Generate AI Insights"}
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
               <p className="text-indigo-800/80 dark:text-indigo-200/80 leading-relaxed text-base">
-                {call.aiSummary || "No AI summary available for this call. The call may still be processing or did not complete successfully."}
+                {call.aiSummary || (call.transcript ? "Click 'Generate AI Insights' above to extract summary and lead data." : "No AI summary available for this call.")}
               </p>
             </div>
           </div>
 
-          {/* Captured Lead & Customer Information Card - ONLY shown if lead data was captured */}
+          {/* Captured Lead & Customer Information Card - Dynamically rendered for any agent/industry */}
           {parsedLeadDetails.hasLeadData && (
             <div className="relative overflow-hidden rounded-xl bg-slate-900/40 dark:bg-slate-900/60 border border-slate-800 p-6 shadow-sm">
               <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
@@ -833,107 +956,28 @@ export default function CallDetail() {
                   </div>
                   <div>
                     <h3 className="text-base font-semibold text-foreground">Captured Lead Information</h3>
-                    <p className="text-xs text-muted-foreground">Extracted from live conversation</p>
+                    <p className="text-xs text-muted-foreground">Dynamically extracted from live conversation</p>
                   </div>
                 </div>
-                {parsedLeadDetails.siteVisit && (
-                  <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 px-3 py-1 text-xs gap-1.5 font-medium">
-                    <CalendarCheck className="h-3.5 w-3.5" />
-                    Appointment / Visit Scheduled
-                  </Badge>
-                )}
+                <div>
+                  {renderClassificationBadge(parsedLeadDetails.classification)}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {/* Customer Name */}
-                {parsedLeadDetails.name && (
-                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
-                      <User className="h-4 w-4" />
+                {parsedLeadDetails.fields.map((field, idx) => (
+                  <div key={idx} className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3 hover:border-slate-600/60 transition-colors">
+                    <div className={`h-8 w-8 rounded-lg ${getFieldIconBg(field.color)} flex items-center justify-center shrink-0 mt-0.5`}>
+                      {renderFieldIcon(field.iconType)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-400">Customer Name</p>
-                      <p className="text-sm font-semibold text-white truncate mt-0.5">
-                        {parsedLeadDetails.name}
+                      <p className="text-xs font-medium text-slate-400">{field.label}</p>
+                      <p className="text-sm font-semibold text-white truncate mt-0.5" title={field.value}>
+                        {field.value}
                       </p>
                     </div>
                   </div>
-                )}
-
-                {/* Phone Number */}
-                {parsedLeadDetails.phone && (
-                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                      <Phone className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-400">Phone Number</p>
-                      <p className="text-sm font-semibold text-white font-mono truncate mt-0.5">
-                        {parsedLeadDetails.phone}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Requirement / Property Type */}
-                {parsedLeadDetails.propertyType && (
-                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
-                      <Home className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-400">Requirement / Service</p>
-                      <p className="text-sm font-semibold text-white truncate mt-0.5">
-                        {parsedLeadDetails.propertyType}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Budget */}
-                {parsedLeadDetails.budget && (
-                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
-                      <IndianRupee className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-400">Budget Range</p>
-                      <p className="text-sm font-semibold text-white truncate mt-0.5">
-                        {parsedLeadDetails.budget}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Location */}
-                {parsedLeadDetails.location && (
-                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center shrink-0 mt-0.5">
-                      <MapPin className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-400">Preferred Location</p>
-                      <p className="text-sm font-semibold text-white truncate mt-0.5">
-                        {parsedLeadDetails.location}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Site Visit / Timing */}
-                {parsedLeadDetails.siteVisit && (
-                  <div className="bg-slate-800/50 dark:bg-slate-950/40 rounded-xl p-3.5 border border-slate-700/40 flex items-start gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center shrink-0 mt-0.5">
-                      <CalendarCheck className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-400">Appointment / Timing</p>
-                      <p className="text-sm font-semibold text-emerald-400 truncate mt-0.5">
-                        {parsedLeadDetails.siteVisit}
-                      </p>
-                    </div>
-                  </div>
-                )}
+                ))}
               </div>
             </div>
           )}

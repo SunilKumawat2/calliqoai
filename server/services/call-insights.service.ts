@@ -15,10 +15,12 @@ export interface CallInsights {
   sentiment: 'positive' | 'neutral' | 'negative';
   classification: 'hot' | 'warm' | 'cold' | 'lost';
   customerName?: string | null;
+  serviceOrRequirement?: string | null;
   propertyType?: string | null;
   budget?: string | null;
   location?: string | null;
   appointmentTiming?: string | null;
+  leadDetails?: Record<string, string>;
   keyPoints?: string[];
   nextActions?: string[];
 }
@@ -31,35 +33,44 @@ export interface CallMetadata {
   duration?: number;
 }
 
-const SYSTEM_PROMPT = `You are an expert AI call analyst. Analyze the call conversation transcript (Hindi, English, or Hinglish) and extract structured insights and captured lead details dynamically.
+const SYSTEM_PROMPT = `You are an expert multi-industry AI conversation analyst.
+Analyze the voice call transcript (in Hindi, English, Hinglish, Punjabi, or any language) and extract structured insights and all business/lead details dynamically regardless of the industry (Healthcare, Real Estate, Religious/Pooja, Education/School, Political/Survey, E-commerce, Legal, Finance, Service/Booking, etc.).
 
-Respond ONLY with valid JSON in this exact format:
+Respond ONLY with valid JSON in this exact structure:
 {
-  "aiSummary": "2-3 sentence clear summary of the customer conversation, requirement, and outcome",
-  "customerName": "Customer name if mentioned in transcript, otherwise null",
-  "propertyType": "Property or service type (e.g. 2BHK Flat, Villa, Plot, Clinic Consultation, Puja Booking) or null",
-  "budget": "Customer budget (e.g. ₹50 Lakh) or null",
-  "location": "Preferred location or city or null",
-  "appointmentTiming": "Site visit or appointment date/time (e.g. Sunday 10:00 AM) or null",
+  "aiSummary": "2-3 sentence clear summary of the customer's request, conversation highlights, and current outcome",
+  "customerName": "Customer / Caller / Yajman / Patient / Student / Voter name if mentioned, otherwise null",
+  "serviceOrRequirement": "Specific service, requirement, doctor specialty, puja type, property, admission class, or query (e.g. 'Griha Pravesh Puja', 'Cardiology Consultation', '3 BHK Villa', 'Class 11 Science Admission', 'MLA Performance Feedback')",
+  "leadDetails": {
+    "<Specific Field Name 1>": "<Extracted Value 1>",
+    "<Specific Field Name 2>": "<Extracted Value 2>"
+  },
   "sentiment": "positive" | "neutral" | "negative",
   "classification": "hot" | "warm" | "cold" | "lost",
   "keyPoints": [
-    "Customer Name: <Name if mentioned>",
-    "Phone Number: <Caller phone number>",
-    "Requirement: ...",
-    "Budget: ...",
-    "Location: ...",
-    "Site Visit / Timing: ..."
+    "Customer Name: <Name>",
+    "Phone Number: <Caller number>",
+    "<Key Point 1>",
+    "<Key Point 2>"
   ],
   "nextActions": [
-    "recommended action 1",
-    "recommended action 2"
+    "Action item 1",
+    "Action item 2"
   ]
 }
 
+Guidelines for "leadDetails":
+Extract ALL relevant business fields discussed during the conversation as clean key-value pairs with proper capitalization.
+Examples:
+- Pooja / Religious: {"Puja Name": "गृह प्रवेश पूजा", "Yajman Name": "सुनील कुमार", "Gotra": "AITHAN", "Preferred Date / Muhurat": "शुभ मुहूर्त अनुसार", "City / Location": "जयपुर, निवाड़ू", "Mode": "Home Visit (पंडित जी घर पर)"}
+- Healthcare / Hospital: {"Patient Name": "...", "Doctor / Specialty": "...", "Appointment Timing": "...", "Location": "..."}
+- Real Estate: {"Property Type": "Villa", "Budget": "₹50 Lakh", "Preferred Location": "Jaipur", "Site Visit Timing": "Sunday 10:00 AM"}
+- School / Education: {"Student Name": "...", "Parent Name": "...", "Class / Grade": "...", "Admission Status": "Interested"}
+- Political / Survey: {"Respondent Name": "...", "Constituency": "Muktsar", "MLA Satisfaction": "Satisfied", "Candidate Preference": "..."}
+
 Classification guide:
-- "hot": Caller showed strong interest, requested visit/booking, ready to proceed
-- "warm": Caller showed moderate interest, needs follow-up
+- "hot": Caller showed strong interest, requested visit/booking/appointment, ready to proceed
+- "warm": Caller showed moderate interest, needs follow-up or confirmation
 - "cold": Caller showed little interest, unlikely to convert
 - "lost": Caller explicitly declined or hung up early
 
