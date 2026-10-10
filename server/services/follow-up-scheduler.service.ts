@@ -305,9 +305,15 @@ export class FollowUpSchedulerService {
 
         if (callRec) {
           userId = userId || callRec.userId;
-          agentId = agentId || callRec.agentId;
+          agentId = agentId || callRec.agentId || (callRec.metadata as any)?.agentId;
           campaignId = campaignId || callRec.campaignId;
           contactId = contactId || callRec.contactId;
+
+          // If agentId still not found, check campaign
+          if (!agentId && campaignId) {
+            const [camp] = await db.select({ agentId: campaigns.agentId }).from(campaigns).where(eq(campaigns.id, campaignId)).limit(1).catch(() => []);
+            if (camp?.agentId) agentId = camp.agentId;
+          }
 
           // For outbound campaign calls, the customer is the toNumber, not the fromNumber!
           const isIncoming = callRec.callDirection === 'incoming';
@@ -475,31 +481,52 @@ export class FollowUpSchedulerService {
         return { success: false, error: 'Follow-up is already completed' };
       }
 
-      // Mark as in_progress
-      await db
+      // Atomic claim to prevent race condition or duplicate parallel triggers
+      const [claimed] = await db
         .update(scheduledFollowUps)
         .set({ status: 'in_progress', updatedAt: new Date() })
-        .where(eq(scheduledFollowUps.id, id));
+        .where(
+          and(
+            eq(scheduledFollowUps.id, id),
+            eq(scheduledFollowUps.status, 'pending')
+          )
+        )
+        .returning();
+
+      if (!claimed && !triggerUserId) {
+        return { success: false, error: 'Follow-up is already in progress or completed' };
+      }
 
       // Resolve Agent & Telephony Phone Number
       let agentRecord: any = null;
-      if (followUp.agentId) {
-        const [a] = await db.select().from(agents).where(eq(agents.id, followUp.agentId)).limit(1);
-        agentRecord = a;
-      }
+      let resolvedAgentId = followUp.agentId;
 
-      // If agent not found via followUp.agentId, try to retrieve from original call record
-      if (!agentRecord && followUp.callId) {
-        const [callRec] = await db.select().from(calls).where(eq(calls.id, followUp.callId)).limit(1);
-        if (callRec?.agentId) {
-          const [a] = await db.select().from(agents).where(eq(agents.id, callRec.agentId)).limit(1);
-          agentRecord = a;
+      // 1. Try resolving agentId from original call record (agentId or metadata.agentId)
+      if (!resolvedAgentId && followUp.callId) {
+        const [callRec] = await db.select().from(calls).where(eq(calls.id, followUp.callId)).limit(1).catch(() => []);
+        if (callRec) {
+          resolvedAgentId = callRec.agentId || (callRec.metadata as any)?.agentId;
+          if (!resolvedAgentId && callRec.campaignId) {
+            const [camp] = await db.select({ agentId: campaigns.agentId }).from(campaigns).where(eq(campaigns.id, callRec.campaignId)).limit(1).catch(() => []);
+            if (camp?.agentId) resolvedAgentId = camp.agentId;
+          }
         }
       }
 
+      // 2. Try resolving agentId from campaign record
+      if (!resolvedAgentId && followUp.campaignId) {
+        const [camp] = await db.select({ agentId: campaigns.agentId }).from(campaigns).where(eq(campaigns.id, followUp.campaignId)).limit(1).catch(() => []);
+        if (camp?.agentId) resolvedAgentId = camp.agentId;
+      }
+
+      if (resolvedAgentId) {
+        const [a] = await db.select().from(agents).where(eq(agents.id, resolvedAgentId)).limit(1).catch(() => []);
+        agentRecord = a;
+      }
+
+      // 3. Fallback to first active agent of user
       if (!agentRecord) {
-        // Fallback to first available agent for user
-        const [firstAgent] = await db.select().from(agents).where(eq(agents.userId, followUp.userId)).limit(1);
+        const [firstAgent] = await db.select().from(agents).where(eq(agents.userId, followUp.userId)).limit(1).catch(() => []);
         agentRecord = firstAgent;
       }
 
@@ -510,6 +537,11 @@ export class FollowUpSchedulerService {
           updatedAt: new Date(),
         }).where(eq(scheduledFollowUps.id, id));
         return { success: false, error: 'No active AI agent found' };
+      }
+
+      // Persist resolved agentId back to scheduledFollowUps if missing
+      if (!followUp.agentId && agentRecord.id) {
+        await db.update(scheduledFollowUps).set({ agentId: agentRecord.id }).where(eq(scheduledFollowUps.id, id)).catch(() => {});
       }
 
       // Resolve Outbound Plivo Phone Number (MUST be active!)
@@ -618,18 +650,31 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
         },
       });
 
-      // Update follow-up record to completed
+      // Update follow-up record to completed immediately
       await db
         .update(scheduledFollowUps)
         .set({
           status: 'completed',
           followUpCallId: plivoCall.id,
+          agentId: agentRecord.id,
           completedAt: new Date(),
           updatedAt: new Date(),
         })
         .where(eq(scheduledFollowUps.id, id));
 
-      logger.info(`Successfully triggered automated follow-up call ${id} -> call ${plivoCall.id}`, {
+      // Tag the created call record with isFollowUpCall flag & agentId to prevent follow-up loops
+      if (plivoCall?.id) {
+        await db
+          .update(calls)
+          .set({
+            agentId: agentRecord.id,
+            metadata: sql`COALESCE(${calls.metadata}, '{}'::jsonb) || ${JSON.stringify({ isFollowUpCall: true, followUpId: id, originalCallId: followUp.callId, agentId: agentRecord.id })}::jsonb`,
+          })
+          .where(eq(calls.id, plivoCall.id))
+          .catch(() => {});
+      }
+
+      logger.info(`Successfully triggered automated follow-up call ${id} -> call ${plivoCall.id} with agent ${agentRecord.name} (${agentRecord.id})`, {
         phoneNumber: followUp.phoneNumber,
         callUuid,
       }, 'FollowUpScheduler');
@@ -684,18 +729,31 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
       for (const c of recentCalls) {
         if (!c.transcript || c.transcript.length < 25) continue;
         
+        // Skip if this call itself was already a follow-up call (prevents follow-up calling loops!)
+        const meta = (c.metadata as any) || {};
+        if (meta.isFollowUpCall) continue;
+
         // Fast keyword check for callback intent in transcript
         const hasCallbackIntent = /बाद|minute|min|घंटे|कॉल\s*करना|कॉल\s*कर|call\s*back|later|tomorrow|कल|बजे|baje/i.test(c.transcript);
         if (!hasCallbackIntent) continue;
 
-        // Check if follow-up is already recorded for this call
+        // Check if follow-up is already recorded for this call (either as source callId or as followUpCallId)
         const [existing] = await db
           .select({ id: scheduledFollowUps.id })
           .from(scheduledFollowUps)
-          .where(eq(scheduledFollowUps.callId, c.id))
+          .where(
+            sql`${scheduledFollowUps.callId} = ${c.id} OR ${scheduledFollowUps.followUpCallId} = ${c.id}`
+          )
           .limit(1);
 
         if (existing) continue;
+
+        // Resolve agentId from c.agentId or metadata.agentId or campaign
+        let agentId = c.agentId || meta.agentId;
+        if (!agentId && c.campaignId) {
+          const [camp] = await db.select({ agentId: campaigns.agentId }).from(campaigns).where(eq(campaigns.id, c.campaignId)).limit(1).catch(() => []);
+          if (camp?.agentId) agentId = camp.agentId;
+        }
 
         // Call insights to parse intent and schedule
         const { CallInsightsService } = await import('./call-insights.service');
@@ -704,7 +762,7 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
           {
             callId: c.id,
             userId: c.userId || undefined,
-            agentId: c.agentId || undefined,
+            agentId: agentId || undefined,
             campaignId: c.campaignId || undefined,
             contactId: c.contactId || undefined,
             fromNumber: c.fromNumber || undefined,
