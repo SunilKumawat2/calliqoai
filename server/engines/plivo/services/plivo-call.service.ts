@@ -600,6 +600,10 @@ export class PlivoCallService {
             call.transcript,
             {
               callId: call.id,
+              userId: call.userId || undefined,
+              agentId: call.agentId || undefined,
+              campaignId: call.campaignId || undefined,
+              contactId: call.contactId || undefined,
               fromNumber: call.fromNumber,
               toNumber: call.toNumber,
               duration: updateData.duration || call.duration || undefined

@@ -40,6 +40,12 @@ export class FollowUpSchedulerService {
 
     let text = timeText.toLowerCase().trim();
 
+    // Convert Devanagari digits ०-९ to 0-9
+    const devDigits = ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९'];
+    for (let i = 0; i < 10; i++) {
+      text = text.replaceAll(devDigits[i], String(i));
+    }
+
     // Map Hindi numerals & words to numbers
     const hindiNumberMap: Record<string, string> = {
       'आधा': '0.5',
@@ -91,8 +97,8 @@ export class FollowUpSchedulerService {
       text = text.replace(regex, num);
     }
 
-    // 1. Minutes relative: "10 minute baad", "10 min baad", "10 minutes", "in 10 min", "10 मिनट", "0.5 ghanta" (30 mins)
-    const minMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:min|minute|minutes|मिनट|m\b)/i);
+    // 1. Minutes relative: "5 min baad", "5 मिनट", "5 मिनिट", "in 10 min", "0.5 ghanta" (30 mins)
+    const minMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|मिनट|मिनिट|मिंट|मिल्ट)/i);
     if (minMatch) {
       const mins = parseFloat(minMatch[1]) || 15;
       return new Date(now.getTime() + Math.round(mins * 60 * 1000));
@@ -112,12 +118,12 @@ export class FollowUpSchedulerService {
       return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
     }
 
-    // 4. Specific time today or tomorrow (e.g. "5 PM", "5:30 PM", "17:00", "shaam 5 baje", "subah 10 baje", "kal 4 baje", "कल 4 बजे")
+    // 4. Specific time today or tomorrow (e.g. "10 baj ke 17 min", "5 PM", "shaam 5 baje", "kal 4 baje", "कल 4 बजे")
     const isTomorrow = text.includes('tomorrow') || text.includes('kal') || text.includes('कल') || text.includes('next day') || text.includes('agle din');
     const isEvening = text.includes('pm') || text.includes('shaam') || text.includes('शाम') || text.includes('dopahar') || text.includes('दोपहर') || text.includes('evening') || text.includes('afternoon') || text.includes('raat') || text.includes('रात');
     const isMorning = text.includes('am') || text.includes('subah') || text.includes('सुबह') || text.includes('morning');
 
-    const timeDigitsMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(?:baje|बजे|am|pm|o'clock)?/i);
+    const timeDigitsMatch = text.match(/(\d{1,2})\s*(?::|बज\s*कर|बज\s*के|बजे)\s*(\d{1,2})?\s*(?:am|pm)?/i) || text.match(/(\d{1,2})(?::(\d{2}))?\s*(?:baje|बजे|am|pm|o'clock)?/i);
     if (timeDigitsMatch) {
       let hour = parseInt(timeDigitsMatch[1], 10);
       const minute = timeDigitsMatch[2] ? parseInt(timeDigitsMatch[2], 10) : 0;
@@ -251,7 +257,12 @@ export class FollowUpSchedulerService {
     contextNote?: string | null;
   }): Promise<ScheduledFollowUp | null> {
     try {
-      let customerName = params.customerName;
+      let userId = params.userId || null;
+      let agentId = params.agentId || null;
+      let campaignId = params.campaignId || null;
+      let contactId = params.contactId || null;
+      let phoneNumber = params.phoneNumber || null;
+      let customerName = params.customerName || null;
 
       // If missing details or to ensure correct destination phone number, look up call in DB
       if (params.callId) {

@@ -53,6 +53,8 @@ import { CRMLeadProcessor } from "./engines/crm/lead-processor.service";
 import { deductCallCredits } from "./services/credit-service";
 import { PlivoPhoneService } from "./engines/plivo/services/plivo-phone.service";
 import { FollowUpSchedulerService } from "./services/follow-up-scheduler.service";
+import { CallInsightsService } from "./services/call-insights.service";
+export { FollowUpSchedulerService, CallInsightsService };
 
 // Register CRMLeadProcessor globally so that dynamically loaded plugins can access it
 (global as any).CRMLeadProcessor = CRMLeadProcessor;

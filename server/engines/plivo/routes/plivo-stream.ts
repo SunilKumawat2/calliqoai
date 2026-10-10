@@ -183,6 +183,10 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
               result.transcript,
               {
                 callId: call.id,
+                userId: call.userId || undefined,
+                agentId: call.agentId || undefined,
+                campaignId: call.campaignId || undefined,
+                contactId: call.contactId || undefined,
                 fromNumber: call.fromNumber || undefined,
                 toNumber: call.toNumber || undefined,
                 duration: result.duration

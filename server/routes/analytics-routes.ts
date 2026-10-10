@@ -204,6 +204,10 @@ export function createAnalyticsRoutes(ctx: RouteContext): Router {
         callWithDetails.transcript,
         {
           callId: callWithDetails.id,
+          userId: callWithDetails.userId,
+          agentId: callWithDetails.agentId,
+          campaignId: callWithDetails.campaignId,
+          contactId: callWithDetails.contactId,
           fromNumber: callWithDetails.fromNumber || callWithDetails.phoneNumber,
           toNumber: callWithDetails.toNumber,
           agentName: callWithDetails.agent?.name,
