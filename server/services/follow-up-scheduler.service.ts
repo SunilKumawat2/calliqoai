@@ -20,7 +20,7 @@ export class FollowUpSchedulerService {
 
   /**
    * Parse relative time text into a concrete Javascript Date
-   * Handles: "in 2 hours", "after 5 PM", "tomorrow 10 AM", "kal 5 baje", "shaam 6 baje", etc.
+   * Handles: "10 minute baad", "in 2 hours", "after 5 PM", "tomorrow 10 AM", "kal 5 baje", "shaam 6 baje", "दस मिनट बाद", "1 din baad", "4 hours", etc.
    */
   static parseFollowUpTime(timeText?: string | null, isoHint?: string | null): Date {
     const now = new Date();
@@ -38,37 +38,101 @@ export class FollowUpSchedulerService {
       return new Date(now.getTime() + 2 * 60 * 60 * 1000);
     }
 
-    const text = timeText.toLowerCase().trim();
+    let text = timeText.toLowerCase().trim();
 
-    // 1. "in X hours" or "X hours later"
-    const hoursMatch = text.match(/in\s+(\d+)\s+hour/i) || text.match(/(\d+)\s+ghante/i) || text.match(/(\d+)\s+hour/i);
-    if (hoursMatch) {
-      const hours = parseInt(hoursMatch[1], 10) || 2;
-      return new Date(now.getTime() + hours * 60 * 60 * 1000);
+    // Map Hindi numerals & words to numbers
+    const hindiNumberMap: Record<string, string> = {
+      'आधा': '0.5',
+      'आधे': '0.5',
+      'aadha': '0.5',
+      'aadhe': '0.5',
+      'डेढ़': '1.5',
+      'dedh': '1.5',
+      'ढाई': '2.5',
+      'dhai': '2.5',
+      'एक': '1',
+      'ek': '1',
+      'दो': '2',
+      'do': '2',
+      'तीन': '3',
+      'teen': '3',
+      'चार': '4',
+      'chaar': '4',
+      'पांच': '5',
+      'पाँच': '5',
+      'panch': '5',
+      'paanch': '5',
+      'छह': '6',
+      'छः': '6',
+      'chheh': '6',
+      'सात': '7',
+      'saat': '7',
+      'आठ': '8',
+      'aath': '8',
+      'नौ': '9',
+      'nau': '9',
+      'दस': '10',
+      'das': '10',
+      'dus': '10',
+      'पंद्रह': '15',
+      'pandrah': '15',
+      'बीस': '20',
+      'bees': '20',
+      'पच्चीस': '25',
+      'pachees': '25',
+      'तीस': '30',
+      'tees': '30',
+      'पैंतालीस': '45',
+      'paintalis': '45',
+    };
+
+    for (const [hindiWord, num] of Object.entries(hindiNumberMap)) {
+      const regex = new RegExp(`\\b${hindiWord}\\b|${hindiWord}`, 'gi');
+      text = text.replace(regex, num);
     }
 
-    // 2. "in X minutes"
-    const minMatch = text.match(/in\s+(\d+)\s+min/i) || text.match(/(\d+)\s+minute/i);
+    // 1. Minutes relative: "10 minute baad", "10 min baad", "10 minutes", "in 10 min", "10 मिनट", "0.5 ghanta" (30 mins)
+    const minMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:min|minute|minutes|मिनट|m\b)/i);
     if (minMatch) {
-      const mins = parseInt(minMatch[1], 10) || 30;
-      return new Date(now.getTime() + mins * 60 * 1000);
+      const mins = parseFloat(minMatch[1]) || 15;
+      return new Date(now.getTime() + Math.round(mins * 60 * 1000));
     }
 
-    // 3. Specific time today or tomorrow (e.g. "5 PM", "5:30 PM", "17:00", "shaam 5 baje", "subah 10 baje")
-    const isTomorrow = text.includes('tomorrow') || text.includes('kal') || text.includes('next day');
-    const isEvening = text.includes('pm') || text.includes('shaam') || text.includes('dopahar') || text.includes('evening') || text.includes('afternoon');
-    const isMorning = text.includes('am') || text.includes('subah') || text.includes('morning');
+    // 2. Hours relative: "2 ghante baad", "1.5 ghanta", "in 2 hours", "4 hours later", "2 घंटे"
+    const hoursMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:hour|hours|hr|hrs|ghante|ghanta|घंटे|घंटा|h\b)/i);
+    if (hoursMatch) {
+      const hours = parseFloat(hoursMatch[1]) || 2;
+      return new Date(now.getTime() + Math.round(hours * 60 * 60 * 1000));
+    }
 
-    const timeDigitsMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+    // 3. Days relative: "1 din baad", "2 din", "in 1 day", "1 दिन"
+    const daysMatch = text.match(/(\d+)\s*(?:day|days|din|दिन|d\b)/i);
+    if (daysMatch) {
+      const days = parseInt(daysMatch[1], 10) || 1;
+      return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+    }
+
+    // 4. Specific time today or tomorrow (e.g. "5 PM", "5:30 PM", "17:00", "shaam 5 baje", "subah 10 baje", "kal 4 baje", "कल 4 बजे")
+    const isTomorrow = text.includes('tomorrow') || text.includes('kal') || text.includes('कल') || text.includes('next day') || text.includes('agle din');
+    const isEvening = text.includes('pm') || text.includes('shaam') || text.includes('शाम') || text.includes('dopahar') || text.includes('दोपहर') || text.includes('evening') || text.includes('afternoon') || text.includes('raat') || text.includes('रात');
+    const isMorning = text.includes('am') || text.includes('subah') || text.includes('सुबह') || text.includes('morning');
+
+    const timeDigitsMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(?:baje|बजे|am|pm|o'clock)?/i);
     if (timeDigitsMatch) {
       let hour = parseInt(timeDigitsMatch[1], 10);
       const minute = timeDigitsMatch[2] ? parseInt(timeDigitsMatch[2], 10) : 0;
-      const meridiem = timeDigitsMatch[3]?.toLowerCase();
+      const meridiem = text.includes('pm') ? 'pm' : (text.includes('am') ? 'am' : undefined);
 
       if (meridiem === 'pm' && hour < 12) hour += 12;
       if (meridiem === 'am' && hour === 12) hour = 0;
       if (!meridiem && isEvening && hour < 12) hour += 12;
       if (!meridiem && isMorning && hour === 12) hour = 0;
+
+      // If just "4 baje" without AM/PM:
+      // If hour is 1..7 and current hour >= 8, assuming afternoon/evening (e.g. 4 PM)
+      if (!meridiem && !isMorning && !isEvening && hour >= 1 && hour <= 7) {
+        hour += 12;
+      }
 
       const target = new Date(now);
       if (isTomorrow) {
@@ -76,7 +140,7 @@ export class FollowUpSchedulerService {
       }
       target.setHours(hour, minute, 0, 0);
 
-      // If scheduled time has already passed today and 'tomorrow' was not explicitly mentioned, schedule for tomorrow or 2 hours later
+      // If scheduled time has already passed today and 'tomorrow' was not explicitly mentioned, schedule for tomorrow
       if (target.getTime() <= now.getTime()) {
         if (!isTomorrow) {
           target.setDate(target.getDate() + 1);
@@ -87,7 +151,7 @@ export class FollowUpSchedulerService {
       return target;
     }
 
-    // 4. "Tomorrow" / "Kal" general
+    // 5. "Tomorrow" / "Kal" general without specific time
     if (isTomorrow) {
       const target = new Date(now);
       target.setDate(target.getDate() + 1);
@@ -453,28 +517,48 @@ export class FollowUpSchedulerService {
         }
       }
 
-      // Construct Follow-up Context Injection Prompt
-      const customerName = followUp.customerName || 'Customer';
+      // Construct Follow-up Context Injection Prompt & Initial Greeting
+      const rawName = followUp.customerName?.trim() || '';
+      const isGenericName = !rawName || ['customer', 'unknown', 'not mentioned', 'caller', 'user'].includes(rawName.toLowerCase());
+      const customerName = isGenericName ? '' : rawName;
       const contextNote = followUp.contextNote || 'Customer requested a callback.';
-      const preferredTime = followUp.preferredTimeText || 'at this time';
+      const preferredTime = followUp.preferredTimeText || 'इस समय';
+
+      // Detect language preference (Hindi vs English)
+      const isHindi = (agentRecord.language === 'hi') || 
+                      /[\u0900-\u097F]/.test(agentRecord.systemPrompt || '') || 
+                      /[\u0900-\u097F]/.test(contextNote) || 
+                      /[\u0900-\u097F]/.test(preferredTime) ||
+                      /namaste|kripya|baad|baje|karein|boliye|humne|baat/i.test(agentRecord.systemPrompt || '');
+
+      let firstMessage = '';
+      if (isHindi) {
+        firstMessage = customerName
+          ? `नमस्ते ${customerName} जी, मैं ${agentRecord.name || 'AI Assistant'} बात कर रहा हूँ। आपने पहले कहा था कि ${preferredTime} कॉल करें, तो क्या अभी आपसे बात करने का सही समय है?`
+          : `नमस्ते, मैं ${agentRecord.name || 'AI Assistant'} बात कर रहा हूँ। आपने पहले कहा था कि ${preferredTime} कॉल करें, तो क्या अभी आपसे बात करने का सही समय है?`;
+      } else {
+        firstMessage = customerName
+          ? `Hello ${customerName}, I am calling you back as you requested earlier (${preferredTime}). Is this a good time to speak?`
+          : `Hello, I am calling you back as requested earlier (${preferredTime}). Is this a good time to speak?`;
+      }
 
       const baseSystemPrompt = agentRecord.systemPrompt || 'You are a professional AI assistant.';
-      const followUpContext = `\n\n[AUTOMATED FOLLOW-UP CALL CONTEXT]:
-You are now calling back ${customerName} at ${destinationNumber} because during a previous call they requested to be called back (${preferredTime}).
-Previous context / notes: "${contextNote}".
-Guidelines:
-1. Warmly greet ${customerName} and mention that you are calling back as requested earlier.
-2. Politely confirm if this is a good time to speak.
-3. Continue assisting them smoothly according to your core role and instructions.`;
+      const followUpContext = `\n\n[AUTOMATED FOLLOW-UP CALL MODE]:
+You are now calling back ${customerName || 'the customer'} at ${destinationNumber} for a scheduled follow-up.
+In the previous conversation, the customer was busy or requested a callback (${preferredTime}).
+Previous context / notes from earlier call: "${contextNote}".
+
+CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
+1. DO NOT restart from scratch with a generic cold sales pitch or introduce yourself as a stranger.
+2. Your initial greeting explicitly references that you are calling them back at their requested time (${preferredTime}) and asks if this is a good time to speak.
+3. If the customer says "हाँ बोलिए" / "Yes" / "I'm free" / "Tell me":
+   - Directly resume the conversation from where it left off based on previous notes ("${contextNote}").
+4. If the customer is STILL busy or driving:
+   - Politely ask when would be a better time to call them back and confirm politely before ending the call.
+5. Maintain a natural, warm, conversational, and helpful tone throughout.`;
 
       const voice = (agentRecord.openaiVoice || 'ash') as OpenAIVoice;
       const model = (agentRecord.llmModel || 'gpt-4o-realtime-preview-2024-12-17') as OpenAIRealtimeModel;
-
-      // Personalized Opening Message
-      let firstMessage = agentRecord.firstMessage || `Hello ${customerName}, I am calling you back as requested earlier. Is this a good time to talk?`;
-      if (followUp.customerName) {
-        firstMessage = `Hello ${followUp.customerName}, I am calling you back as you requested earlier. Is this a good time to talk?`;
-      }
 
       // Initiate outbound Plivo call
       const { callUuid, plivoCall } = await PlivoCallService.initiateCall({

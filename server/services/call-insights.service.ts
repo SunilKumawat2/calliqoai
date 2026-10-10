@@ -54,8 +54,9 @@ Respond ONLY with valid JSON in this exact structure:
     "<Specific Field Name 2>": "<Extracted Value 2>"
   },
   "followUpRequested": true | false,
-  "followUpPreferredTime": "Specific preferred callback time requested by customer (e.g. 'Today after 5:00 PM', 'Tomorrow 10:00 AM', 'In 2 hours', 'Shaam 6 baje', 'Kal dopahar 2 baje') or null",
-  "followUpReason": "Reason for follow-up (e.g. 'User is busy driving / requested callback at 5 PM') or null",
+  "followUpPreferredTime": "Specific preferred callback time requested by customer (e.g. '10 minute baad', 'Today after 5:00 PM', 'Tomorrow 10:00 AM', 'In 2 hours', 'Shaam 6 baje', 'Kal dopahar 2 baje', '1 din baad') or null",
+  "followUpScheduledIso": "Exact ISO 8601 datetime (UTC) calculated relative to the 'Current Reference Time' provided in user message for when the callback should be scheduled (e.g. if caller says '10 minute baad', add 10 minutes; if '1 din baad', add 24 hours; if 'kal 4 baje', calculate tomorrow 16:00 in IST +05:30 and convert to UTC ISO string) or null",
+  "followUpReason": "Reason for follow-up (e.g. 'User is busy driving / requested callback in 10 minutes') or null",
   "sentiment": "positive" | "neutral" | "negative",
   "classification": "hot" | "warm" | "cold" | "lost",
   "keyPoints": [
@@ -70,10 +71,11 @@ Respond ONLY with valid JSON in this exact structure:
   ]
 }
 
-Guidelines for "followUpRequested" & "followUpPreferredTime":
-- Set "followUpRequested": true if the customer asks to call back later, specifies a time, says they are busy/driving/at office/in meeting, or asks for a follow-up call.
-- Extract the exact requested time phrase in "followUpPreferredTime" (e.g. "After 5 PM today", "Kal subah 10 baje", "Tomorrow morning", "After 2 hours").
-- If no follow-up was requested, set "followUpRequested": false and "followUpPreferredTime": null.
+Guidelines for "followUpRequested", "followUpPreferredTime" & "followUpScheduledIso":
+- Set "followUpRequested": true if the customer asks to call back later, specifies a time (e.g. 10 min, 20 min, 1 hour, 4 hours, tomorrow, next day), says they are busy/driving/at office/in meeting, or asks for a follow-up call.
+- Extract the exact requested time phrase in "followUpPreferredTime" (e.g. "10 minute baad", "दस मिनट बाद", "After 5 PM today", "Kal subah 10 baje", "Tomorrow morning", "After 2 hours").
+- Calculate the exact "followUpScheduledIso" UTC timestamp based on the Current Reference Time.
+- If no follow-up was requested, set "followUpRequested": false, "followUpPreferredTime": null, and "followUpScheduledIso": null.
 
 Guidelines for "leadDetails":
 Extract ALL relevant business fields discussed during the conversation as clean key-value pairs with proper capitalization.
@@ -229,7 +231,9 @@ export class CallInsightsService {
   }
 
   private static buildUserMessage(transcript: string, metadata: CallMetadata): string {
-    let message = '';
+    const now = new Date();
+    const istTime = now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    let message = `Current Reference Time: ${now.toISOString()} (${istTime} IST)\n`;
     
     if (metadata.agentName) {
       message += `Agent: ${metadata.agentName}\n`;
