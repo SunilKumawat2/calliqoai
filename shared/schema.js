@@ -336,6 +336,9 @@ const campaigns = pgTable("campaigns", {
   // Array of days: ["monday", "tuesday", "wednesday", etc.]
   scheduleTimezone: text("schedule_timezone").default("America/New_York"),
   // Timezone for the schedule
+  // Automated AI Follow-Up Calling Toggle
+  autoFollowUpEnabled: boolean("auto_follow_up_enabled").notNull().default(true),
+  // Whether to automatically dial callback requests at scheduled time
   // ElevenLabs Batch Calling Integration
   batchJobId: text("batch_job_id"),
   // ElevenLabs batch job ID when campaign is running
