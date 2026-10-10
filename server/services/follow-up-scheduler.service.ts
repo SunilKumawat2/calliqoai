@@ -24,175 +24,197 @@ export class FollowUpSchedulerService {
    */
   static parseFollowUpTime(timeText?: string | null, isoHint?: string | null, userTimezone: string = 'Asia/Kolkata'): Date {
     const now = new Date();
-    
-    // If a valid ISO string is already provided and in future, use it
+
+    if (timeText && typeof timeText === 'string') {
+      let text = timeText.toLowerCase().trim();
+
+      // Convert Devanagari digits ०-९ to 0-9
+      const devDigits = ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९'];
+      for (let i = 0; i < 10; i++) {
+        text = text.replaceAll(devDigits[i], String(i));
+      }
+
+      // Normalize speech recognition variations
+      text = text.replace(/बज़|बजे|बज़े|बजकर|बज़कर/gi, 'बज');
+      text = text.replace(/मिनेट|फिल्ट|वीट|मिल्ट|मिंट|मिनिट/gi, 'मिनट');
+      text = text.replace(/कौल|कोल/gi, 'कॉल');
+
+      // Map Hindi numerals & words to numbers
+      const hindiNumberMap: Record<string, string> = {
+        'आधा': '0.5',
+        'आधे': '0.5',
+        'aadha': '0.5',
+        'aadhe': '0.5',
+        'डेढ़': '1.5',
+        'dedh': '1.5',
+        'ढाई': '2.5',
+        'dhai': '2.5',
+        'एक': '1',
+        'ek': '1',
+        'दो': '2',
+        'do': '2',
+        'तीन': '3',
+        'teen': '3',
+        'चार': '4',
+        'chaar': '4',
+        'पांच': '5',
+        'पाँच': '5',
+        'panch': '5',
+        'paanch': '5',
+        'छह': '6',
+        'छः': '6',
+        'chheh': '6',
+        'सात': '7',
+        'saat': '7',
+        'आठ': '8',
+        'aath': '8',
+        'नौ': '9',
+        'nau': '9',
+        'दस': '10',
+        'das': '10',
+        'dus': '10',
+        'ग्यारह': '11',
+        'gyarah': '11',
+        'बारह': '12',
+        'barah': '12',
+        'तेरह': '13',
+        'terah': '13',
+        'चौदह': '14',
+        'chaudah': '14',
+        'पंद्रह': '15',
+        'pandrah': '15',
+        'सोलह': '16',
+        'solah': '16',
+        'सत्रह': '17',
+        'satrah': '17',
+        'अठारह': '18',
+        'atharah': '18',
+        'उन्नीस': '19',
+        'unnees': '19',
+        'बीस': '20',
+        'bees': '20',
+        'पच्चीस': '25',
+        'pachees': '25',
+        'तीस': '30',
+        'tees': '30',
+        'पैंतीस': '35',
+        'paintis': '35',
+        'चालीस': '40',
+        'chalis': '40',
+        'पैंतालीस': '45',
+        'paintalis': '45',
+        'पचास': '50',
+        'pachas': '50',
+        'पचपन': '55',
+        'pachpan': '55',
+        'अट्ठावन': '58',
+        'athawan': '58',
+      };
+
+      for (const [hindiWord, num] of Object.entries(hindiNumberMap)) {
+        const regex = new RegExp(`\\b${hindiWord}\\b|${hindiWord}`, 'gi');
+        text = text.replace(regex, num);
+      }
+
+      // 1. Specific time today or tomorrow in user's timezone (e.g. "11:58", "11 बजकर 58 मिनट", "5 PM", "shaam 5 baje", "कल 4 बजे")
+      const isTomorrow = text.includes('tomorrow') || text.includes('kal') || text.includes('कल') || text.includes('next day') || text.includes('agle din');
+      const isEvening = text.includes('pm') || text.includes('shaam') || text.includes('शाम') || text.includes('dopahar') || text.includes('दोपहर') || text.includes('evening') || text.includes('afternoon') || text.includes('raat') || text.includes('रात');
+      const isMorning = text.includes('am') || text.includes('subah') || text.includes('सुबह') || text.includes('morning');
+
+      const specificTimeMatch = text.match(/(\d{1,2})\s*(?::|बज\s*के|बज\s*कर|बज)\s*(\d{1,2})\s*(?:मिनट|min)?/i) || 
+                                text.match(/(\d{1,2})\s*(?::|बज\s*के|बज\s*कर|बज)\s*(\d{1,2})?/i) ||
+                                text.match(/(\d{1,2})\s*(?:baje|बजे|o'clock)\s*(\d{1,2})?/i);
+
+      if (specificTimeMatch) {
+        let hour = parseInt(specificTimeMatch[1], 10);
+        const minute = specificTimeMatch[2] ? parseInt(specificTimeMatch[2], 10) : 0;
+        const meridiem = text.includes('pm') ? 'pm' : (text.includes('am') ? 'am' : undefined);
+
+        if (meridiem === 'pm' && hour < 12) hour += 12;
+        if (meridiem === 'am' && hour === 12) hour = 0;
+        if (!meridiem && isEvening && hour < 12) hour += 12;
+        if (!meridiem && isMorning && hour === 12) hour = 0;
+
+        // Get current local date/time in user's timezone (Asia/Kolkata)
+        try {
+          const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: userTimezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+          });
+          
+          const parts = formatter.formatToParts(now);
+          const pMap: Record<string, string> = {};
+          for (const p of parts) pMap[p.type] = p.value;
+
+          const localYear = parseInt(pMap.year, 10);
+          const localMonth = parseInt(pMap.month, 10) - 1;
+          let localDay = parseInt(pMap.day, 10);
+          const currentLocalHour = parseInt(pMap.hour, 10);
+
+          if (!meridiem && !isMorning && !isEvening && hour >= 1 && hour <= 7 && currentLocalHour >= 8) {
+            hour += 12;
+          }
+
+          if (isTomorrow) {
+            localDay += 1;
+          }
+
+          const tzOffsetMs = 5.5 * 60 * 60 * 1000; // Asia/Kolkata is UTC+5:30
+          const localTargetUtcEpoch = Date.UTC(localYear, localMonth, localDay, hour, minute, 0) - tzOffsetMs;
+          let targetDate = new Date(localTargetUtcEpoch);
+
+          // If time is earlier today by more than 1 minute and caller didn't say tomorrow, schedule for today (or next day if >2 hours in past)
+          if (targetDate.getTime() <= now.getTime() - 2 * 60 * 60 * 1000 && !isTomorrow) {
+            targetDate = new Date(localTargetUtcEpoch + 24 * 60 * 60 * 1000);
+          }
+          return targetDate;
+        } catch {
+          // Fallback to basic offset
+        }
+      }
+
+      // 2. Minutes relative: "5 min baad", "5 मिनट बाद", "3-4 मिनट", "in 10 min", "0.5 ghanta" (30 mins)
+      const minMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|मिनट)/i);
+      if (minMatch) {
+        const mins = parseFloat(minMatch[1]) || 15;
+        return new Date(now.getTime() + Math.round(mins * 60 * 1000));
+      }
+
+      // 3. Hours relative: "2 ghante baad", "1.5 ghanta", "in 2 hours", "4 hours later", "2 घंटे"
+      const hoursMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:hour|hours|hr|hrs|ghante|ghanta|घंटे|घंटा|h\b)/i);
+      if (hoursMatch) {
+        const hours = parseFloat(hoursMatch[1]) || 2;
+        return new Date(now.getTime() + Math.round(hours * 60 * 60 * 1000));
+      }
+
+      // 4. Days relative: "1 din baad", "2 din", "in 1 day", "1 दिन"
+      const daysMatch = text.match(/(\d+)\s*(?:day|days|din|दिन|d\b)/i);
+      if (daysMatch) {
+        const days = parseInt(daysMatch[1], 10) || 1;
+        return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+      }
+
+      // 5. "Tomorrow" / "Kal" general without specific time
+      if (isTomorrow) {
+        const target = new Date(now);
+        target.setDate(target.getDate() + 1);
+        target.setHours(11, 0, 0, 0); // Default to 11:00 AM tomorrow
+        return target;
+      }
+    }
+
+    // Fallback to isoHint if provided
     if (isoHint) {
       const parsed = new Date(isoHint);
       if (!isNaN(parsed.getTime()) && parsed.getTime() > now.getTime() - 60000 && parsed.getTime() < now.getTime() + 30 * 24 * 3600 * 1000) {
         return parsed;
       }
-    }
-
-    if (!timeText || typeof timeText !== 'string') {
-      // Default: 2 hours from now
-      return new Date(now.getTime() + 2 * 60 * 60 * 1000);
-    }
-
-    let text = timeText.toLowerCase().trim();
-
-    // Convert Devanagari digits ०-९ to 0-9
-    const devDigits = ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९'];
-    for (let i = 0; i < 10; i++) {
-      text = text.replaceAll(devDigits[i], String(i));
-    }
-
-    // Normalize speech recognition variations
-    text = text.replace(/बज़|बजे|बज़े|बजकर|बज़कर/gi, 'बज');
-    text = text.replace(/मिनेट|फिल्ट|वीट|मिल्ट|मिंट|मिनिट/gi, 'मिनट');
-    text = text.replace(/कौल|कोल/gi, 'कॉल');
-
-    // Map Hindi numerals & words to numbers
-    const hindiNumberMap: Record<string, string> = {
-      'आधा': '0.5',
-      'आधे': '0.5',
-      'aadha': '0.5',
-      'aadhe': '0.5',
-      'डेढ़': '1.5',
-      'dedh': '1.5',
-      'ढाई': '2.5',
-      'dhai': '2.5',
-      'एक': '1',
-      'ek': '1',
-      'दो': '2',
-      'do': '2',
-      'तीन': '3',
-      'teen': '3',
-      'चार': '4',
-      'chaar': '4',
-      'पांच': '5',
-      'पाँच': '5',
-      'panch': '5',
-      'paanch': '5',
-      'छह': '6',
-      'छः': '6',
-      'chheh': '6',
-      'सात': '7',
-      'saat': '7',
-      'आठ': '8',
-      'aath': '8',
-      'नौ': '9',
-      'nau': '9',
-      'दस': '10',
-      'das': '10',
-      'dus': '10',
-      'पंद्रह': '15',
-      'pandrah': '15',
-      'बीस': '20',
-      'bees': '20',
-      'पच्चीस': '25',
-      'pachees': '25',
-      'तीस': '30',
-      'tees': '30',
-      'पैंतालीस': '45',
-      'paintalis': '45',
-    };
-
-    for (const [hindiWord, num] of Object.entries(hindiNumberMap)) {
-      const regex = new RegExp(`\\b${hindiWord}\\b|${hindiWord}`, 'gi');
-      text = text.replace(regex, num);
-    }
-
-    // 1. Specific time today or tomorrow in user's timezone (e.g. "10:52", "10 बज के 52 मिनट", "5 PM", "shaam 5 baje", "कल 4 बजे")
-    const isTomorrow = text.includes('tomorrow') || text.includes('kal') || text.includes('कल') || text.includes('next day') || text.includes('agle din');
-    const isEvening = text.includes('pm') || text.includes('shaam') || text.includes('शाम') || text.includes('dopahar') || text.includes('दोपहर') || text.includes('evening') || text.includes('afternoon') || text.includes('raat') || text.includes('रात');
-    const isMorning = text.includes('am') || text.includes('subah') || text.includes('सुबह') || text.includes('morning');
-
-    const specificTimeMatch = text.match(/(\d{1,2})\s*(?::|बज\s*के|बज\s*कर|बज)\s*(\d{1,2})\s*(?:मिनट|min)?/i) || 
-                              text.match(/(\d{1,2})\s*(?::|बज\s*के|बज\s*कर|बज)\s*(\d{1,2})?/i) ||
-                              text.match(/(\d{1,2})\s*(?:baje|बजे|o'clock)\s*(\d{1,2})?/i);
-
-    if (specificTimeMatch) {
-      let hour = parseInt(specificTimeMatch[1], 10);
-      const minute = specificTimeMatch[2] ? parseInt(specificTimeMatch[2], 10) : 0;
-      const meridiem = text.includes('pm') ? 'pm' : (text.includes('am') ? 'am' : undefined);
-
-      if (meridiem === 'pm' && hour < 12) hour += 12;
-      if (meridiem === 'am' && hour === 12) hour = 0;
-      if (!meridiem && isEvening && hour < 12) hour += 12;
-      if (!meridiem && isMorning && hour === 12) hour = 0;
-
-      // Get current local date/time in user's timezone (e.g. Asia/Kolkata)
-      try {
-        const formatter = new Intl.DateTimeFormat('en-US', {
-          timeZone: userTimezone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-        });
-        
-        const parts = formatter.formatToParts(now);
-        const pMap: Record<string, string> = {};
-        for (const p of parts) pMap[p.type] = p.value;
-
-        const localYear = parseInt(pMap.year, 10);
-        const localMonth = parseInt(pMap.month, 10) - 1;
-        let localDay = parseInt(pMap.day, 10);
-        const currentLocalHour = parseInt(pMap.hour, 10);
-
-        if (!meridiem && !isMorning && !isEvening && hour >= 1 && hour <= 7 && currentLocalHour >= 8) {
-          hour += 12;
-        }
-
-        if (isTomorrow) {
-          localDay += 1;
-        }
-
-        const tzOffsetMs = 5.5 * 60 * 60 * 1000; // Asia/Kolkata is UTC+5:30
-        const localTargetUtcEpoch = Date.UTC(localYear, localMonth, localDay, hour, minute, 0) - tzOffsetMs;
-        let targetDate = new Date(localTargetUtcEpoch);
-
-        if (targetDate.getTime() <= now.getTime() - 60000) {
-          if (!isTomorrow) {
-            targetDate = new Date(localTargetUtcEpoch + 24 * 60 * 60 * 1000);
-          }
-        }
-        return targetDate;
-      } catch {
-        // Fallback to basic offset
-      }
-    }
-
-    // 2. Minutes relative: "5 min baad", "5 मिनट बाद", "3-4 मिनट", "in 10 min", "0.5 ghanta" (30 mins)
-    const minMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|मिनट)/i);
-    if (minMatch) {
-      const mins = parseFloat(minMatch[1]) || 15;
-      return new Date(now.getTime() + Math.round(mins * 60 * 1000));
-    }
-
-    // 3. Hours relative: "2 ghante baad", "1.5 ghanta", "in 2 hours", "4 hours later", "2 घंटे"
-    const hoursMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:hour|hours|hr|hrs|ghante|ghanta|घंटे|घंटा|h\b)/i);
-    if (hoursMatch) {
-      const hours = parseFloat(hoursMatch[1]) || 2;
-      return new Date(now.getTime() + Math.round(hours * 60 * 60 * 1000));
-    }
-
-    // 4. Days relative: "1 din baad", "2 din", "in 1 day", "1 दिन"
-    const daysMatch = text.match(/(\d+)\s*(?:day|days|din|दिन|d\b)/i);
-    if (daysMatch) {
-      const days = parseInt(daysMatch[1], 10) || 1;
-      return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-    }
-
-    // 5. "Tomorrow" / "Kal" general without specific time
-    if (isTomorrow) {
-      const target = new Date(now);
-      target.setDate(target.getDate() + 1);
-      target.setHours(11, 0, 0, 0); // Default to 11:00 AM tomorrow
-      return target;
     }
 
     // Fallback: 2 hours from now
