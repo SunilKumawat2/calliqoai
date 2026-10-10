@@ -22,13 +22,13 @@ export class FollowUpSchedulerService {
    * Parse relative time text into a concrete Javascript Date
    * Handles: "10 minute baad", "in 2 hours", "after 5 PM", "tomorrow 10 AM", "kal 5 baje", "shaam 6 baje", "दस मिनट बाद", "1 din baad", "4 hours", etc.
    */
-  static parseFollowUpTime(timeText?: string | null, isoHint?: string | null): Date {
+  static parseFollowUpTime(timeText?: string | null, isoHint?: string | null, userTimezone: string = 'Asia/Kolkata'): Date {
     const now = new Date();
     
     // If a valid ISO string is already provided and in future, use it
     if (isoHint) {
       const parsed = new Date(isoHint);
-      if (!isNaN(parsed.getTime()) && parsed.getTime() > now.getTime() - 60000) {
+      if (!isNaN(parsed.getTime()) && parsed.getTime() > now.getTime() - 60000 && parsed.getTime() < now.getTime() + 30 * 24 * 3600 * 1000) {
         return parsed;
       }
     }
@@ -45,6 +45,11 @@ export class FollowUpSchedulerService {
     for (let i = 0; i < 10; i++) {
       text = text.replaceAll(devDigits[i], String(i));
     }
+
+    // Normalize speech recognition variations
+    text = text.replace(/बज़|बजे|बज़े|बजकर|बज़कर/gi, 'बज');
+    text = text.replace(/मिनेट|फिल्ट|वीट|मिल्ट|मिंट|मिनिट/gi, 'मिनट');
+    text = text.replace(/कौल|कोल/gi, 'कॉल');
 
     // Map Hindi numerals & words to numbers
     const hindiNumberMap: Record<string, string> = {
@@ -97,36 +102,18 @@ export class FollowUpSchedulerService {
       text = text.replace(regex, num);
     }
 
-    // 1. Minutes relative: "5 min baad", "5 मिनट", "5 मिनिट", "in 10 min", "0.5 ghanta" (30 mins)
-    const minMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|मिनट|मिनिट|मिंट|मिल्ट)/i);
-    if (minMatch) {
-      const mins = parseFloat(minMatch[1]) || 15;
-      return new Date(now.getTime() + Math.round(mins * 60 * 1000));
-    }
-
-    // 2. Hours relative: "2 ghante baad", "1.5 ghanta", "in 2 hours", "4 hours later", "2 घंटे"
-    const hoursMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:hour|hours|hr|hrs|ghante|ghanta|घंटे|घंटा|h\b)/i);
-    if (hoursMatch) {
-      const hours = parseFloat(hoursMatch[1]) || 2;
-      return new Date(now.getTime() + Math.round(hours * 60 * 60 * 1000));
-    }
-
-    // 3. Days relative: "1 din baad", "2 din", "in 1 day", "1 दिन"
-    const daysMatch = text.match(/(\d+)\s*(?:day|days|din|दिन|d\b)/i);
-    if (daysMatch) {
-      const days = parseInt(daysMatch[1], 10) || 1;
-      return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-    }
-
-    // 4. Specific time today or tomorrow (e.g. "10 baj ke 17 min", "5 PM", "shaam 5 baje", "kal 4 baje", "कल 4 बजे")
+    // 1. Specific time today or tomorrow in user's timezone (e.g. "10:52", "10 बज के 52 मिनट", "5 PM", "shaam 5 baje", "कल 4 बजे")
     const isTomorrow = text.includes('tomorrow') || text.includes('kal') || text.includes('कल') || text.includes('next day') || text.includes('agle din');
     const isEvening = text.includes('pm') || text.includes('shaam') || text.includes('शाम') || text.includes('dopahar') || text.includes('दोपहर') || text.includes('evening') || text.includes('afternoon') || text.includes('raat') || text.includes('रात');
     const isMorning = text.includes('am') || text.includes('subah') || text.includes('सुबह') || text.includes('morning');
 
-    const timeDigitsMatch = text.match(/(\d{1,2})\s*(?::|बज\s*कर|बज\s*के|बजे)\s*(\d{1,2})?\s*(?:am|pm)?/i) || text.match(/(\d{1,2})(?::(\d{2}))?\s*(?:baje|बजे|am|pm|o'clock)?/i);
-    if (timeDigitsMatch) {
-      let hour = parseInt(timeDigitsMatch[1], 10);
-      const minute = timeDigitsMatch[2] ? parseInt(timeDigitsMatch[2], 10) : 0;
+    const specificTimeMatch = text.match(/(\d{1,2})\s*(?::|बज\s*के|बज\s*कर|बज)\s*(\d{1,2})\s*(?:मिनट|min)?/i) || 
+                              text.match(/(\d{1,2})\s*(?::|बज\s*के|बज\s*कर|बज)\s*(\d{1,2})?/i) ||
+                              text.match(/(\d{1,2})\s*(?:baje|बजे|o'clock)\s*(\d{1,2})?/i);
+
+    if (specificTimeMatch) {
+      let hour = parseInt(specificTimeMatch[1], 10);
+      const minute = specificTimeMatch[2] ? parseInt(specificTimeMatch[2], 10) : 0;
       const meridiem = text.includes('pm') ? 'pm' : (text.includes('am') ? 'am' : undefined);
 
       if (meridiem === 'pm' && hour < 12) hour += 12;
@@ -134,27 +121,70 @@ export class FollowUpSchedulerService {
       if (!meridiem && isEvening && hour < 12) hour += 12;
       if (!meridiem && isMorning && hour === 12) hour = 0;
 
-      // If just "4 baje" without AM/PM:
-      // If hour is 1..7 and current hour >= 8, assuming afternoon/evening (e.g. 4 PM)
-      if (!meridiem && !isMorning && !isEvening && hour >= 1 && hour <= 7) {
-        hour += 12;
-      }
+      // Get current local date/time in user's timezone (e.g. Asia/Kolkata)
+      try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: userTimezone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        });
+        
+        const parts = formatter.formatToParts(now);
+        const pMap: Record<string, string> = {};
+        for (const p of parts) pMap[p.type] = p.value;
 
-      const target = new Date(now);
-      if (isTomorrow) {
-        target.setDate(target.getDate() + 1);
-      }
-      target.setHours(hour, minute, 0, 0);
+        const localYear = parseInt(pMap.year, 10);
+        const localMonth = parseInt(pMap.month, 10) - 1;
+        let localDay = parseInt(pMap.day, 10);
+        const currentLocalHour = parseInt(pMap.hour, 10);
 
-      // If scheduled time has already passed today and 'tomorrow' was not explicitly mentioned, schedule for tomorrow
-      if (target.getTime() <= now.getTime()) {
-        if (!isTomorrow) {
-          target.setDate(target.getDate() + 1);
-        } else {
-          return new Date(now.getTime() + 2 * 60 * 60 * 1000);
+        if (!meridiem && !isMorning && !isEvening && hour >= 1 && hour <= 7 && currentLocalHour >= 8) {
+          hour += 12;
         }
+
+        if (isTomorrow) {
+          localDay += 1;
+        }
+
+        const tzOffsetMs = 5.5 * 60 * 60 * 1000; // Asia/Kolkata is UTC+5:30
+        const localTargetUtcEpoch = Date.UTC(localYear, localMonth, localDay, hour, minute, 0) - tzOffsetMs;
+        let targetDate = new Date(localTargetUtcEpoch);
+
+        if (targetDate.getTime() <= now.getTime() - 60000) {
+          if (!isTomorrow) {
+            targetDate = new Date(localTargetUtcEpoch + 24 * 60 * 60 * 1000);
+          }
+        }
+        return targetDate;
+      } catch {
+        // Fallback to basic offset
       }
-      return target;
+    }
+
+    // 2. Minutes relative: "5 min baad", "5 मिनट बाद", "3-4 मिनट", "in 10 min", "0.5 ghanta" (30 mins)
+    const minMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|मिनट)/i);
+    if (minMatch) {
+      const mins = parseFloat(minMatch[1]) || 15;
+      return new Date(now.getTime() + Math.round(mins * 60 * 1000));
+    }
+
+    // 3. Hours relative: "2 ghante baad", "1.5 ghanta", "in 2 hours", "4 hours later", "2 घंटे"
+    const hoursMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:hour|hours|hr|hrs|ghante|ghanta|घंटे|घंटा|h\b)/i);
+    if (hoursMatch) {
+      const hours = parseFloat(hoursMatch[1]) || 2;
+      return new Date(now.getTime() + Math.round(hours * 60 * 60 * 1000));
+    }
+
+    // 4. Days relative: "1 din baad", "2 din", "in 1 day", "1 दिन"
+    const daysMatch = text.match(/(\d+)\s*(?:day|days|din|दिन|d\b)/i);
+    if (daysMatch) {
+      const days = parseInt(daysMatch[1], 10) || 1;
+      return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
     }
 
     // 5. "Tomorrow" / "Kal" general without specific time
@@ -622,6 +652,73 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
   }
 
   /**
+   * Automatically scans recent completed calls that contain callback phrases
+   * and ensures an AI follow-up is scheduled if requested by caller.
+   */
+  static async scanRecentCallsForFollowUps(): Promise<void> {
+    try {
+      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+      const recentCalls = await db
+        .select({
+          id: calls.id,
+          userId: calls.userId,
+          campaignId: calls.campaignId,
+          contactId: calls.contactId,
+          agentId: calls.agentId,
+          fromNumber: calls.fromNumber,
+          toNumber: calls.toNumber,
+          duration: calls.duration,
+          transcript: calls.transcript,
+          metadata: calls.metadata,
+        })
+        .from(calls)
+        .where(
+          and(
+            eq(calls.status, 'completed'),
+            sql`${calls.createdAt} >= ${fifteenMinutesAgo}`,
+            sql`${calls.transcript} IS NOT NULL`
+          )
+        )
+        .limit(10);
+
+      for (const c of recentCalls) {
+        if (!c.transcript || c.transcript.length < 25) continue;
+        
+        // Fast keyword check for callback intent in transcript
+        const hasCallbackIntent = /बाद|minute|min|घंटे|कॉल\s*करना|कॉल\s*कर|call\s*back|later|tomorrow|कल|बजे|baje/i.test(c.transcript);
+        if (!hasCallbackIntent) continue;
+
+        // Check if follow-up is already recorded for this call
+        const [existing] = await db
+          .select({ id: scheduledFollowUps.id })
+          .from(scheduledFollowUps)
+          .where(eq(scheduledFollowUps.callId, c.id))
+          .limit(1);
+
+        if (existing) continue;
+
+        // Call insights to parse intent and schedule
+        const { CallInsightsService } = await import('./call-insights.service');
+        await CallInsightsService.analyzeTranscript(
+          c.transcript,
+          {
+            callId: c.id,
+            userId: c.userId || undefined,
+            agentId: c.agentId || undefined,
+            campaignId: c.campaignId || undefined,
+            contactId: c.contactId || undefined,
+            fromNumber: c.fromNumber || undefined,
+            toNumber: c.toNumber || undefined,
+            duration: c.duration || undefined,
+          }
+        ).catch(() => null);
+      }
+    } catch (err: any) {
+      logger.error(`Error in scanRecentCallsForFollowUps: ${err.message}`, undefined, 'FollowUpScheduler');
+    }
+  }
+
+  /**
    * Main scheduler interval worker: queries pending follow-ups due now and fires calls
    */
   static async processDueFollowUps(): Promise<void> {
@@ -629,6 +726,9 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
     this.isProcessing = true;
 
     try {
+      // 1. Scan any recent completed calls with transcripts for callback requests
+      await this.scanRecentCallsForFollowUps().catch(() => {});
+
       const now = new Date();
       // Find all pending follow-ups where scheduledAt <= now
       const dueFollowUps = await db
