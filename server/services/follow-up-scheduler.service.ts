@@ -296,12 +296,36 @@ export class FollowUpSchedulerService {
 
       // If missing details or to ensure correct destination phone number, look up call in DB
       if (params.callId) {
-        const [callRec] = await db
+        let callRec: any = await db
           .select()
           .from(calls)
           .where(eq(calls.id, params.callId))
           .limit(1)
-          .catch(() => []);
+          .then((r) => r[0])
+          .catch(() => null);
+
+        // Also check plivoCalls table if not found in calls table
+        if (!callRec) {
+          const [plivoRec] = await db
+            .select()
+            .from(plivoCalls)
+            .where(eq(plivoCalls.id, params.callId))
+            .limit(1)
+            .catch(() => []);
+
+          if (plivoRec) {
+            callRec = {
+              userId: plivoRec.userId,
+              agentId: plivoRec.agentId,
+              campaignId: plivoRec.campaignId,
+              contactId: plivoRec.contactId,
+              fromNumber: plivoRec.fromNumber,
+              toNumber: plivoRec.toNumber,
+              callDirection: (plivoRec as any).callDirection || (plivoRec as any).direction || 'outbound',
+              metadata: plivoRec.metadata,
+            };
+          }
+        }
 
         if (callRec) {
           userId = userId || callRec.userId;
@@ -316,13 +340,23 @@ export class FollowUpSchedulerService {
           }
 
           // For outbound campaign calls, the customer is the toNumber, not the fromNumber!
-          const isIncoming = callRec.callDirection === 'incoming';
+          const isIncoming = callRec.callDirection === 'incoming' || callRec.callDirection === 'inbound';
           if (isIncoming) {
             phoneNumber = callRec.fromNumber || callRec.phoneNumber || phoneNumber;
           } else {
             phoneNumber = callRec.toNumber || callRec.phoneNumber || phoneNumber;
           }
         }
+      }
+
+      // Fallback: If userId is still missing, resolve from agent or campaign
+      if (!userId && agentId) {
+        const [a] = await db.select({ userId: agents.userId }).from(agents).where(eq(agents.id, agentId)).limit(1).catch(() => []);
+        if (a?.userId) userId = a.userId;
+      }
+      if (!userId && campaignId) {
+        const [c] = await db.select({ userId: campaigns.userId }).from(campaigns).where(eq(campaigns.id, campaignId)).limit(1).catch(() => []);
+        if (c?.userId) userId = c.userId;
       }
 
       // If contactId is present, verify customer name and phone
@@ -344,7 +378,7 @@ export class FollowUpSchedulerService {
       }
 
       if (!userId || !phoneNumber) {
-        logger.warn(`Cannot auto-schedule follow-up: missing userId or phoneNumber for call ${params.callId}`, undefined, 'FollowUpScheduler');
+        logger.warn(`Cannot auto-schedule follow-up: missing userId (${userId}) or phoneNumber (${phoneNumber}) for call ${params.callId}`, undefined, 'FollowUpScheduler');
         return null;
       }
 
@@ -503,7 +537,10 @@ export class FollowUpSchedulerService {
 
       // 1. Try resolving agentId from original call record (agentId or metadata.agentId)
       if (!resolvedAgentId && followUp.callId) {
-        const [callRec] = await db.select().from(calls).where(eq(calls.id, followUp.callId)).limit(1).catch(() => []);
+        let callRec: any = await db.select().from(calls).where(eq(calls.id, followUp.callId)).limit(1).then((r) => r[0]).catch(() => null);
+        if (!callRec) {
+          callRec = await db.select().from(plivoCalls).where(eq(plivoCalls.id, followUp.callId)).limit(1).then((r) => r[0]).catch(() => null);
+        }
         if (callRec) {
           resolvedAgentId = callRec.agentId || (callRec.metadata as any)?.agentId;
           if (!resolvedAgentId && callRec.campaignId) {
