@@ -139,7 +139,8 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
     try {
       const { name, type, goal, script, flowId, agentId, voiceId, phoneNumberId, sipPhoneNumberId, plivoPhoneNumberId, scheduledFor,
         retryEnabled, retryMaxAttempts, retryIntervalMinutes, retryOnNoAnswer, retryOnBusy, retryOnFailed,
-        scheduleEnabled, scheduleTimeStart, scheduleTimeEnd, scheduleDays, daysOfWeek, scheduleTimezone } = req.body;
+        scheduleEnabled, scheduleTimeStart, scheduleTimeEnd, scheduleDays, daysOfWeek, scheduleTimezone,
+        autoFollowUpEnabled } = req.body;
 
       if (!name || !type) {
         return res.status(400).json({ error: "Name and type are required" });
@@ -340,6 +341,7 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
         scheduleTimeEnd: scheduleTimeEnd || null,
         scheduleDays: scheduleDays || daysOfWeek || [],
         scheduleTimezone: scheduleTimezone || "America/New_York",
+        autoFollowUpEnabled: autoFollowUpEnabled !== undefined ? Boolean(autoFollowUpEnabled) : true,
       });
 
       res.json(campaign);

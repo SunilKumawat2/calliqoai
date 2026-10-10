@@ -28,7 +28,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
-import { Upload, ChevronDown, ChevronUp, Clock, Calendar, Pencil, RotateCcw } from "lucide-react";
+import { Upload, ChevronDown, ChevronUp, Clock, Calendar, Pencil, RotateCcw, PhoneForwarded } from "lucide-react";
 import { AuthStorage } from "@/lib/auth-storage";
 import { formatPhoneNumber } from "@/lib/formatters";
 
@@ -128,6 +128,7 @@ export function EditCampaignDialog({ open, onOpenChange, campaign }: EditCampaig
     retryOnNoAnswer: true,
     retryOnBusy: false,
     retryOnFailed: false,
+    autoFollowUpEnabled: true,
   });
   const [csvFile, setCsvFile] = useState<File | null>(null);
 
@@ -153,6 +154,7 @@ export function EditCampaignDialog({ open, onOpenChange, campaign }: EditCampaig
         retryOnNoAnswer: campaign.retryOnNoAnswer !== false,
         retryOnBusy: campaign.retryOnBusy || false,
         retryOnFailed: campaign.retryOnFailed || false,
+        autoFollowUpEnabled: (campaign as any).autoFollowUpEnabled !== false,
       });
     }
   }, [campaign]);
@@ -731,6 +733,36 @@ export function EditCampaignDialog({ open, onOpenChange, campaign }: EditCampaig
                 )}
               </div>
             )}
+          </div>
+
+          {/* Automated Follow-Up Calls */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <PhoneForwarded className="h-5 w-5 text-amber-500" />
+                <div className="flex items-center gap-2">
+                  <Label className="text-base font-semibold">Automated Follow-Up Calls</Label>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    formData.autoFollowUpEnabled 
+                      ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" 
+                      : "bg-muted text-muted-foreground border border-border"
+                  }`}>
+                    {formData.autoFollowUpEnabled ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <InfoTooltip content="When active, if a lead asks to be called back later (e.g., '10 min baad', 'kal 4 baje'), the AI scheduler will automatically trigger the follow-up call at that exact requested time with previous conversation context." />
+              </div>
+              <Switch
+                checked={formData.autoFollowUpEnabled}
+                onCheckedChange={(checked) => setFormData({ ...formData, autoFollowUpEnabled: checked })}
+                data-testid="switch-edit-auto-follow-up-enabled"
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {formData.autoFollowUpEnabled 
+                ? "Active: Leads who request a callback will automatically be called at their preferred time with contextual AI pitch."
+                : "Inactive: Callback requests will be saved in pending state, but automatic calls will NOT be placed until triggered manually."}
+            </p>
           </div>
 
           <div className="border-t pt-4">

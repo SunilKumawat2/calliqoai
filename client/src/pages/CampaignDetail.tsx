@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, PhoneCall, Download, CheckCircle2, XCircle, Clock, Loader2, TrendingUp, Users, Target, Pause, StopCircle, Play, Flame, ThermometerSun, Snowflake, RefreshCw, RotateCcw, Layers } from "lucide-react";
+import { ArrowLeft, PhoneCall, Download, CheckCircle2, XCircle, Clock, Loader2, TrendingUp, Users, Target, Pause, StopCircle, Play, Flame, ThermometerSun, Snowflake, RefreshCw, RotateCcw, Layers, PhoneForwarded } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -86,6 +86,7 @@ interface Campaign {
   retryOnFailed?: boolean;
   currentRetryPass?: number;
   batchJobHistory?: Array<{ batchJobId: string; pass: number; contactCount: number; createdAt: string }>;
+  autoFollowUpEnabled?: boolean;
 }
 
 interface BatchJobStats {
@@ -228,6 +229,30 @@ export default function CampaignDetail() {
       toast({
         title: t('campaignDetail.toast.retryFailed'),
         description: error.message || t('common.tryAgain'),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const toggleAutoFollowUpMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await apiRequest("PATCH", `/api/campaigns/${id}`, { autoFollowUpEnabled: enabled });
+      return res.json();
+    },
+    onSuccess: (_, enabled) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      toast({
+        title: enabled ? "Automated Follow-Up Activated" : "Automated Follow-Up Deactivated",
+        description: enabled 
+          ? "Callback requests from leads will now be dialed automatically at their scheduled time." 
+          : "Automatic calling paused. Callbacks will remain in pending state until triggered manually.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Update Failed",
+        description: err.message || "Failed to update follow-up setting",
         variant: "destructive",
       });
     },
@@ -611,6 +636,36 @@ export default function CampaignDetail() {
                   <p className="font-medium">{format(new Date(campaign.completedAt), "MMM d, yyyy 'at' h:mm a")}</p>
                 </div>
               )}
+            </div>
+          </Card>
+
+          {/* Automated Follow-Up Calls Switch Card */}
+          <Card className="p-6 border-amber-500/20 bg-gradient-to-r from-amber-500/5 via-transparent to-transparent">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-amber-500/10 rounded-lg text-amber-500 mt-0.5 shrink-0">
+                  <PhoneForwarded className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-semibold">Automated Follow-Up Calls</h3>
+                    <Badge variant="outline" className={campaign.autoFollowUpEnabled !== false ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-muted text-muted-foreground border-border"}>
+                      {campaign.autoFollowUpEnabled !== false ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+                    {campaign.autoFollowUpEnabled !== false
+                      ? "Active: When a lead requests a callback (e.g., '10 min baad', 'kal 4 baje'), the AI scheduler will automatically call them back at that exact scheduled time with conversation memory."
+                      : "Inactive: Callback requests will be recorded in pending state, but automatic calls will NOT be placed until manually triggered."}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={campaign.autoFollowUpEnabled !== false}
+                onCheckedChange={(checked) => toggleAutoFollowUpMutation.mutate(checked)}
+                disabled={toggleAutoFollowUpMutation.isPending}
+                data-testid="switch-campaign-detail-auto-follow-up"
+              />
             </div>
           </Card>
 

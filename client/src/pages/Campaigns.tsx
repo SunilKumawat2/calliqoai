@@ -57,6 +57,7 @@ interface Campaign {
   plivoPhoneNumberId?: string | null;
   errorMessage?: string | null;
   errorCode?: string | null;
+  autoFollowUpEnabled?: boolean;
 }
 
 interface User {
@@ -378,6 +379,7 @@ export default function Campaigns() {
                       retryEnabled={campaign.retryEnabled}
                       currentRetryPass={campaign.currentRetryPass}
                       retryMaxAttempts={campaign.retryMaxAttempts}
+                      autoFollowUpEnabled={campaign.autoFollowUpEnabled}
                       onView={() => setLocation(`/app/campaigns/${campaign.id}`)}
                       onEdit={() => setEditingCampaign(campaign)}
                     />

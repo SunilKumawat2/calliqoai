@@ -8,7 +8,7 @@
 
 import { db } from '../db';
 import { eq, and, lte, desc, sql } from 'drizzle-orm';
-import { scheduledFollowUps, calls, plivoCalls, agents, plivoPhoneNumbers, users, contacts, type ScheduledFollowUp } from '../../shared/schema';
+import { scheduledFollowUps, calls, plivoCalls, agents, plivoPhoneNumbers, users, contacts, campaigns, type ScheduledFollowUp } from '../../shared/schema';
 import { logger } from '../utils/logger';
 import { PlivoCallService } from '../engines/plivo/services/plivo-call.service';
 import type { OpenAIVoice, OpenAIRealtimeModel } from '../engines/plivo/types/plivo.types';
@@ -636,6 +636,21 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
 
         for (const item of dueFollowUps) {
           try {
+            // If follow-up belongs to a campaign, check if automatic follow-up is enabled for that campaign
+            if (item.campaignId) {
+              const [campaignRec] = await db
+                .select({ autoFollowUpEnabled: campaigns.autoFollowUpEnabled })
+                .from(campaigns)
+                .where(eq(campaigns.id, item.campaignId))
+                .limit(1)
+                .catch(() => []);
+
+              if (campaignRec && campaignRec.autoFollowUpEnabled === false) {
+                logger.info(`Skipping automated follow-up ${item.id} - autoFollowUpEnabled is inactive/false on campaign ${item.campaignId}`, undefined, 'FollowUpScheduler');
+                continue;
+              }
+            }
+
             await this.triggerFollowUp(item.id);
           } catch (callErr: any) {
             logger.error(`Error executing follow-up ${item.id}: ${callErr.message}`, undefined, 'FollowUpScheduler');

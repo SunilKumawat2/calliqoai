@@ -57,6 +57,7 @@ interface CampaignCardProps {
   retryEnabled?: boolean;
   currentRetryPass?: number;
   retryMaxAttempts?: number;
+  autoFollowUpEnabled?: boolean;
   onView?: () => void;
   onEdit?: () => void;
 }
@@ -75,6 +76,7 @@ export function CampaignCard({
   retryEnabled,
   currentRetryPass,
   retryMaxAttempts,
+  autoFollowUpEnabled,
   onView,
   onEdit,
 }: CampaignCardProps) {
@@ -191,6 +193,15 @@ export function CampaignCard({
               >
                 <RotateCcw className="h-3 w-3 mr-1" />
                 Pass {currentRetryPass + 1}/{retryMaxAttempts ?? 3}
+              </Badge>
+            )}
+            {autoFollowUpEnabled !== false ? (
+              <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-500 border-amber-500/20" title="Automated Follow-Up: Active">
+                Auto Follow-Up
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs bg-muted text-muted-foreground" title="Automated Follow-Up: Inactive">
+                Manual Follow-Up
               </Badge>
             )}
           </div>
