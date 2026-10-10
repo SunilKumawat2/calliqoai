@@ -204,10 +204,6 @@ function handleTwilioStreamConnection(ws: WebSocket, callSid: string): void {
                 result.transcript,
                 {
                   callId: callRecord.id,
-                  userId: callRecord.userId || undefined,
-                  agentId: callRecord.agentId || undefined,
-                  campaignId: callRecord.campaignId || undefined,
-                  contactId: callRecord.contactId || undefined,
                   fromNumber: callRecord.fromNumber || undefined,
                   toNumber: callRecord.toNumber || undefined,
                   duration: result.duration
@@ -578,10 +574,6 @@ async function initializeSession(
                 sessionData.transcript,
                 {
                   callId: callId,
-                  userId: callRecord?.userId || undefined,
-                  agentId: callRecord?.agentId || undefined,
-                  campaignId: callRecord?.campaignId || undefined,
-                  contactId: callRecord?.contactId || undefined,
                   fromNumber: fromNumber || undefined,
                   toNumber: toNumber || undefined,
                   duration: sessionData?.duration
