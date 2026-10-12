@@ -25,6 +25,8 @@ export interface ElevenLabsAgentConfig {
   maxDuration?: number;
   language?: string;
   dynamicData?: Record<string, string>;
+  transferPhoneNumber?: string;
+  transferEnabled?: boolean;
 }
 
 export interface CallSession {
@@ -45,6 +47,9 @@ export interface CallSession {
   isPlivoReady?: boolean;
   recordedAudioChunks?: Buffer[];
   isEnding?: boolean;
+  dbAgentId?: string;
+  transferPhoneNumber?: string;
+  transferEnabled?: boolean;
 }
 
 export interface TranscriptPart {

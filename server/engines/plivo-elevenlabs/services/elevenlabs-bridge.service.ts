@@ -25,7 +25,7 @@ import { PlivoElevenLabsConfig } from '../config/config';
 import { logger } from '../../../utils/logger';
 
 import { db } from '../../../db';
-import { plivoCalls, calls } from '@shared/schema';
+import { plivoCalls, calls, agents } from '@shared/schema';
 import { eq, or, sql } from 'drizzle-orm';
 
 const SESSION_PREFIX = 'plivo-elevenlabs:';
@@ -40,6 +40,9 @@ export interface CreateBridgeSessionParams {
   fromNumber: string;
   toNumber: string;
   direction: 'inbound' | 'outbound';
+  dbAgentId?: string;
+  transferPhoneNumber?: string;
+  transferEnabled?: boolean;
 }
 
 export class ElevenLabsBridgeService {
@@ -122,6 +125,9 @@ export class ElevenLabsBridgeService {
       transcript: [],
       initialAudioQueue: [],
       isPlivoReady: false,
+      dbAgentId: params.dbAgentId,
+      transferPhoneNumber: params.transferPhoneNumber || params.agentConfig?.transferPhoneNumber,
+      transferEnabled: params.transferEnabled ?? params.agentConfig?.transferEnabled,
     };
     
     this.activeSessions.set(sessionKey, session);
@@ -195,6 +201,15 @@ export class ElevenLabsBridgeService {
         if (agentConfig?.systemPrompt) {
           agentOverride.prompt = { prompt: agentConfig.systemPrompt };
           logger.info(`Setting ElevenLabs prompt override`, undefined, 'PlivoElevenLabsBridge');
+        }
+
+        const transferPhone = session.transferPhoneNumber || agentConfig?.transferPhoneNumber;
+        if (transferPhone) {
+          const transferPromptRule = `\n\n[CALL TRANSFER RULE]: If the customer asks to speak to a human, real person, manager, executive, agent, or says "transfer kar do", "human se baat karao", "executive se connect karo", "senior se baat karni hai":
+Politely tell the caller: "जी बिल्कुल, मैं आपकी कॉल हमारे एग्जीक्यूटिव को ट्रांसफर कर रहा हूँ, कृपया लाइन पर बने रहें।" (or in English: "Please hold while I transfer your call to an executive.")`;
+          if (agentOverride.prompt?.prompt) {
+            agentOverride.prompt.prompt += transferPromptRule;
+          }
         }
 
         if (agentConfig?.language) {
@@ -309,9 +324,34 @@ export class ElevenLabsBridgeService {
               });
               return;
             }
+
+            // Call Transfer Interceptor: If user requests to speak with human / transfer
+            if (this.isTransferRequest(userText)) {
+              logger.info(`[Transfer Interceptor] Transfer request detected in transcript for ${session.callUuid}: "${userText}"`, undefined, 'PlivoElevenLabsBridge');
+              this.handleCallTransfer(session).catch(err => {
+                logger.error(`Error in handleCallTransfer: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge');
+              });
+            }
           }
           break;
           
+        case 'client_tool_call':
+          const toolCall = (message as any).client_tool_call || (message as any).client_tool_call_event;
+          if (toolCall) {
+            const toolName = toolCall.tool_name || toolCall.name;
+            const toolCallId = toolCall.tool_call_id;
+            const params = toolCall.parameters || {};
+            logger.info(`ElevenLabs client_tool_call: ${toolName}`, { toolCallId, params }, 'PlivoElevenLabsBridge');
+
+            if (toolName === 'transfer_call' || toolName === 'transfer' || toolName.startsWith('transfer_')) {
+              const targetNumber = params.destination || params.phoneNumber || params.number || session.transferPhoneNumber;
+              this.handleCallTransfer(session, targetNumber).catch(err => {
+                logger.error(`Error in handleCallTransfer: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge');
+              });
+            }
+          }
+          break;
+
         case 'agent_response':
           const agentText = (message as any).agent_response_event?.agent_response || message.agent_response?.text;
           const isAgentFinal = (message as any).agent_response_event?.is_final ?? message.agent_response?.is_final ?? true;
@@ -719,6 +759,239 @@ export class ElevenLabsBridgeService {
     }
 
     await this.endSession(session.callUuid);
+  }
+
+  /**
+   * Detect if user transcript indicates request to transfer to human agent / executive
+   */
+  private static isTransferRequest(text: string): boolean {
+    if (!text) return false;
+    const lower = text.toLowerCase().trim();
+    const transferPhrases = [
+      'transfer kar do',
+      'transfer karo',
+      'transfer kar dijiye',
+      'transfer kardo',
+      'call transfer',
+      'transfer the call',
+      'transfer call',
+      'transfer me',
+      'transfer to',
+      'human se baat',
+      'kisi human se',
+      'real person se',
+      'real human se',
+      'insan se baat',
+      'executive se baat',
+      'executive se connect',
+      'executive se mila do',
+      'senior se baat',
+      'senior se connect',
+      'manager se baat',
+      'manager se connect',
+      'live agent',
+      'live representative',
+      'customer care',
+      'customer support',
+      'support agent',
+      'speak to human',
+      'speak to a human',
+      'talk to a human',
+      'speak to an agent',
+      'talk to an agent',
+      'speak to real person',
+      'talk to a real person',
+      'speak to manager',
+      'talk to manager',
+      'connect to agent',
+      'connect to executive',
+    ];
+    return transferPhrases.some(phrase => lower.includes(phrase));
+  }
+
+  /**
+   * Execute call transfer for Plivo + ElevenLabs
+   */
+  private static async handleCallTransfer(session: CallSession, targetNumberParam?: string): Promise<{ success: boolean; error?: string }> {
+    if (session.status === 'disconnected' || session.isEnding) {
+      logger.info(`Ignoring transfer - session ${session.callUuid} already ending/disconnected`, undefined, 'PlivoElevenLabsBridge');
+      return { success: false, error: 'Session already disconnecting' };
+    }
+
+    logger.info(`[Transfer] Initiating call transfer for ${session.callUuid}`, undefined, 'PlivoElevenLabsBridge');
+
+    // Mark session as ending so end_call or other handlers don't conflict
+    session.isEnding = true;
+
+    try {
+      // 1. Resolve target transfer phone number
+      let targetNumber = targetNumberParam || session.transferPhoneNumber;
+
+      // If not in session, check DB (plivoCalls -> agents)
+      if (!targetNumber) {
+        const [callRow] = await db
+          .select({ agentId: plivoCalls.agentId, metadata: plivoCalls.metadata })
+          .from(plivoCalls)
+          .where(
+            or(
+              eq(plivoCalls.plivoCallUuid, session.callUuid),
+              eq(plivoCalls.id, session.callUuid),
+              sql`${plivoCalls.metadata}->>'internalId' = ${session.callUuid}`
+            )
+          )
+          .limit(1)
+          .catch(() => []);
+
+        const agentDbId = callRow?.agentId || session.dbAgentId || session.agentId;
+        if (agentDbId) {
+          const [agentRow] = await db
+            .select({
+              transferPhoneNumber: agents.transferPhoneNumber,
+              transferEnabled: agents.transferEnabled,
+              transferMessage: agents.transferMessage,
+            })
+            .from(agents)
+            .where(or(eq(agents.id, agentDbId), eq(agents.elevenLabsAgentId, agentDbId)))
+            .limit(1)
+            .catch(() => []);
+
+          if (agentRow?.transferPhoneNumber) {
+            targetNumber = agentRow.transferPhoneNumber;
+          }
+        }
+      }
+
+      if (!targetNumber) {
+        logger.warn(`[Transfer] No transfer phone number found for session ${session.callUuid}`, undefined, 'PlivoElevenLabsBridge');
+        session.isEnding = false; // reset so call can continue
+        return { success: false, error: 'No transfer phone number configured' };
+      }
+
+      // 2. Normalize target phone number to E.164
+      let normalizedTarget = targetNumber.trim().replace(/[\s\-\(\)]/g, '');
+      if (normalizedTarget.length === 10 && !normalizedTarget.startsWith('+')) {
+        normalizedTarget = `+91${normalizedTarget}`;
+      } else if (!normalizedTarget.startsWith('+') && normalizedTarget.startsWith('91') && normalizedTarget.length === 12) {
+        normalizedTarget = `+${normalizedTarget}`;
+      } else if (!normalizedTarget.startsWith('+') && !normalizedTarget.startsWith('0')) {
+        normalizedTarget = `+${normalizedTarget}`;
+      }
+
+      // Determine callerId (use fromNumber if outbound, toNumber if inbound)
+      let callerId = session.direction === 'inbound' ? (session.toNumber || session.fromNumber) : (session.fromNumber || session.toNumber);
+      if (callerId && !callerId.startsWith('+') && !callerId.startsWith('0')) {
+        callerId = `+${callerId}`;
+      }
+
+      logger.info(`[Transfer] Target: ${normalizedTarget}, CallerId: ${callerId}`, undefined, 'PlivoElevenLabsBridge');
+
+      // 3. Find real Plivo Call UUID from DB if session.callUuid is synthetic (e.g. plivo-el-...)
+      let plivoCallUuid = session.callUuid;
+      const [dbCall] = await db
+        .select({ plivoCallUuid: plivoCalls.plivoCallUuid, id: plivoCalls.id, metadata: plivoCalls.metadata })
+        .from(plivoCalls)
+        .where(
+          or(
+            eq(plivoCalls.plivoCallUuid, session.callUuid),
+            eq(plivoCalls.id, session.callUuid),
+            sql`${plivoCalls.metadata}->>'internalId' = ${session.callUuid}`
+          )
+        )
+        .limit(1)
+        .catch(() => []);
+
+      if (dbCall?.plivoCallUuid) {
+        plivoCallUuid = dbCall.plivoCallUuid;
+      }
+
+      // 4. Get Plivo credentials
+      const { storage } = await import('../../../storage');
+      const plivoSetting = await storage.getGlobalSetting('plivo_credentials');
+      const plivoCreds = (plivoSetting?.value as any) || {};
+      const authId = plivoCreds.auth_id || process.env.PLIVO_AUTH_ID;
+      const authToken = plivoCreds.auth_token || process.env.PLIVO_AUTH_TOKEN;
+
+      if (!authId || !authToken) {
+        throw new Error('Plivo credentials not found');
+      }
+
+      // 5. Build transfer XML URL
+      const { getDomain } = await import('../../../utils/domain');
+      const baseUrl = getDomain();
+      const transferXmlUrl = `${baseUrl}/api/plivo/voice/transfer?target=${encodeURIComponent(normalizedTarget)}&callerId=${encodeURIComponent(callerId || '')}`;
+
+      logger.info(`[Transfer] Calling Plivo Call Redirect API: https://api.plivo.com/v1/Account/${authId}/Call/${plivoCallUuid}/ with aleg_url=${transferXmlUrl}`, undefined, 'PlivoElevenLabsBridge');
+
+      // Call Plivo Update Call API to set aleg_url
+      const axios = (await import('axios')).default;
+      const transferUrl = `https://api.plivo.com/v1/Account/${authId}/Call/${plivoCallUuid}/`;
+
+      await axios.post(
+        transferUrl,
+        {
+          legs: 'aleg',
+          aleg_url: transferXmlUrl,
+          aleg_method: 'GET',
+        },
+        {
+          auth: {
+            username: authId,
+            password: authToken,
+          },
+        }
+      );
+
+      // Stop the stream using DELETE API to trigger Plivo to execute aleg_url
+      const stopStreamUrl = `https://api.plivo.com/v1/Account/${authId}/Call/${plivoCallUuid}/Stream/`;
+      try {
+        await axios.delete(stopStreamUrl, {
+          auth: {
+            username: authId,
+            password: authToken,
+          },
+        });
+        logger.info(`[Transfer] Plivo stream stopped for ${plivoCallUuid}`, undefined, 'PlivoElevenLabsBridge');
+      } catch (stopErr: any) {
+        logger.warn(`[Transfer] Stop stream notice: ${stopErr?.message || stopErr}`, undefined, 'PlivoElevenLabsBridge');
+      }
+
+      // 6. Update DB call record status to 'transferred'
+      if (dbCall?.id) {
+        await db
+          .update(plivoCalls)
+          .set({
+            status: 'transferred',
+            metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify({
+              callTransferred: true,
+              transferTarget: normalizedTarget,
+              transferredAt: new Date(),
+            })}::jsonb`,
+          })
+          .where(eq(plivoCalls.id, dbCall.id))
+          .catch(() => {});
+      }
+
+      // 7. Disconnect session and close ElevenLabs WS cleanly
+      session.status = 'disconnected';
+      if (session.elevenLabsWs) {
+        try {
+          (session.elevenLabsWs as any).close();
+        } catch (_) {}
+      }
+
+      if (session.plivoWs) {
+        try {
+          (session.plivoWs as any).close();
+        } catch (_) {}
+      }
+
+      logger.info(`[Transfer] Successfully initiated transfer for ${session.callUuid} -> ${normalizedTarget}`, undefined, 'PlivoElevenLabsBridge');
+      return { success: true };
+    } catch (err: any) {
+      logger.error(`[Transfer] Call transfer failed for ${session.callUuid}: ${err?.message || err}`, err, 'PlivoElevenLabsBridge');
+      session.isEnding = false;
+      return { success: false, error: err?.message || 'Transfer failed' };
+    }
   }
   
   /**

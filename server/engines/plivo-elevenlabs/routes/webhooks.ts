@@ -489,10 +489,15 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
           agentId: agent.elevenLabsAgentId,
           firstMessage: agent.firstMessage || undefined,
           language: agent.language || 'en',
+          transferPhoneNumber: agent.transferPhoneNumber || undefined,
+          transferEnabled: agent.transferEnabled,
         },
         fromNumber: From,
         toNumber: To,
         direction: 'inbound',
+        dbAgentId: agent.id,
+        transferPhoneNumber: agent.transferPhoneNumber || undefined,
+        transferEnabled: agent.transferEnabled,
       });
 
       // Record the inbound call so the status webhook can update its

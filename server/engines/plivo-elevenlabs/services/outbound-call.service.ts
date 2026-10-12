@@ -12,7 +12,7 @@
 import { ElevenLabsBridgeService, CreateBridgeSessionParams } from './elevenlabs-bridge.service';
 import { getSipWebhookUrl } from '../config/config';
 import { db } from '../../../db';
-import { plivoCalls, plivoCredentials, type InsertPlivoCall } from '@shared/schema';
+import { plivoCalls, plivoCredentials, agents, type InsertPlivoCall } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 
 export interface OutboundCallParams {
@@ -110,6 +110,25 @@ export class PlivoElevenLabsOutboundService {
     }
 
     try {
+      let transferPhoneNumber: string | undefined;
+      let transferEnabled: boolean | undefined;
+      if (params.dbAgentId) {
+        try {
+          const [agentRow] = await db
+            .select({
+              transferPhoneNumber: agents.transferPhoneNumber,
+              transferEnabled: agents.transferEnabled,
+            })
+            .from(agents)
+            .where(eq(agents.id, params.dbAgentId))
+            .limit(1);
+          if (agentRow?.transferPhoneNumber) {
+            transferPhoneNumber = agentRow.transferPhoneNumber;
+            transferEnabled = agentRow.transferEnabled ?? true;
+          }
+        } catch (_) {}
+      }
+
       const sessionParams: CreateBridgeSessionParams = {
         callUuid,
         agentId: agentConfig?.agentId || agentId,
@@ -118,6 +137,9 @@ export class PlivoElevenLabsOutboundService {
         fromNumber: finalFromNumber,
         toNumber,
         direction: 'outbound',
+        dbAgentId: params.dbAgentId,
+        transferPhoneNumber,
+        transferEnabled,
       };
       
       await ElevenLabsBridgeService.createSession(sessionParams);
