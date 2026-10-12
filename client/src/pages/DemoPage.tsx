@@ -481,6 +481,7 @@ export default function DemoPage() {
           body: JSON.stringify({
             callId: result.callId,
             uuid: result.uuid,
+            internalId: result.internalId,
             provider: result.provider,
             twilioSid: result.twilioSid,
           }),
@@ -495,6 +496,7 @@ export default function DemoPage() {
       activeCallRef.current = {
         callId: result.callId,
         uuid: result.uuid,
+        internalId: result.internalId,
         provider: result.provider,
         twilioSid: result.twilioSid,
       };

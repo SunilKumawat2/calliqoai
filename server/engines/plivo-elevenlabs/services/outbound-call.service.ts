@@ -13,7 +13,7 @@ import { ElevenLabsBridgeService, CreateBridgeSessionParams } from './elevenlabs
 import { getSipWebhookUrl } from '../config/config';
 import { db } from '../../../db';
 import { plivoCalls, plivoCredentials, type InsertPlivoCall } from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 export interface OutboundCallParams {
   toNumber: string;
@@ -42,6 +42,7 @@ export interface OutboundCallParams {
 export interface OutboundCallResult {
   success: boolean;
   callUuid?: string;
+  internalId?: string;
   callRecordId?: string;
   error?: string;
 }
@@ -143,9 +144,21 @@ export class PlivoElevenLabsOutboundService {
 
       console.log(`[Plivo-ElevenLabs Outbound] Plivo call initiated: ${response.requestUuid}`);
 
+      if (callRecordId && response?.requestUuid) {
+        await db
+          .update(plivoCalls)
+          .set({ 
+            plivoCallUuid: response.requestUuid,
+            metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify({ requestUuid: response.requestUuid, internalId: callUuid })}::jsonb`
+          })
+          .where(eq(plivoCalls.id, callRecordId))
+          .catch((err: any) => console.error('[Plivo-ElevenLabs Outbound] Failed to update requestUuid:', err));
+      }
+
       return {
         success: true,
-        callUuid,
+        callUuid: response.requestUuid || callUuid,
+        internalId: callUuid,
         callRecordId,
       };
       

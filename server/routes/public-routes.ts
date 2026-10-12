@@ -1498,6 +1498,7 @@ ${allUrls.map(u => {
           message: "Demo call initiated successfully via Plivo + ElevenLabs.",
           callId: result.callRecordId,
           uuid: result.callUuid,
+          internalId: (result as any).internalId,
           provider: 'plivo_elevenlabs',
         });
       }
@@ -1645,29 +1646,92 @@ ${allUrls.map(u => {
    * POST /api/public/demo-hangup - End an active demo call on carrier network (Plivo / Twilio / CVE)
    */
   router.post("/api/public/demo-hangup", async (req: Request, res: Response) => {
-    const { callId, uuid, provider, twilioSid } = req.body;
-    console.log(`[DemoCall] Hangup request received: callId=${callId}, uuid=${uuid}, provider=${provider}, twilioSid=${twilioSid}`);
+    const { callId, uuid, internalId, provider, twilioSid } = req.body;
+    console.log(`[DemoCall] Hangup request received: callId=${callId}, uuid=${uuid}, internalId=${internalId}, provider=${provider}, twilioSid=${twilioSid}`);
 
     try {
-      // 1. Plivo Hangup
-      if (uuid || provider === 'plivo' || provider === 'plivo_openai') {
-        if (uuid) {
-          try {
-            const { AudioBridgeService } = await import('../engines/plivo/services/audio-bridge.service');
-            await AudioBridgeService.hangupCallByUuid(uuid);
-            console.log(`[DemoCall] AudioBridge hangup executed for UUID: ${uuid}`);
-          } catch (e: any) {
-            console.warn(`[DemoCall] AudioBridge hangup warning: ${e.message}`);
-          }
-        }
+      // 1. Plivo Hangup (covers plivo, plivo_openai, plivo_elevenlabs)
+      if (uuid || internalId || provider?.startsWith('plivo') || provider === 'plivo' || provider === 'plivo_elevenlabs' || provider === 'plivo_openai') {
+        let plivoCarrierUuid: string | undefined = undefined;
+
+        // If callId is provided, look up the plivo_calls record
         if (callId) {
           try {
-            const { PlivoCallService } = await import('../engines/plivo/services/plivo-call.service');
-            await PlivoCallService.hangupCall(callId);
-            console.log(`[DemoCall] PlivoCallService hangup executed for call ID: ${callId}`);
-          } catch (e: any) {
-            console.warn(`[DemoCall] PlivoCallService hangup warning: ${e.message}`);
+            const [pCall] = await db
+              .select()
+              .from(plivoCalls)
+              .where(eq(plivoCalls.id, callId))
+              .limit(1);
+
+            if (pCall) {
+              if (pCall.plivoCallUuid) plivoCarrierUuid = pCall.plivoCallUuid;
+              const meta = (pCall.metadata as any) || {};
+              if (!plivoCarrierUuid && meta.requestUuid) plivoCarrierUuid = meta.requestUuid;
+              
+              // Update call status in DB
+              await db
+                .update(plivoCalls)
+                .set({ status: 'completed', endedAt: new Date() })
+                .where(eq(plivoCalls.id, callId))
+                .catch(() => {});
+            }
+          } catch (dbErr: any) {
+            console.warn(`[DemoCall] DB lookup warning for call ${callId}: ${dbErr.message}`);
           }
+        }
+
+        if (!plivoCarrierUuid && uuid && !uuid.startsWith('plivo-el-')) {
+          plivoCarrierUuid = uuid;
+        }
+
+        // Direct carrier hangup via Plivo REST Client
+        if (plivoCarrierUuid) {
+          try {
+            let authId = process.env.PLIVO_AUTH_ID;
+            let authToken = process.env.PLIVO_AUTH_TOKEN;
+
+            if (!authId || !authToken) {
+              const [primaryCred] = await db
+                .select()
+                .from(plivoCredentials)
+                .where(and(eq(plivoCredentials.isPrimary, true), eq(plivoCredentials.isActive, true)))
+                .limit(1);
+              if (primaryCred) {
+                authId = primaryCred.authId;
+                authToken = primaryCred.authToken;
+              }
+            }
+
+            if (authId && authToken) {
+              const plivo = await import('plivo');
+              const plivoClient = new plivo.Client(authId, authToken);
+              await plivoClient.calls.hangup(plivoCarrierUuid);
+              console.log(`[DemoCall] Successfully hung up Plivo call on carrier network: ${plivoCarrierUuid}`);
+            }
+          } catch (plivoErr: any) {
+            console.warn(`[DemoCall] Plivo client hangup error for ${plivoCarrierUuid}: ${plivoErr.message}`);
+          }
+        }
+
+        // Also clean up AudioBridge session if Plivo+OpenAI
+        try {
+          const { AudioBridgeService } = await import('../engines/plivo/services/audio-bridge.service');
+          if (plivoCarrierUuid) await AudioBridgeService.hangupCallByUuid(plivoCarrierUuid);
+          if (uuid && uuid !== plivoCarrierUuid) await AudioBridgeService.hangupCallByUuid(uuid);
+        } catch (e: any) {
+          // Expected if not AudioBridge session
+        }
+
+        // Also clean up ElevenLabsBridge session if Plivo+ElevenLabs
+        try {
+          const { ElevenLabsBridgeService } = await import('../engines/plivo-elevenlabs/services/elevenlabs-bridge.service');
+          const bridgeId = internalId || (uuid?.startsWith('plivo-el-') ? uuid : undefined);
+          if (bridgeId) {
+            await ElevenLabsBridgeService.endSession(bridgeId);
+            console.log(`[DemoCall] ElevenLabsBridge session ended for: ${bridgeId}`);
+          }
+        } catch (e: any) {
+          // Expected if not ElevenLabsBridge session
         }
       }
 
