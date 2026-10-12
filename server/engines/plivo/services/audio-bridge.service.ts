@@ -21,7 +21,7 @@ import { getTransferWebhookUrl } from '../config/plivo-config';
 import { PlivoRecordingService } from './plivo-recording.service';
 import { db } from '../../../db';
 import { plivoCredentials, plivoCalls, agents, appointments } from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { openaiPoolManager } from '../../../infrastructure';
 
 /**
@@ -386,7 +386,30 @@ IMPORTANT FUNCTION CALLING & CLOSING RULES:
 You MUST FIRST speak a brief polite transition announcement out loud (e.g. "जी बिल्कुल, मैं आपकी कॉल हमारे सीनियर एग्जीक्यूटिव को ट्रांसफर कर रहा हूँ, कृपया लाइन पर बने रहें।"), and then IMMEDIATELY call the transfer_call function. NEVER refuse or say you cannot transfer!`
       : '';
 
-    const enhancedInstructions = agentConfig.systemPrompt + functionCallingRequirements + transferRule;
+    // Always ensure end_call tool is available
+    if (!tools.some(t => t.name === 'end_call')) {
+      tools.push({
+        type: 'function',
+        name: 'end_call',
+        description: 'Immediately end the phone call. Use this when the conversation has ended, user asks to disconnect, or when an automated answering machine / voicemail is detected.',
+        parameters: {
+          type: 'object',
+          properties: {
+            reason: {
+              type: 'string',
+              description: 'Reason for ending the call, e.g. "completed", "user_requested", or "voicemail_detected"',
+            },
+          },
+        },
+      });
+    }
+
+    const voicemailRule = `\n6. VOICEMAIL & ANSWERING MACHINE DETECTION RULE (CRITICAL):
+If you hear an answering machine, iPhone Live Voicemail, carrier automated recording, or voicemail greeting (e.g. "leave a message after the tone", "after the beep", "at the tone", "person you are trying to reach is unavailable", "record your message", "forwarded to voicemail", "aapka dial kiya gaya number", "kripya beep ke baad sandesh"):
+You MUST NOT speak or leave any message.
+You MUST IMMEDIATELY invoke the end_call function with reason "voicemail_detected" to hang up the call instantly without saying anything. NEVER talk to an automated voicemail or answering machine!`;
+
+    const enhancedInstructions = agentConfig.systemPrompt + functionCallingRequirements + transferRule + voicemailRule;
 
     const sessionConfig = {
       type: 'session.update',
@@ -486,6 +509,78 @@ You MUST FIRST speak a brief polite transition announcement out loud (e.g. "ज�
    * - OpenAI session is connected
    * - Agent has a first message configured
    */
+  /**
+   * Check if user audio transcript is an answering machine, voicemail, or IVR announcement
+   */
+  private static isVoicemailOrAnsweringMachine(text: string): boolean {
+    if (!text) return false;
+    const lower = text.toLowerCase().trim();
+
+    // Specific English & Hindi voicemail and answering machine phrases
+    const voicemailPhrases = [
+      // Standard Voicemail & Answering Machine
+      'leave a message',
+      'leave your message',
+      'leave me a message',
+      'after the tone',
+      'after the beep',
+      'at the tone',
+      'at the beep',
+      'record your message',
+      'record a message',
+      'recording your message',
+      'finished recording',
+      'forwarded to voicemail',
+      'forwarded to an automated voice',
+      'voice mailbox',
+      'voice mail',
+      'voicemail',
+      'answering machine',
+      'mailbox is full',
+      'person you are trying to reach',
+      'person you have called',
+      'person is unavailable',
+      'currently unavailable',
+      'not available right now',
+      'not available to take your call',
+      'unable to take your call',
+      'cannot take your call',
+      'cannot take your call right now',
+      'cannot come to the phone',
+      'can not come to the phone',
+      'please call back later',
+      'press 1 to leave',
+      'press pound to',
+      
+      // iPhone Live Voicemail (iOS 17+)
+      'person you\'re trying to reach is unavailable',
+      'your call has been forwarded',
+      'call has been forwarded to',
+      'when you have finished recording',
+      'you may hang up or press',
+      
+      // Indian Carrier Voicemail & Operator Announcements
+      'kripya beep ke baad',
+      'kripaya beep ke baad',
+      'beep ke baad apna sandesh',
+      'sandesh record karein',
+      'sandesh chhoden',
+      'sandesh chhodiye',
+      'uttar nahi de rahe hain',
+      'uttar nahi de rahi hain',
+      'vyakti ko call kar rahe hain',
+      'aapka dial kiya gaya number',
+      'dial kiya hua number',
+      'number abhi vyast hai',
+      'kripya thodi der baad',
+      'switched off hai',
+      'pawnch se bahar hai',
+      'reach se bahar hai',
+    ];
+
+    return voicemailPhrases.some(phrase => lower.includes(phrase));
+  }
+
   /**
    * Send a silent mu-law audio frame to Plivo to prime the mobile phone RTP earpiece speaker
    */
@@ -654,6 +749,37 @@ You MUST FIRST speak a brief polite transition announcement out loud (e.g. "ज�
               timestamp: new Date(),
             });
             logger.info(`User said: "${message.transcript.substring(0, 100)}..."`, undefined, 'AudioBridge');
+
+            // Voicemail & Answering Machine Interceptor (Auto-cut within first 35s of call to save credits)
+            const callDurationSec = (Date.now() - session.startedAt.getTime()) / 1000;
+            if (callDurationSec <= 35 && this.isVoicemailOrAnsweringMachine(message.transcript)) {
+              logger.warn(`[Voicemail Interceptor] Voicemail detected for ${callUuid}: "${message.transcript}". Cutting call immediately to save credits!`, undefined, 'AudioBridge');
+
+              // Cancel pending OpenAI response
+              try {
+                session.openaiWs.send(JSON.stringify({ type: 'response.cancel' }));
+              } catch (_) {}
+
+              // Update DB status to 'no-answer' with voicemail cause
+              if (session.callRecordId) {
+                db.update(plivoCalls)
+                  .set({
+                    status: 'no-answer',
+                    endedAt: new Date(),
+                    metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify({
+                      hangupCause: 'VOICEMAIL_DETECTED',
+                      voicemailDetected: true,
+                      voicemailTranscript: message.transcript,
+                    })}::jsonb`,
+                  })
+                  .where(eq(plivoCalls.id, session.callRecordId))
+                  .catch((dbErr: any) => logger.error(`[Voicemail Interceptor] DB update error: ${dbErr.message}`, undefined, 'AudioBridge'));
+              }
+
+              // Execute immediate carrier hangup
+              await this.executeHangup(session);
+              return;
+            }
           }
           break;
 
@@ -977,10 +1103,27 @@ You MUST FIRST speak a brief polite transition announcement out loud (e.g. "ज�
             logger.info('Ignoring end_call - session already disconnecting/transferring', undefined, 'AudioBridge');
             result = { ignored: true, reason: 'Session already disconnecting or transfer in progress' };
           } else {
-            logger.info(`End call requested for ${session.callUuid}. Initiating clean hangup...`, undefined, 'AudioBridge');
+            const isVoicemail = actionResult.reason === 'voicemail_detected' || (params as any)?.reason === 'voicemail_detected';
+            logger.info(`End call requested for ${session.callUuid} (reason: ${actionResult.reason || 'normal'}). Initiating hangup...`, undefined, 'AudioBridge');
             
             // Mark session as isEnding to prevent sending further user audio
             session.isEnding = true;
+
+            if (isVoicemail && session.callRecordId) {
+              db.update(plivoCalls)
+                .set({
+                  status: 'no-answer',
+                  endedAt: new Date(),
+                  metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify({
+                    hangupCause: 'VOICEMAIL_DETECTED',
+                    voicemailDetected: true,
+                  })}::jsonb`,
+                })
+                .where(eq(plivoCalls.id, session.callRecordId))
+                .catch(() => {});
+            }
+
+            const hangupDelay = isVoicemail ? 0 : 2500;
 
             setTimeout(async () => {
               try {
@@ -990,12 +1133,12 @@ You MUST FIRST speak a brief polite transition announcement out loud (e.g. "ज�
               } catch (err: any) {
                 logger.error(`Error in hangup for ${session.callUuid}: ${err.message}`, err, 'AudioBridge');
               }
-            }, 2500);
+            }, hangupDelay);
 
             result = {
               action: 'end_call',
               hangupSuccess: true,
-              message: 'Call ended.'
+              message: isVoicemail ? 'Voicemail detected - call terminated.' : 'Call ended.'
             };
           }
         }
