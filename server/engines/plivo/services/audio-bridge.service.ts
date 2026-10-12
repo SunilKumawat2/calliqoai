@@ -380,7 +380,13 @@ IMPORTANT FUNCTION CALLING & CLOSING RULES:
 3. After collecting all form information from the user, you MUST call the submit_form function with the collected data.
 4. When the user explicitly asks to disconnect or end the call ("call cut kar do", "khatam karo", "baad me karte hai"), FIRST speak your closing message out loud, and then call the end_call function.`;
 
-    const enhancedInstructions = agentConfig.systemPrompt + functionCallingRequirements;
+    const hasTransferTool = tools.some(t => t.name === 'transfer_call' || (t.name && t.name.startsWith('transfer_')));
+    const transferRule = hasTransferTool
+      ? `\n5. CALL TRANSFER RULE: If the caller asks to speak to a human, real person, manager, executive, agent, or says in Hindi/English ("transfer kar do", "kisi human se baat karao", "executive se connect karo", "senior se baat karni hai", "manager se baat karao", "real person se baat karni hai", "customer care"):
+You MUST FIRST speak a brief polite transition announcement out loud (e.g. "जी बिल्कुल, मैं आपकी कॉल हमारे सीनियर एग्जीक्यूटिव को ट्रांसफर कर रहा हूँ, कृपया लाइन पर बने रहें।"), and then IMMEDIATELY call the transfer_call function. NEVER refuse or say you cannot transfer!`
+      : '';
+
+    const enhancedInstructions = agentConfig.systemPrompt + functionCallingRequirements + transferRule;
 
     const sessionConfig = {
       type: 'session.update',
@@ -1306,9 +1312,19 @@ IMPORTANT FUNCTION CALLING & CLOSING RULES:
         logger.info(`[Transfer] Outbound call - using fromNumber as caller ID: ${callerId}`, undefined, 'AudioBridge');
       }
 
+      // Normalize targetNumber to E.164 format
+      let normalizedTarget = targetNumber.trim().replace(/[\s\-\(\)]/g, '');
+      if (normalizedTarget.length === 10 && !normalizedTarget.startsWith('+')) {
+        normalizedTarget = `+91${normalizedTarget}`;
+      } else if (!normalizedTarget.startsWith('+') && normalizedTarget.startsWith('91') && normalizedTarget.length === 12) {
+        normalizedTarget = `+${normalizedTarget}`;
+      } else if (!normalizedTarget.startsWith('+') && !normalizedTarget.startsWith('0')) {
+        normalizedTarget = `+${normalizedTarget}`;
+      }
+
       const baseUrl = getDomain();
 
-      const transferXmlUrl = `${baseUrl}/api/plivo/voice/transfer?target=${encodeURIComponent(targetNumber)}&callerId=${encodeURIComponent(callerId)}`;
+      const transferXmlUrl = `${baseUrl}/api/plivo/voice/transfer?target=${encodeURIComponent(normalizedTarget)}&callerId=${encodeURIComponent(callerId)}`;
 
       logger.info(`[Transfer] Step 1: Calling Plivo Transfer API`, undefined, 'AudioBridge');
       logger.info(`[Transfer] Transfer XML URL: ${transferXmlUrl}`, undefined, 'AudioBridge');

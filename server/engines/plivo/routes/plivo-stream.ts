@@ -791,6 +791,7 @@ async function initializeSession(
         systemPrompt: agentConfig.systemPrompt,
         firstMessage: agentConfig.firstMessage,
         tools: agentConfig.tools,
+        transferPhoneNumber: agent.transferPhoneNumber || undefined,
       },
       plivoWs,
       streamSid: streamSid || undefined,

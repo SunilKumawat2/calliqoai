@@ -621,10 +621,14 @@ export class OpenAIAgentFactory {
 
     const transferTool: AgentTool & { _transferNumber: string } = {
       name: 'transfer_call',
-      description: 'Transfer the call to a human agent. IMPORTANT: Before calling this function, you MUST first say a brief transfer announcement like "Sure, let me transfer you to an agent now" or "One moment, I will connect you with a representative". After speaking this announcement, immediately call this function. You MUST call this function when: (1) the user explicitly asks to speak to a human, agent, or real person, (2) the user says "transfer", "connect me", or similar phrases, (3) you cannot help them with their request.',
+      description: 'Transfer the call to a human agent, manager, or executive. IMPORTANT: Before calling this function, you MUST first say a brief polite transfer announcement out loud like "जी बिल्कुल, मैं आपकी कॉल हमारे सीनियर एग्जीक्यूटिव को ट्रांसफर कर रहा हूँ, कृपया लाइन पर बने रहें।" or "Sure, let me transfer you to a human agent now, please stay on the line." After speaking this announcement, immediately call this function. You MUST call this function when: (1) the user explicitly asks to speak to a human, agent, or manager in Hindi/English/Hinglish (e.g. "kisi human se baat karao", "agent se baat karni hai", "manager se baat karao", "executive se connect karo", "call transfer karo", "asli insan se baat karni hai"), (2) the user says "transfer", "connect me", (3) you cannot handle their complex request.',
       parameters: {
         type: 'object',
         properties: {
+          destination: {
+            type: 'string',
+            description: 'The phone number to transfer to (optional, defaults to preconfigured transfer number)'
+          },
           reason: {
             type: 'string',
             description: 'Brief reason for the transfer'
@@ -633,11 +637,12 @@ export class OpenAIAgentFactory {
         required: ['reason'],
       },
       handler: async (params: Record<string, unknown>) => {
-        console.log(`[Transfer Tool] Initiating transfer to ${transferNumber}, reason: ${params.reason || 'none'}`);
+        const target = (params.destination as string) || transferNumber;
+        console.log(`[Transfer Tool] Initiating transfer to ${target}, reason: ${params.reason || 'none'}`);
         // The actual transfer is handled by the audio bridge
         return { 
           action: 'transfer',
-          phoneNumber: transferNumber,
+          phoneNumber: target,
           reason: params.reason as string
         };
       },
