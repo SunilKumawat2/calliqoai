@@ -25,7 +25,7 @@ import { PlivoElevenLabsConfig } from '../config/config';
 import { logger } from '../../../utils/logger';
 
 import { db } from '../../../db';
-import { plivoCalls } from '@shared/schema';
+import { plivoCalls, calls } from '@shared/schema';
 import { eq, or, sql } from 'drizzle-orm';
 
 const SESSION_PREFIX = 'plivo-elevenlabs:';
@@ -290,13 +290,25 @@ export class ElevenLabsBridgeService {
         case 'user_transcript':
           const userText = (message as any).user_transcription_event?.user_transcript || message.user_transcript?.text;
           const isUserFinal = (message as any).user_transcription_event?.is_final ?? message.user_transcript?.is_final ?? true;
-          if (userText && isUserFinal) {
-            session.transcript.push({
-              role: 'user',
-              text: userText,
-              timestamp: new Date(),
-            });
-            logger.info(`User: "${userText.substring(0, 80)}..."`, undefined, 'PlivoElevenLabsBridge');
+          if (userText) {
+            if (isUserFinal) {
+              session.transcript.push({
+                role: 'user',
+                text: userText,
+                timestamp: new Date(),
+              });
+              logger.info(`User: "${userText.substring(0, 80)}..."`, undefined, 'PlivoElevenLabsBridge');
+            }
+
+            // Voicemail & Answering Machine Interceptor (Within first 35s of call)
+            const callDurationSec = (Date.now() - session.startedAt.getTime()) / 1000;
+            if (callDurationSec <= 35 && this.isVoicemailOrAnsweringMachine(userText)) {
+              logger.warn(`[Voicemail Interceptor] Voicemail detected on Plivo+ElevenLabs call ${session.callUuid}: "${userText}". Terminating call immediately!`, undefined, 'PlivoElevenLabsBridge');
+              this.handleVoicemailDetected(session, userText).catch(err => {
+                logger.error(`Error in handleVoicemailDetected: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge');
+              });
+              return;
+            }
           }
           break;
           
@@ -530,6 +542,183 @@ export class ElevenLabsBridgeService {
     }
     
     return { duration, transcript, conversationId };
+  }
+
+  /**
+   * Check if user audio transcript is an answering machine, voicemail, or IVR announcement
+   */
+  private static isVoicemailOrAnsweringMachine(text: string): boolean {
+    if (!text) return false;
+    const lower = text.toLowerCase().trim();
+
+    // Specific English & Hindi voicemail and answering machine phrases
+    const voicemailPhrases = [
+      // Standard Voicemail & Answering Machine
+      'leave a message',
+      'leave your message',
+      'leave me a message',
+      'after the tone',
+      'after the beep',
+      'at the tone',
+      'at the beep',
+      'record your message',
+      'record a message',
+      'recording your message',
+      'finished recording',
+      'forwarded to voicemail',
+      'forwarded to an automated voice',
+      'voice mailbox',
+      'voice mail',
+      'voicemail',
+      'answering machine',
+      'mailbox is full',
+      'person you are trying to reach',
+      'person you have called',
+      'person is unavailable',
+      'currently unavailable',
+      'not available right now',
+      'not available to take your call',
+      'unable to take your call',
+      'cannot take your call',
+      'cannot take your call right now',
+      'cannot come to the phone',
+      'can not come to the phone',
+      'please call back later',
+      'press 1 to leave',
+      'press pound to',
+      
+      // iPhone Live Voicemail (iOS 17+)
+      'person you\'re trying to reach is unavailable',
+      'your call has been forwarded',
+      'call has been forwarded to',
+      'when you have finished recording',
+      'you may hang up or press',
+      
+      // Indian Carrier Voicemail & Operator Announcements
+      'kripya beep ke baad',
+      'kripaya beep ke baad',
+      'beep ke baad apna sandesh',
+      'sandesh record karein',
+      'sandesh chhoden',
+      'sandesh chhodiye',
+      'uttar nahi de rahe hain',
+      'uttar nahi de rahi hain',
+      'vyakti ko call kar rahe hain',
+      'aapka dial kiya gaya number',
+      'dial kiya hua number',
+      'number abhi vyast hai',
+      'kripya thodi der baad',
+      'switched off hai',
+      'pawnch se bahar hai',
+      'reach se bahar hai',
+    ];
+
+    return voicemailPhrases.some(phrase => lower.includes(phrase));
+  }
+
+  /**
+   * Handle voicemail detection: terminate audio, disconnect Plivo carrier line, update DB to no-answer
+   */
+  private static async handleVoicemailDetected(session: CallSession, transcript: string): Promise<void> {
+    if (session.isEnding || session.status === 'disconnected') return;
+    session.isEnding = true;
+
+    logger.warn(`[Voicemail Interceptor] Voicemail detected on Plivo+ElevenLabs call ${session.callUuid}: "${transcript}". Triggering immediate carrier hangup!`, undefined, 'PlivoElevenLabsBridge');
+
+    // 1. Immediately clear queued audio and close ElevenLabs WS so no AI audio plays
+    session.initialAudioQueue = [];
+    if (session.elevenLabsWs) {
+      try {
+        (session.elevenLabsWs as any).close();
+      } catch (_) {}
+    }
+
+    // 2. Look up the call in DB to get Plivo request UUID & Plivo credentials
+    try {
+      const [callRow] = await db
+        .select()
+        .from(plivoCalls)
+        .where(
+          or(
+            eq(plivoCalls.plivoCallUuid, session.callUuid),
+            eq(plivoCalls.id, session.callUuid),
+            sql`${plivoCalls.metadata}->>'internalId' = ${session.callUuid}`
+          )
+        )
+        .limit(1);
+
+      const targetUuid = callRow?.plivoCallUuid || (callRow?.metadata as any)?.requestUuid || session.callUuid;
+
+      // 3. Mark DB record as no-answer with VOICEMAIL_DETECTED
+      if (callRow?.id) {
+        await db
+          .update(plivoCalls)
+          .set({
+            status: 'no-answer',
+            endedAt: new Date(),
+            metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify({
+              hangupCause: 'VOICEMAIL_DETECTED',
+              voicemailDetected: true,
+              voicemailTranscript: transcript,
+            })}::jsonb`,
+          })
+          .where(eq(plivoCalls.id, callRow.id))
+          .catch(() => {});
+      }
+
+      // Also update calls table if present
+      await db
+        .update(calls)
+        .set({
+          status: 'no-answer',
+          endedAt: new Date(),
+          metadata: sql`COALESCE(${calls.metadata}, '{}'::jsonb) || ${JSON.stringify({
+            hangupCause: 'VOICEMAIL_DETECTED',
+            voicemailDetected: true,
+            voicemailTranscript: transcript,
+          })}::jsonb`,
+        })
+        .where(
+          or(
+            eq(calls.id, session.callUuid),
+            sql`${calls.metadata}->>'internalId' = ${session.callUuid}`,
+            sql`${calls.metadata}->>'plivoCallUuid' = ${session.callUuid}`
+          )
+        )
+        .catch(() => {});
+
+      // 4. Hang up via Plivo REST API if targetUuid exists and looks like a Plivo UUID
+      const isPlivoUuid = targetUuid && !targetUuid.startsWith('plivo-el-');
+      if (isPlivoUuid) {
+        try {
+          const { storage } = await import('../../../storage');
+          const plivo = (await import('plivo')).default || (await import('plivo'));
+          const plivoSetting = await storage.getGlobalSetting('plivo_credentials');
+          const plivoCreds = (plivoSetting?.value as any) || {};
+          const plivoAuthId = plivoCreds.auth_id || process.env.PLIVO_AUTH_ID;
+          const plivoAuthToken = plivoCreds.auth_token || process.env.PLIVO_AUTH_TOKEN;
+
+          if (plivoAuthId && plivoAuthToken) {
+            const client = new (plivo as any).Client(plivoAuthId, plivoAuthToken);
+            await client.calls.hangup(targetUuid);
+            logger.info(`[Voicemail Interceptor] Plivo carrier hangup executed for UUID ${targetUuid}`, undefined, 'PlivoElevenLabsBridge');
+          }
+        } catch (hangupErr: any) {
+          logger.warn(`[Voicemail Interceptor] Plivo REST hangup notice: ${hangupErr?.message || hangupErr}`, undefined, 'PlivoElevenLabsBridge');
+        }
+      }
+    } catch (e: any) {
+      logger.error(`[Voicemail Interceptor] Error during voicemail hangup: ${e?.message || e}`, undefined, 'PlivoElevenLabsBridge');
+    }
+
+    // 5. Close Plivo WebSocket and end bridge session
+    if (session.plivoWs) {
+      try {
+        (session.plivoWs as any).close();
+      } catch (_) {}
+    }
+
+    await this.endSession(session.callUuid);
   }
   
   /**

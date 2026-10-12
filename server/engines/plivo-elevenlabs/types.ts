@@ -44,6 +44,7 @@ export interface CallSession {
   initialAudioQueue?: string[];
   isPlivoReady?: boolean;
   recordedAudioChunks?: Buffer[];
+  isEnding?: boolean;
 }
 
 export interface TranscriptPart {
