@@ -30,7 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Plus, Webhook as WebhookIcon, Send, CheckCircle2, XCircle, Clock, AlertCircle, Trash2, RefreshCw, Eye, Zap, Info, Phone, Megaphone, FileText, ChevronDown, ChevronUp, Shield, Filter } from "lucide-react";
+import { Plus, Webhook as WebhookIcon, Send, CheckCircle2, XCircle, Clock, AlertCircle, Trash2, RefreshCw, Eye, Zap, Info, Phone, Megaphone, FileText, ChevronDown, ChevronUp, Shield, Filter, Copy, Globe, Sparkles, Check, PhoneCall, ArrowRight } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -92,6 +92,78 @@ export default function WebhookConfigPage() {
   const [selectedWebhook, setSelectedWebhook] = useState<Webhook | null>(null);
   const [authSectionOpen, setAuthSectionOpen] = useState(false);
   const [filterSectionOpen, setFilterSectionOpen] = useState(false);
+
+  // Inbound Speed-to-Lead Webhook State
+  const { data: agents = [] } = useQuery<any[]>({
+    queryKey: ["/api/agents"],
+  });
+  const [selectedLeadAgentId, setSelectedLeadAgentId] = useState<string>("");
+  const [copiedLeadWebhook, setCopiedLeadWebhook] = useState(false);
+  const [testLeadPhone, setTestLeadPhone] = useState("");
+  const [testLeadName, setTestLeadName] = useState("");
+  const [isTestingLead, setIsTestingLead] = useState(false);
+
+  const activeAgent = agents.find((a: any) => a.id === (selectedLeadAgentId || agents[0]?.id)) || agents[0];
+  const leadWebhookUrl = activeAgent ? `${window.location.origin}/api/v1/lead-webhook/${activeAgent.id}` : '';
+
+  const handleCopyLeadWebhook = () => {
+    if (!leadWebhookUrl) return;
+    navigator.clipboard.writeText(leadWebhookUrl);
+    setCopiedLeadWebhook(true);
+    toast({
+      title: "Webhook URL Copied! 📋",
+      description: "Paste this URL into your website's form settings (Elementor, Webflow, CF7, Wix, etc.)",
+    });
+    setTimeout(() => setCopiedLeadWebhook(false), 2500);
+  };
+
+  const handleTestLeadCall = async () => {
+    if (!testLeadPhone) {
+      toast({
+        title: "Phone Required",
+        description: "Please enter a test phone number to trigger an instant call.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!activeAgent) {
+      toast({
+        title: "Agent Required",
+        description: "Please select an active agent first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsTestingLead(true);
+      const res = await fetch(`/api/v1/lead-webhook/${activeAgent.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: testLeadName || "Test Visitor",
+          phone: testLeadPhone,
+          message: "Testing website lead-to-call webhook",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to trigger test call");
+      }
+      toast({
+        title: "Success! Call Triggered 📞",
+        description: `Calling ${testLeadPhone} with AI Agent '${activeAgent.name}'!`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Test Call Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsTestingLead(false);
+    }
+  };
   const [formData, setFormData] = useState({
     name: "",
     url: "",
@@ -456,6 +528,149 @@ export default function WebhookConfigPage() {
           </div>
         </div>
       </div>
+
+      {/* Inbound Lead-to-Call Webhook (Website Form Integration) */}
+      <Card className="border-2 border-indigo-500/20 shadow-lg bg-gradient-to-br from-indigo-50/50 via-background to-purple-50/30 dark:from-indigo-950/20 dark:via-background dark:to-purple-950/20">
+        <CardHeader className="pb-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/25 mt-0.5">
+                <Globe className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-xl font-bold">Website Form Integration (Instant AI Call)</CardTitle>
+                  <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-xs py-0.5">
+                    <Sparkles className="h-3 w-3" /> Speed-to-Lead
+                  </Badge>
+                </div>
+                <CardDescription className="mt-1 text-sm">
+                  Connect any website Lead Form (Elementor, Webflow, Contact Form 7, Wix, Facebook Ads). When a visitor fills the form, your AI Agent automatically calls them in seconds!
+                </CardDescription>
+              </div>
+            </div>
+            
+            {agents.length > 0 && (
+              <div className="flex items-center gap-2 self-start md:self-auto">
+                <Label htmlFor="lead-agent-select" className="text-xs font-semibold uppercase text-muted-foreground whitespace-nowrap">
+                  Selected Agent:
+                </Label>
+                <Select
+                  value={selectedLeadAgentId || agents[0]?.id || ""}
+                  onValueChange={(val) => setSelectedLeadAgentId(val)}
+                >
+                  <SelectTrigger id="lead-agent-select" className="w-[200px] h-9 bg-background">
+                    <SelectValue placeholder="Choose an Agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agents.map((ag: any) => (
+                      <SelectItem key={ag.id} value={ag.id}>
+                        {ag.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Webhook URL Input & Copy Button */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+              Your Inbound Form Webhook URL
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                readOnly
+                value={leadWebhookUrl || "Please create an agent first"}
+                className="font-mono text-sm bg-background/80 border-indigo-200 dark:border-indigo-900/60 select-all"
+              />
+              <Button
+                type="button"
+                onClick={handleCopyLeadWebhook}
+                disabled={!leadWebhookUrl}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 gap-1.5"
+              >
+                {copiedLeadWebhook ? (
+                  <>
+                    <Check className="h-4 w-4" /> Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4" /> Copy Webhook
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Quick Setup Instructions & Instant Test Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2">
+            {/* Step-by-Step Instructions */}
+            <div className="rounded-xl border border-border/80 bg-background/70 p-4 space-y-3">
+              <h4 className="font-semibold text-sm flex items-center gap-2 text-foreground">
+                <ArrowRight className="h-4 w-4 text-indigo-500" />
+                How to setup in 3 simple steps:
+              </h4>
+              <ul className="text-xs text-muted-foreground space-y-2.5">
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-indigo-600 bg-indigo-100 dark:bg-indigo-950/80 px-1.5 py-0.5 rounded text-[11px]">1</span>
+                  <span><strong>Form Settings:</strong> In Elementor, Webflow, or WPForms, go to <em>Actions After Submit ➔ Webhook</em>.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-indigo-600 bg-indigo-100 dark:bg-indigo-950/80 px-1.5 py-0.5 rounded text-[11px]">2</span>
+                  <span><strong>Paste URL:</strong> Paste the copied Webhook URL into the Webhook URL field.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-indigo-600 bg-indigo-100 dark:bg-indigo-950/80 px-1.5 py-0.5 rounded text-[11px]">3</span>
+                  <span><strong>Field Names:</strong> Ensure the phone input has name/ID set to <code className="text-foreground bg-muted px-1 rounded">phone</code> or <code className="text-foreground bg-muted px-1 rounded">mobile</code>. Name field is optional (<code className="text-foreground bg-muted px-1 rounded">name</code>).</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Live Instant Test Box */}
+            <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-3">
+              <h4 className="font-semibold text-sm flex items-center gap-2 text-indigo-700 dark:text-indigo-300">
+                <PhoneCall className="h-4 w-4" />
+                Test Your Lead-to-Call Instantly
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Enter your details to simulate a live website form submission right now:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Input
+                  placeholder="Visitor Name (e.g. Rahul)"
+                  value={testLeadName}
+                  onChange={(e) => setTestLeadName(e.target.value)}
+                  className="h-9 text-xs bg-background"
+                />
+                <Input
+                  placeholder="Phone Number (e.g. +919876543210)"
+                  value={testLeadPhone}
+                  onChange={(e) => setTestLeadPhone(e.target.value)}
+                  className="h-9 text-xs bg-background font-mono"
+                />
+              </div>
+              <Button
+                type="button"
+                onClick={handleTestLeadCall}
+                disabled={isTestingLead || !leadWebhookUrl}
+                size="sm"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-medium"
+              >
+                {isTestingLead ? (
+                  <>Calling...</>
+                ) : (
+                  <>
+                    <Phone className="h-3.5 w-3.5" /> Trigger Test AI Call Now
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {webhooks.length === 0 ? (
         <Card>
