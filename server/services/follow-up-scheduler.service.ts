@@ -689,32 +689,103 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
    - Politely ask when would be a better time to call them back and confirm politely before ending the call.
 5. Maintain a natural, warm, conversational, and helpful tone throughout.`;
 
-      const voice = (agentRecord.openaiVoice || 'ash') as OpenAIVoice;
-      const model = (agentRecord.llmModel || 'gpt-4o-realtime-preview-2024-12-17') as OpenAIRealtimeModel;
+      // Determine if this agent uses Plivo + ElevenLabs
+      let isElevenLabs = Boolean(
+        agentRecord.elevenLabsAgentId ||
+        (agentRecord.metadata as any)?.elevenLabsAgentId ||
+        (agentRecord as any)?.telephonyProvider === 'plivo_elevenlabs' ||
+        (agentRecord as any)?.engine === 'plivo-elevenlabs' ||
+        (agentRecord as any)?.voiceEngine === 'elevenlabs'
+      );
 
-      // Initiate outbound Plivo call
-      const { callUuid, plivoCall } = await PlivoCallService.initiateCall({
-        fromNumber: plivoPhone.phoneNumber,
-        toNumber: destinationNumber,
-        userId: followUp.userId,
-        campaignId: followUp.campaignId || undefined,
-        contactId: followUp.contactId || undefined,
-        agentId: agentRecord.id,
-        plivoPhoneNumberId: plivoPhone.id,
-        agentConfig: {
-          voice,
-          model,
-          systemPrompt: `${baseSystemPrompt}${followUpContext}`,
-          firstMessage,
-        },
-      });
+      if (!isElevenLabs && followUp.campaignId) {
+        const [camp] = await db
+          .select({ telephonyProvider: campaigns.telephonyProvider, voiceEngine: campaigns.voiceEngine })
+          .from(campaigns)
+          .where(eq(campaigns.id, followUp.campaignId))
+          .limit(1)
+          .catch(() => []);
+        if (camp && (camp.telephonyProvider === 'plivo_elevenlabs' || camp.voiceEngine === 'elevenlabs')) {
+          isElevenLabs = true;
+        }
+      }
+
+      let followUpCallId: string | null = null;
+      let triggeredCallUuid: string | null = null;
+
+      if (isElevenLabs) {
+        logger.info(`[FollowUpScheduler] Triggering Plivo+ElevenLabs follow-up for agent ${agentRecord.name} (${agentRecord.id})`, undefined, 'FollowUpScheduler');
+
+        const { PlivoElevenLabsOutboundService } = await import('../engines/plivo-elevenlabs/services/outbound-call.service');
+        const { ElevenLabsPoolService } = await import('./elevenlabs-pool.service');
+        const { storage } = await import('../storage');
+
+        const plivoSetting = await storage.getGlobalSetting('plivo_credentials');
+        const plivoCreds = (plivoSetting?.value as any) || {};
+        const plivoAuthId = plivoCreds.auth_id || process.env.PLIVO_AUTH_ID || '';
+        const plivoAuthToken = plivoCreds.auth_token || process.env.PLIVO_AUTH_TOKEN || '';
+
+        const credential = await ElevenLabsPoolService.getCredentialForAgent(agentRecord.id);
+        const elevenLabsApiKey = credential?.apiKey || process.env.ELEVENLABS_API_KEY || '';
+
+        const elAgentId = agentRecord.elevenLabsAgentId || (agentRecord.metadata as any)?.elevenLabsAgentId || 'agent_2201m20fdvdket7rdh5pttn091b8';
+
+        const result = await PlivoElevenLabsOutboundService.makeCall({
+          toNumber: destinationNumber,
+          fromNumber: plivoPhone.phoneNumber,
+          agentId: elAgentId,
+          elevenLabsApiKey,
+          agentConfig: {
+            agentId: elAgentId,
+            firstMessage,
+            language: agentRecord.language || undefined,
+            voiceId: agentRecord.elevenLabsVoiceId || undefined,
+          },
+          plivoAuthId,
+          plivoAuthToken,
+          userId: followUp.userId,
+          dbAgentId: agentRecord.id,
+          campaignId: followUp.campaignId || undefined,
+          contactId: followUp.contactId || undefined,
+          plivoPhoneNumberId: plivoPhone.id,
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to initiate Plivo+ElevenLabs follow-up call');
+        }
+
+        followUpCallId = result.callRecordId || null;
+        triggeredCallUuid = result.callUuid || result.internalId || null;
+      } else {
+        // Standard Plivo + OpenAI call (100% existing logic untouched)
+        const voice = (agentRecord.openaiVoice || 'ash') as OpenAIVoice;
+        const model = (agentRecord.llmModel || 'gpt-4o-realtime-preview-2024-12-17') as OpenAIRealtimeModel;
+
+        const { callUuid, plivoCall } = await PlivoCallService.initiateCall({
+          fromNumber: plivoPhone.phoneNumber,
+          toNumber: destinationNumber,
+          userId: followUp.userId,
+          campaignId: followUp.campaignId || undefined,
+          contactId: followUp.contactId || undefined,
+          agentId: agentRecord.id,
+          plivoPhoneNumberId: plivoPhone.id,
+          agentConfig: {
+            voice,
+            model,
+            systemPrompt: `${baseSystemPrompt}${followUpContext}`,
+            firstMessage,
+          },
+        });
+        followUpCallId = plivoCall.id;
+        triggeredCallUuid = callUuid;
+      }
 
       // Update follow-up record to completed immediately
       await db
         .update(scheduledFollowUps)
         .set({
           status: 'completed',
-          followUpCallId: plivoCall.id,
+          followUpCallId: followUpCallId || null,
           agentId: agentRecord.id,
           completedAt: new Date(),
           updatedAt: new Date(),
@@ -722,23 +793,32 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
         .where(eq(scheduledFollowUps.id, id));
 
       // Tag the created call record with isFollowUpCall flag & agentId to prevent follow-up loops
-      if (plivoCall?.id) {
+      if (followUpCallId) {
         await db
           .update(calls)
           .set({
             agentId: agentRecord.id,
             metadata: sql`COALESCE(${calls.metadata}, '{}'::jsonb) || ${JSON.stringify({ isFollowUpCall: true, followUpId: id, originalCallId: followUp.callId, agentId: agentRecord.id })}::jsonb`,
           })
-          .where(eq(calls.id, plivoCall.id))
+          .where(eq(calls.id, followUpCallId))
+          .catch(() => {});
+
+        await db
+          .update(plivoCalls)
+          .set({
+            agentId: agentRecord.id,
+            metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify({ isFollowUpCall: true, followUpId: id, originalCallId: followUp.callId, agentId: agentRecord.id })}::jsonb`,
+          })
+          .where(eq(plivoCalls.id, followUpCallId))
           .catch(() => {});
       }
 
-      logger.info(`Successfully triggered automated follow-up call ${id} -> call ${plivoCall.id} with agent ${agentRecord.name} (${agentRecord.id})`, {
+      logger.info(`Successfully triggered automated follow-up call ${id} -> call ${followUpCallId} (${isElevenLabs ? 'Plivo+ElevenLabs' : 'Plivo+OpenAI'}) with agent ${agentRecord.name} (${agentRecord.id})`, {
         phoneNumber: followUp.phoneNumber,
-        callUuid,
+        callUuid: triggeredCallUuid,
       }, 'FollowUpScheduler');
 
-      return { success: true, callId: plivoCall.id };
+      return { success: true, callId: followUpCallId || undefined };
     } catch (err: any) {
       logger.error(`Error triggering follow-up call ${id}: ${err.message}`, undefined, 'FollowUpScheduler');
       await db
