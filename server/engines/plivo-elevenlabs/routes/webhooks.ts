@@ -188,8 +188,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
               durationSeconds >= 1 &&
               ((call.metadata as Record<string, unknown> | null)?.engine === 'plivo-elevenlabs')
             ) {
-              const minutes = Math.ceil(durationSeconds / 60);
-              const creditsToDeduct = minutes * 500;
+              const creditsToDeduct = Math.ceil(durationSeconds / 60);
               if (creditsToDeduct > 0) {
                 try {
                   const creditResult = await deductCallCredits({
