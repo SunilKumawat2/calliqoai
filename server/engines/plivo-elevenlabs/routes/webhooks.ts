@@ -491,6 +491,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
           language: agent.language || 'en',
           transferPhoneNumber: agent.transferPhoneNumber || undefined,
           transferEnabled: agent.transferEnabled,
+          backgroundSound: agent.backgroundSound || undefined,
         },
         fromNumber: From,
         toNumber: To,

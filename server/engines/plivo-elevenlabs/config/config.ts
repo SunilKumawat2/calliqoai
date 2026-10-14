@@ -22,7 +22,7 @@ export const PlivoElevenLabsConfig = {
   
   defaults: {
     maxCallDuration: 600,
-    connectionTimeout: 10000,
+    connectionTimeout: 20000,
   },
 };
 

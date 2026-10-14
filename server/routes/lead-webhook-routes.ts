@@ -322,9 +322,11 @@ export function createLeadWebhookRoutes(ctx: RouteContext): Router {
           agentId: agent.elevenLabsAgentId || 'agent_2201m20fdvdket7rdh5pttn091b8',
           elevenLabsApiKey,
           agentConfig: {
+            agentId: agent.elevenLabsAgentId || 'agent_2201m20fdvdket7rdh5pttn091b8',
             firstMessage,
             systemPrompt: agent.systemPrompt || '',
             language: agent.language || 'en',
+            backgroundSound: agent.backgroundSound || undefined,
           },
           metadata: {
             source: 'website_lead_form',

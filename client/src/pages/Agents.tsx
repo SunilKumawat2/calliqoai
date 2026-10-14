@@ -65,6 +65,7 @@ import VoicePreviewButton from "@/components/VoicePreviewButton";
 import OpenAIVoicePreviewButton from "@/components/OpenAIVoicePreviewButton";
 import CVEVoicePreviewButton from "@/components/CVEVoicePreviewButton";
 import AgentCreationWizard from "@/components/AgentCreationWizard";
+import AmbientSoundPreviewButton from "@/components/AmbientSoundPreviewButton";
 import { Wand2 } from "lucide-react";
 import { SUPPORTED_LANGUAGES, getLanguageLabel, isProviderSupported } from "@/lib/languages";
 import { LanguageOptionLabel } from "@/components/LanguageProviderBadges";
@@ -113,6 +114,7 @@ interface Agent {
   endConversationEnabled: boolean | null;
   appointmentBookingEnabled: boolean | null;
   expressiveMode: boolean | null;
+  backgroundSound?: string | null;
   telephonyProvider: 'twilio' | 'plivo' | 'plivo_elevenlabs' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip' | 'custom-voice-engine' | null;
   openaiVoice: string | null;
   createdAt: string;
@@ -344,6 +346,7 @@ export default function Agents() {
     messagingWhatsappTemplate: "",
     messagingWhatsappVariables: "",
     expressiveMode: false,
+    backgroundSound: "",
     // Flow Agent specific fields
     flowId: "",
     maxDurationSeconds: 600,
@@ -833,6 +836,7 @@ export default function Agents() {
       messagingWhatsappTemplate: "",
       messagingWhatsappVariables: "",
       expressiveMode: false,
+      backgroundSound: "",
       flowId: "",
       maxDurationSeconds: 600,
       voiceStability: 0.5,
@@ -968,6 +972,7 @@ export default function Agents() {
       messagingWhatsappTemplate: (agent as any).messagingWhatsappTemplate || (agent as any).messaging_whatsapp_template || "",
       messagingWhatsappVariables: (agent as any).messagingWhatsappVariables || "",
       expressiveMode: agent.expressiveMode ?? false,
+      backgroundSound: (agent as any).backgroundSound || "",
       flowId: agent.flowId || "",
       maxDurationSeconds: agent.maxDurationSeconds ?? 600,
       voiceStability: agent.voiceStability ?? 0.5,
@@ -1817,6 +1822,33 @@ export default function Agents() {
                               </div>
                             </label>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Background Sound Effect - Only for ElevenLabs-based engines (flow agents) */}
+                      {(formData.telephonyProvider === "twilio" || formData.telephonyProvider === "plivo_elevenlabs" || formData.telephonyProvider === "elevenlabs-sip") && (
+                        <div className="space-y-2 border-t pt-4">
+                          <div className="flex items-center">
+                            <Label className="text-sm font-medium">Background Sound Effect</Label>
+                            <InfoTooltip content="Add a realistic ambient background sound to calls. Makes the AI agent sound more natural — like a real executive calling from an office. Volume is kept very low so it never interferes with the voice." />
+                          </div>
+                          <Select
+                            value={formData.backgroundSound || "none"}
+                            onValueChange={(value) => setFormData({ ...formData, backgroundSound: value === "none" ? "" : value })}
+                          >
+                            <SelectTrigger data-testid="select-flow-background-sound">
+                              <SelectValue placeholder="No Background Sound" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">🔇 None (Clean / Default)</SelectItem>
+                              <SelectItem value="office">🏢 Office / Call Center</SelectItem>
+                              <SelectItem value="keyboard">⌨️ Keyboard Typing</SelectItem>
+                              <SelectItem value="cafe">☕ Cafe / Coffee Shop</SelectItem>
+                              <SelectItem value="city">🌆 City / Street Noise</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <AmbientSoundPreviewButton soundKey={formData.backgroundSound || ""} />
+                          <p className="text-xs text-muted-foreground">Plays a subtle ambient background sound during calls to make the AI agent sound more realistic.</p>
                         </div>
                       )}
 
@@ -3498,6 +3530,33 @@ export default function Agents() {
                               </div>
                             </label>
                           </div>
+
+                          {/* Background Sound Effect - Only for ElevenLabs-based engines (incoming agents) */}
+                          {(formData.telephonyProvider === "twilio" || formData.telephonyProvider === "plivo_elevenlabs" || formData.telephonyProvider === "elevenlabs-sip") && (
+                            <div className="space-y-2 border-t pt-3 mt-3">
+                              <div className="flex items-center">
+                                <Label className="text-sm font-medium">Background Sound Effect</Label>
+                                <InfoTooltip content="Add a realistic ambient background sound to calls. Makes the AI agent sound more natural — like a real executive calling from an office. Volume is kept very low so it never interferes with the voice." />
+                              </div>
+                              <Select
+                                value={formData.backgroundSound || "none"}
+                                onValueChange={(value) => setFormData({ ...formData, backgroundSound: value === "none" ? "" : value })}
+                              >
+                                <SelectTrigger data-testid="select-incoming-background-sound">
+                                  <SelectValue placeholder="No Background Sound" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">🔇 None (Clean / Default)</SelectItem>
+                                  <SelectItem value="office">🏢 Office / Call Center</SelectItem>
+                                  <SelectItem value="keyboard">⌨️ Keyboard Typing</SelectItem>
+                                  <SelectItem value="cafe">☕ Cafe / Coffee Shop</SelectItem>
+                                  <SelectItem value="city">🌆 City / Street Noise</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <AmbientSoundPreviewButton soundKey={formData.backgroundSound || ""} />
+                              <p className="text-xs text-muted-foreground">Plays a subtle ambient background sound during calls to make the AI agent sound more realistic.</p>
+                            </div>
+                          )}
                         </div>
                       )}
 

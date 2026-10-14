@@ -27,6 +27,7 @@ export interface ElevenLabsAgentConfig {
   dynamicData?: Record<string, string>;
   transferPhoneNumber?: string;
   transferEnabled?: boolean;
+  backgroundSound?: string | null;
 }
 
 export interface CallSession {
@@ -50,6 +51,7 @@ export interface CallSession {
   dbAgentId?: string;
   transferPhoneNumber?: string;
   transferEnabled?: boolean;
+  backgroundSound?: string | null;
 }
 
 export interface TranscriptPart {

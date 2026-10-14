@@ -29,6 +29,68 @@ import { sql } from 'drizzle-orm';
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 
+export const BACKGROUND_SOUND_PRESETS: Record<string, string> = {
+  office: "office1",
+  keyboard: "typing",
+  cafe: "restaurant",
+  city: "city",
+};
+
+export function getBackgroundSoundConfig(soundKey?: string | null) {
+  if (!soundKey || soundKey === 'none' || soundKey === '') return null;
+  const sourceId = BACKGROUND_SOUND_PRESETS[soundKey] || soundKey;
+  if (!sourceId) return null;
+  return {
+    source_type: "preset",
+    source_id: sourceId,
+    volume: 0.35,
+    crossfade_loop: true,
+  };
+}
+
+const agentBgSoundCache = new Map<string, string | null>();
+
+export async function syncAgentBackgroundSoundInElevenLabs(
+  elevenLabsAgentId: string,
+  apiKey: string,
+  soundKey?: string | null
+): Promise<void> {
+  if (!elevenLabsAgentId || !apiKey) return;
+  const normalizedKey = soundKey && soundKey !== 'none' && soundKey !== '' ? soundKey : null;
+
+  if (agentBgSoundCache.get(elevenLabsAgentId) === normalizedKey) {
+    return;
+  }
+
+  const bgSoundConfig = getBackgroundSoundConfig(normalizedKey);
+  const clearConfig = { source_type: null, source_id: null };
+  try {
+    const res = await fetch(`https://api.elevenlabs.io/v1/convai/agents/${elevenLabsAgentId}`, {
+      method: 'PATCH',
+      headers: {
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        conversation_config: {
+          conversation: {
+            background_sound: bgSoundConfig ?? clearConfig
+          }
+        }
+      })
+    });
+    if (res.ok) {
+      agentBgSoundCache.set(elevenLabsAgentId, normalizedKey);
+      console.log(`✅ [ElevenLabs] Synced background sound "${normalizedKey}" to agent ${elevenLabsAgentId}`);
+    } else {
+      const errText = await res.text();
+      console.warn(`⚠️ [ElevenLabs] Failed to sync background sound to agent ${elevenLabsAgentId}: ${res.status} ${errText}`);
+    }
+  } catch (err: any) {
+    console.warn(`⚠️ [ElevenLabs] Network error syncing background sound to agent ${elevenLabsAgentId}: ${err?.message}`);
+  }
+}
+
 export async function isAgentOnSipPhoneNumber(agentId: string): Promise<boolean> {
   try {
     const result = await db.execute(sql`
@@ -417,6 +479,7 @@ interface CreateAgentParams {
   toolErrorHandlingMode?: "default" | "relaxed" | "strict";
   dynamicVariableSanitize?: boolean;
   suggestedAudioTags?: boolean;
+  backgroundSound?: string;
 }
 
 interface ElevenLabsAgent {
@@ -1051,6 +1114,9 @@ IMPORTANT: Do NOT ask the caller for their phone number - you already have it fr
             mode: "turn_v3",
             turn_timeout: params.turnTimeout ?? 1.5,
           },
+          ...(getBackgroundSoundConfig(params.backgroundSound) ? {
+            background_sound: getBackgroundSoundConfig(params.backgroundSound)
+          } : {}),
         },
       },
     };
@@ -1122,6 +1188,9 @@ IMPORTANT: Do NOT ask the caller for their phone number - you already have it fr
     ttsModel?: string;
     suggestedAudioTags?: boolean;
     toolErrorHandlingMode?: "default" | "relaxed" | "strict";
+    customGuardrails?: any[];
+    dynamicVariableSanitize?: boolean;
+    backgroundSound?: string;
     workflow: {
       nodes: Record<string, any>;
       edges: Record<string, any>;
@@ -1323,6 +1392,9 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
             mode: "turn_v3",
             turn_timeout: params.turnTimeout ?? 1.5,
           },
+          ...(getBackgroundSoundConfig(params.backgroundSound) ? {
+            background_sound: getBackgroundSoundConfig(params.backgroundSound)
+          } : {}),
         },
       },
       workflow: {
@@ -1398,6 +1470,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
     turnTimeout?: number;  // Turn timeout in seconds
     suggestedAudioTags?: boolean;  // Expressive Mode
     endConversationEnabled?: boolean;  // Allow agent to end call via end_call tool
+    backgroundSound?: string;
   }): Promise<ElevenLabsAgent> {
     console.log(`🔄 Updating Flow Agent workflow: ${agentId}`);
     console.log(`   Workflow nodes: ${Object.keys(workflow.nodes).length}`);
@@ -1438,12 +1511,18 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
     };
 
     // Always include conversation config with turn settings to reduce background noise sensitivity
+    const flowBgSoundConfig = getBackgroundSoundConfig(additionalOptions?.backgroundSound);
     updatePayload.conversation_config.conversation = {
       ...(maxDurationSeconds !== undefined && { max_duration_seconds: maxDurationSeconds }),
       turn: {
         mode: "turn_v3",
         turn_timeout: additionalOptions?.turnTimeout ?? 1.5,
       },
+      ...(flowBgSoundConfig ? {
+        background_sound: flowBgSoundConfig,
+      } : (additionalOptions?.backgroundSound === 'none' || additionalOptions?.backgroundSound === '' || additionalOptions?.backgroundSound === null ? {
+        background_sound: { source_type: null, source_id: null },
+      } : {})),
     };
 
     // Include voice_id if provided
@@ -2267,6 +2346,8 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
       user_input_audio_format: "pcm_16000", // PCM 16kHz to match widget audio format
     };
 
+    const bgSoundConfig = getBackgroundSoundConfig(params.backgroundSound);
+
     // Add conversation settings for timeout, events, and turn detection
     conversationConfigUpdates.conversation = {
       max_duration_seconds: 900,
@@ -2275,6 +2356,11 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
         mode: "turn_v3",
         turn_timeout: params.turnTimeout ?? 1.5,
       },
+      ...(bgSoundConfig ? {
+        background_sound: bgSoundConfig,
+      } : (params.backgroundSound === 'none' || params.backgroundSound === '' || params.backgroundSound === null ? {
+        background_sound: { source_type: null, source_id: null },
+      } : {})),
     };
 
     // Add workflow at root level (per ElevenLabs API)

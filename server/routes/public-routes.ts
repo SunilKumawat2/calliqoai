@@ -1481,6 +1481,7 @@ ${allUrls.map(u => {
             agentId: agent.elevenLabsAgentId || 'agent_2201m20fdvdket7rdh5pttn091b8',
             firstMessage: agent.firstMessage || undefined,
             voiceId: agent.elevenLabsVoiceId || undefined,
+            backgroundSound: agent.backgroundSound || undefined,
           },
           plivoAuthId,
           plivoAuthToken,

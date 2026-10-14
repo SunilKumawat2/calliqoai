@@ -158,6 +158,7 @@ async function initiateCall(data: CampaignCallJob): Promise<CallResult> {
             agentId: agent.elevenLabsAgentId || agentId,
             firstMessage: hydratedFirstMessage,
             language: agent.language || undefined,
+            backgroundSound: agent.backgroundSound || undefined,
             dynamicData,
           },
           // Tracking fields so the call can be recorded and billed.

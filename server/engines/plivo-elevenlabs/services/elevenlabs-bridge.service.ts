@@ -27,6 +27,7 @@ import { logger } from '../../../utils/logger';
 import { db } from '../../../db';
 import { plivoCalls, calls, agents } from '@shared/schema';
 import { eq, or, sql } from 'drizzle-orm';
+import { syncAgentBackgroundSoundInElevenLabs } from '../../../services/elevenlabs';
 
 const SESSION_PREFIX = 'plivo-elevenlabs:';
 const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
@@ -128,7 +129,45 @@ export class ElevenLabsBridgeService {
       dbAgentId: params.dbAgentId,
       transferPhoneNumber: params.transferPhoneNumber || params.agentConfig?.transferPhoneNumber,
       transferEnabled: params.transferEnabled ?? params.agentConfig?.transferEnabled,
+      backgroundSound: params.agentConfig?.backgroundSound,
     };
+
+    // Resolve background sound dynamically for this agent (per call)
+    let bgSoundKey = params.agentConfig?.backgroundSound !== undefined ? params.agentConfig.backgroundSound : session.backgroundSound;
+    if ((bgSoundKey === undefined || bgSoundKey === null) && session.dbAgentId) {
+      try {
+        const [dbAgent] = await db
+          .select({ backgroundSound: agents.backgroundSound })
+          .from(agents)
+          .where(eq(agents.id, session.dbAgentId))
+          .limit(1);
+        if (dbAgent) {
+          bgSoundKey = dbAgent.backgroundSound;
+        }
+      } catch (_) {}
+    }
+    if ((bgSoundKey === undefined || bgSoundKey === null) && session.agentId) {
+      try {
+        const [dbAgent] = await db
+          .select({ backgroundSound: agents.backgroundSound })
+          .from(agents)
+          .where(eq(agents.elevenLabsAgentId, session.agentId))
+          .limit(1);
+        if (dbAgent) {
+          bgSoundKey = dbAgent.backgroundSound;
+        }
+      } catch (_) {}
+    }
+    session.backgroundSound = bgSoundKey;
+
+    // Guaranteed REST sync to ElevenLabs ConvAI agent BEFORE connecting WebSocket
+    if (elevenLabsApiKey && session.agentId) {
+      try {
+        await syncAgentBackgroundSoundInElevenLabs(session.agentId, elevenLabsApiKey, bgSoundKey);
+      } catch (syncErr: any) {
+        logger.warn(`Failed background sound REST sync: ${syncErr.message}`, undefined, 'PlivoElevenLabsBridge');
+      }
+    }
     
     this.activeSessions.set(sessionKey, session);
     
@@ -182,7 +221,7 @@ export class ElevenLabsBridgeService {
       
       session.elevenLabsWs = ws as any;
       
-      ws.on('open', () => {
+      ws.on('open', async () => {
         logger.info(`ElevenLabs WebSocket connected for ${session.callUuid}`, undefined, 'PlivoElevenLabsBridge');
         session.status = 'connected';
         
@@ -216,8 +255,67 @@ Politely tell the caller: "जी बिल्कुल, मैं आपकी 
           agentOverride.language = agentConfig.language;
         }
 
+        const conversationOverride: any = {};
+
+        // Resolve background sound dynamically for this agent (per call)
+        let bgSoundKey = agentConfig?.backgroundSound !== undefined ? agentConfig.backgroundSound : session.backgroundSound;
+        if ((bgSoundKey === undefined || bgSoundKey === null) && session.dbAgentId) {
+          try {
+            const [dbAgent] = await db
+              .select({ backgroundSound: agents.backgroundSound })
+              .from(agents)
+              .where(eq(agents.id, session.dbAgentId))
+              .limit(1);
+            if (dbAgent) {
+              bgSoundKey = dbAgent.backgroundSound;
+            }
+          } catch (e: any) {
+            logger.warn(`Failed to read backgroundSound from DB for agent ${session.dbAgentId}: ${e.message}`, undefined, 'PlivoElevenLabsBridge');
+          }
+        }
+
+        if ((bgSoundKey === undefined || bgSoundKey === null) && session.agentId) {
+          try {
+            const [dbAgent] = await db
+              .select({ backgroundSound: agents.backgroundSound })
+              .from(agents)
+              .where(eq(agents.elevenLabsAgentId, session.agentId))
+              .limit(1);
+            if (dbAgent) {
+              bgSoundKey = dbAgent.backgroundSound;
+            }
+          } catch (e: any) {
+            logger.warn(`Failed to read backgroundSound by elevenLabsAgentId ${session.agentId}: ${e.message}`, undefined, 'PlivoElevenLabsBridge');
+          }
+        }
+
+        if (bgSoundKey && bgSoundKey !== 'none' && bgSoundKey !== '') {
+          const presetMap: Record<string, string> = {
+            office: 'office1',
+            keyboard: 'typing',
+            cafe: 'restaurant',
+            city: 'city',
+          };
+          const sourceId = presetMap[bgSoundKey] || bgSoundKey;
+          conversationOverride.background_sound = {
+            source_type: 'preset',
+            source_id: sourceId,
+            volume: 0.35,
+            crossfade_loop: true,
+          };
+          logger.info(`Applying dynamic ElevenLabs background sound override: "${bgSoundKey}" (${sourceId}) with volume 0.35`, undefined, 'PlivoElevenLabsBridge');
+        } else if (bgSoundKey === 'none' || bgSoundKey === '' || bgSoundKey === null) {
+          conversationOverride.background_sound = null;
+          logger.info(`Disabling ElevenLabs background sound for call (none/disabled)`, undefined, 'PlivoElevenLabsBridge');
+        }
+
         if (Object.keys(agentOverride).length > 0) {
           configOverride.agent = agentOverride;
+        }
+        if (Object.keys(conversationOverride).length > 0) {
+          configOverride.conversation = conversationOverride;
+        }
+        if (Object.keys(configOverride).length > 0) {
           initMessage.conversation_config_override = configOverride;
         }
         

@@ -740,6 +740,7 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
             firstMessage,
             language: agentRecord.language || undefined,
             voiceId: agentRecord.elevenLabsVoiceId || undefined,
+            backgroundSound: agentRecord.backgroundSound || undefined,
           },
           plivoAuthId,
           plivoAuthToken,

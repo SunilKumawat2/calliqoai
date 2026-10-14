@@ -27,7 +27,7 @@
  * - RAG knowledge base tool is automatically added when agents have knowledge bases
  */
 
-import { ElevenLabsService, isAgentOnSipPhoneNumber, getSipTrunkOutboundAddress } from './elevenlabs';
+import { ElevenLabsService, isAgentOnSipPhoneNumber, getSipTrunkOutboundAddress, syncAgentBackgroundSoundInElevenLabs } from './elevenlabs';
 import { ElevenLabsPoolService } from './elevenlabs-pool';
 import { storage } from '../storage';
 import { db } from '../db';
@@ -63,6 +63,7 @@ export interface IncomingAgentCreateParams {
   endConversationEnabled?: boolean;
   appointmentBookingEnabled?: boolean;
   expressiveMode?: boolean;
+  backgroundSound?: string;
   voiceStability?: number;
   voiceSimilarityBoost?: number;
   voiceSpeed?: number;
@@ -91,6 +92,7 @@ export interface IncomingAgentUpdateParams {
   messagingEmailSelectedTemplate?: string;
   messagingWhatsappSelectedTemplate?: string;
   expressiveMode?: boolean;
+  backgroundSound?: string;
   voiceStability?: number;
   voiceSimilarityBoost?: number;
   voiceSpeed?: number;
@@ -264,6 +266,7 @@ export class IncomingAgentService {
       voiceSpeed: params.voiceSpeed,
       turnTimeout: params.turnTimeout ?? 1.5,
       suggestedAudioTags: params.expressiveMode || false,
+      backgroundSound: params.backgroundSound,
       // CRITICAL: Skip workflow for incoming agents
       // Workflows cause "Invalid message received" errors with ElevenLabs native Twilio integration
       skipWorkflow: true,
@@ -436,6 +439,13 @@ export class IncomingAgentService {
       : currentAgent.expressiveMode;
     elevenLabsUpdates.suggestedAudioTags = effectiveExpressiveMode || false;
 
+    const effectiveBackgroundSound = params.backgroundSound !== undefined
+      ? params.backgroundSound
+      : currentAgent.backgroundSound;
+    if (effectiveBackgroundSound !== undefined) {
+      elevenLabsUpdates.backgroundSound = effectiveBackgroundSound;
+    }
+
     console.log(`🔧 [Incoming] System tools:`, {
       transferEnabled: effectiveTransferEnabled,
       transferPhoneNumber: effectiveTransferPhone ? `${effectiveTransferPhone.substring(0, 6)}***` : null,
@@ -472,6 +482,9 @@ export class IncomingAgentService {
 
       try {
         await elevenLabsService.updateAgent(elevenLabsAgentId, elevenLabsUpdates);
+        if (effectiveBackgroundSound !== undefined && credential?.apiKey) {
+          await syncAgentBackgroundSoundInElevenLabs(elevenLabsAgentId, credential.apiKey, effectiveBackgroundSound);
+        }
         console.log(`✅ [Incoming] ElevenLabs sync complete`);
       } catch (updateError: any) {
         // Check if this is a stale agent error (API key changed, agent doesn't exist, etc.)
@@ -508,6 +521,7 @@ export class IncomingAgentService {
             voiceSpeed: params.voiceSpeed ?? currentAgent.voiceSpeed ?? 1.0,
             turnTimeout: params.turnTimeout ?? currentAgent.turnTimeout ?? 1.5,
             expressiveMode: effectiveExpressiveMode ?? currentAgent.expressiveMode ?? false,
+            backgroundSound: effectiveBackgroundSound ?? currentAgent.backgroundSound ?? undefined,
             databaseAgentId: agentId,
           };
 

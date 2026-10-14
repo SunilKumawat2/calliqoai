@@ -353,6 +353,7 @@ export class PlivoElevenLabsBatchCallingService {
         firstMessage: this.agent.firstMessage || undefined,
         language: this.agent.language || 'en',
         voiceId: this.agent.voiceId || undefined,
+        backgroundSound: this.agent.backgroundSound || undefined,
         dynamicData: {
           firstName: contact.firstName || '',
           lastName: contact.lastName || '',

@@ -28,7 +28,7 @@
  * - RAG knowledge base tool is automatically added when agents have knowledge bases
  */
 
-import { ElevenLabsService, isAgentOnSipPhoneNumber } from './elevenlabs';
+import { ElevenLabsService, isAgentOnSipPhoneNumber, syncAgentBackgroundSoundInElevenLabs } from './elevenlabs';
 import { ElevenLabsPoolService } from './elevenlabs-pool';
 import { ElevenLabsFlowCompiler } from './elevenlabs-flow-compiler';
 import { EnhancedFlowCompiler } from './enhanced-flow-compiler';
@@ -96,6 +96,7 @@ export interface FlowAgentCreateParams {
   turnTimeout?: number;
   detectLanguageEnabled?: boolean;
   expressiveMode?: boolean;
+  backgroundSound?: string;
   knowledgeBaseIds?: string[];
 }
 
@@ -111,6 +112,7 @@ export interface FlowAgentUpdateParams {
   maxDurationSeconds?: number;
   detectLanguageEnabled?: boolean;
   expressiveMode?: boolean;
+  backgroundSound?: string;
   knowledgeBaseIds?: string[];
   voiceStability?: number;
   voiceSimilarityBoost?: number;
@@ -578,6 +580,7 @@ export class FlowAgentService {
       })) : undefined,
       ttsModel: adminTtsModel,
       suggestedAudioTags: params.expressiveMode || false,
+      backgroundSound: params.backgroundSound,
       toolErrorHandlingMode: "relaxed",
       workflow: workflow,
       webhookTools: initialWebhookTools.length > 0 ? initialWebhookTools : undefined,
@@ -682,7 +685,7 @@ export class FlowAgentService {
           undefined, // temperature
           undefined, // firstMessage
           undefined, // voiceId
-          { webhookTools: allWebhookTools }
+          { webhookTools: allWebhookTools, backgroundSound: params.backgroundSound }
         );
         console.log(`✅ [Flow Agent] Post-creation webhook tools added (${postCreationTools.length} tools)`);
       } catch (toolError: any) {
@@ -756,7 +759,7 @@ export class FlowAgentService {
 
     if (!flowIdToSync) {
       // No flow assigned - just sync metadata
-      await this.updateMetadataOnly(elevenLabsService, elevenLabsAgentId, currentAgent, params);
+      await this.updateMetadataOnly(elevenLabsService, elevenLabsAgentId, currentAgent, params, credential.apiKey);
       return {};
     }
 
@@ -961,8 +964,10 @@ export class FlowAgentService {
       voiceStability?: number;
       voiceSimilarityBoost?: number;
       voiceSpeed?: number;
+      turnTimeout?: number;
       suggestedAudioTags?: boolean;
       endConversationEnabled?: boolean;
+      backgroundSound?: string;
     } = {};
 
     if (knowledgeBases.length > 0) {
@@ -1028,7 +1033,11 @@ When using a tool:
     if (effectiveEndConversation) {
       additionalOptions.endConversationEnabled = true;
     }
-    console.log(`🎙️ [Flow] Voice settings: stability=${voiceStability}, similarity=${voiceSimilarityBoost}, speed=${voiceSpeed}, expressiveMode=${effectiveExpressiveMode}, endConversation=${effectiveEndConversation}`);
+    const effectiveBackgroundSound = params.backgroundSound !== undefined ? params.backgroundSound : currentAgent.backgroundSound;
+    if (effectiveBackgroundSound !== undefined) {
+      additionalOptions.backgroundSound = effectiveBackgroundSound;
+    }
+    console.log(`🎙️ [Flow] Voice settings: stability=${voiceStability}, similarity=${voiceSimilarityBoost}, speed=${voiceSpeed}, expressiveMode=${effectiveExpressiveMode}, endConversation=${effectiveEndConversation}, backgroundSound=${effectiveBackgroundSound}`);
 
     // Update workflow using SINGLE consolidated API call
     // This prevents ElevenLabs PATCH from overwriting settings between multiple calls
@@ -1053,6 +1062,11 @@ When using a tool:
       );
 
       console.log(`✅ [Flow Agent] Synced to ElevenLabs (all settings in single update)`);
+
+      if (effectiveBackgroundSound !== undefined && credential?.apiKey) {
+        await syncAgentBackgroundSoundInElevenLabs(elevenLabsAgentId, credential.apiKey, effectiveBackgroundSound);
+      }
+
       return {};
     } catch (updateError: any) {
       // Check if this is a stale agent error (API key changed, agent doesn't exist, etc.)
@@ -1110,7 +1124,8 @@ When using a tool:
     elevenLabsService: ElevenLabsService,
     elevenLabsAgentId: string,
     currentAgent: any,
-    params: FlowAgentUpdateParams
+    params: FlowAgentUpdateParams,
+    apiKey?: string
   ): Promise<void> {
     console.log(`🔄 [Flow] Syncing metadata only (no workflow)`);
 
@@ -1147,6 +1162,13 @@ When using a tool:
       voiceUpdates.hasRAGKnowledgeBases = params.knowledgeBaseIds.length > 0 && isRAGEnabled();
     }
 
+    const effectiveBackgroundSound = params.backgroundSound !== undefined
+      ? params.backgroundSound
+      : currentAgent.backgroundSound;
+    if (effectiveBackgroundSound !== undefined) {
+      voiceUpdates.backgroundSound = effectiveBackgroundSound;
+    }
+
     if (Object.keys(voiceUpdates).length > 0) {
       // CRITICAL: skipWorkflowRebuild prevents any workflow from being added
       await elevenLabsService.updateAgent(elevenLabsAgentId, {
@@ -1154,6 +1176,10 @@ When using a tool:
         skipWorkflowRebuild: true
       });
       console.log(`✅ [Flow] Metadata synced to ElevenLabs`);
+    }
+
+    if (effectiveBackgroundSound !== undefined && apiKey) {
+      await syncAgentBackgroundSoundInElevenLabs(elevenLabsAgentId, apiKey, effectiveBackgroundSound);
     }
 
     // Note: RAG tool setup is handled by the caller (updateInElevenLabs)
@@ -1208,6 +1234,12 @@ When using a tool:
 
     await convertWorkflowTransferNodesForSIP(workflow, agentId);
 
+    const [agentRow] = await db
+      .select({ backgroundSound: agents.backgroundSound })
+      .from(agents)
+      .where(eq(agents.id, agentId))
+      .limit(1);
+
     // Update workflow
     await elevenLabsService.updateFlowAgentWorkflow(
       elevenLabsAgentId,
@@ -1218,7 +1250,9 @@ When using a tool:
       isNonEnglish ? adminTtsModel : undefined,
       options?.llmModel,
       options?.temperature,
-      effectiveFirstMessage
+      effectiveFirstMessage,
+      undefined,
+      agentRow?.backgroundSound !== undefined ? { backgroundSound: agentRow.backgroundSound } : undefined
     );
 
     console.log(`✅ [Flow Agent] Flow synced to ElevenLabs`);

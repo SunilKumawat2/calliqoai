@@ -182,6 +182,13 @@ const agents = pgTable("agents", {
   messagingWhatsappTemplate: text("messaging_whatsapp_template"),
   messagingWhatsappVariables: text("messaging_whatsapp_variables"),
   expressiveMode: boolean("expressive_mode").default(false),
+  // Background Ambient Sound Effect (for ElevenLabs-based agents: twilio, plivo_elevenlabs, elevenlabs-sip)
+  // 'none' or null = no background sound (default)
+  // 'office' = office/call center ambient noise
+  // 'keyboard' = keyboard typing sounds
+  // 'cafe' = cafe/coffee shop noise
+  // 'city' = city/street ambient noise
+  backgroundSound: text("background_sound"),
   // Knowledge Base (for incoming agents)
   knowledgeBaseIds: text("knowledge_base_ids").array(),
   // Shared Voice Configuration (used by both Incoming and Flow agents)

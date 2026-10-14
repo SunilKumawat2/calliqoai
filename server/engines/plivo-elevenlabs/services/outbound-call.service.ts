@@ -112,12 +112,15 @@ export class PlivoElevenLabsOutboundService {
     try {
       let transferPhoneNumber: string | undefined;
       let transferEnabled: boolean | undefined;
+      const finalAgentConfig: any = { ...(agentConfig || {}) };
+
       if (params.dbAgentId) {
         try {
           const [agentRow] = await db
             .select({
               transferPhoneNumber: agents.transferPhoneNumber,
               transferEnabled: agents.transferEnabled,
+              backgroundSound: agents.backgroundSound,
             })
             .from(agents)
             .where(eq(agents.id, params.dbAgentId))
@@ -126,14 +129,41 @@ export class PlivoElevenLabsOutboundService {
             transferPhoneNumber = agentRow.transferPhoneNumber;
             transferEnabled = agentRow.transferEnabled ?? true;
           }
+          if (agentRow?.backgroundSound !== undefined && finalAgentConfig.backgroundSound === undefined) {
+            finalAgentConfig.backgroundSound = agentRow.backgroundSound;
+          }
+        } catch (_) {}
+      } else if (agentConfig?.agentId || agentId) {
+        const targetAgentId = agentConfig?.agentId || agentId;
+        try {
+          const [agentRow] = await db
+            .select({
+              id: agents.id,
+              transferPhoneNumber: agents.transferPhoneNumber,
+              transferEnabled: agents.transferEnabled,
+              backgroundSound: agents.backgroundSound,
+            })
+            .from(agents)
+            .where(eq(agents.elevenLabsAgentId, targetAgentId))
+            .limit(1);
+          if (agentRow) {
+            params.dbAgentId = agentRow.id;
+            if (agentRow.transferPhoneNumber) {
+              transferPhoneNumber = agentRow.transferPhoneNumber;
+              transferEnabled = agentRow.transferEnabled ?? true;
+            }
+            if (agentRow.backgroundSound !== undefined && finalAgentConfig.backgroundSound === undefined) {
+              finalAgentConfig.backgroundSound = agentRow.backgroundSound;
+            }
+          }
         } catch (_) {}
       }
 
       const sessionParams: CreateBridgeSessionParams = {
         callUuid,
-        agentId: agentConfig?.agentId || agentId,
+        agentId: finalAgentConfig?.agentId || agentId,
         elevenLabsApiKey,
-        agentConfig,
+        agentConfig: finalAgentConfig,
         fromNumber: finalFromNumber,
         toNumber,
         direction: 'outbound',
