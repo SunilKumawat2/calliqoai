@@ -66,6 +66,7 @@ import OpenAIVoicePreviewButton from "@/components/OpenAIVoicePreviewButton";
 import CVEVoicePreviewButton from "@/components/CVEVoicePreviewButton";
 import AgentCreationWizard from "@/components/AgentCreationWizard";
 import AmbientSoundPreviewButton from "@/components/AmbientSoundPreviewButton";
+import { VoicePunctuationCheatSheet } from "@/components/VoicePunctuationCheatSheet";
 import { Wand2 } from "lucide-react";
 import { SUPPORTED_LANGUAGES, getLanguageLabel, isProviderSupported } from "@/lib/languages";
 import { LanguageOptionLabel } from "@/components/LanguageProviderBadges";
@@ -2567,9 +2568,15 @@ export default function Agents() {
 
                         {/* System Prompt */}
                         <div className="space-y-2">
-                          <div className="flex items-center">
-                            <Label htmlFor="flow-system-prompt">{t('agents.create.systemPrompt')}</Label>
-                            <InfoTooltip content={t('agents.create.systemPromptTooltip')} />
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center">
+                              <Label htmlFor="flow-system-prompt">{t('agents.create.systemPrompt')}</Label>
+                              <InfoTooltip content={t('agents.create.systemPromptTooltip')} />
+                            </div>
+                            <VoicePunctuationCheatSheet
+                              currentPrompt={formData.systemPrompt}
+                              onApplyPrompt={(newPrompt) => setFormData({ ...formData, systemPrompt: newPrompt })}
+                            />
                           </div>
                           <Textarea
                             id="flow-system-prompt"
@@ -3576,11 +3583,17 @@ export default function Agents() {
                       )}
 
                       <div className="space-y-2">
-                        <div className="flex items-center">
-                          <Label htmlFor="system-prompt">
-                            {t('agents.create.systemPromptRequired')} <span className="text-destructive">*</span>
-                          </Label>
-                          <InfoTooltip content={t('agents.create.systemPromptTooltipFull')} />
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center">
+                            <Label htmlFor="system-prompt">
+                              {t('agents.create.systemPromptRequired')} <span className="text-destructive">*</span>
+                            </Label>
+                            <InfoTooltip content={t('agents.create.systemPromptTooltipFull')} />
+                          </div>
+                          <VoicePunctuationCheatSheet
+                            currentPrompt={formData.systemPrompt}
+                            onApplyPrompt={(newPrompt) => setFormData({ ...formData, systemPrompt: newPrompt })}
+                          />
                         </div>
                         <Textarea
                           id="system-prompt"

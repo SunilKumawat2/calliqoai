@@ -64,6 +64,7 @@ import { LanguageOptionLabel } from "@/components/LanguageProviderBadges";
 import VoiceSearchPicker from '@/components/VoiceSearchPicker';
 import VoicePreviewButton from '@/components/VoicePreviewButton';
 import OpenAIVoicePreviewButton from '@/components/OpenAIVoicePreviewButton';
+import { VoicePunctuationCheatSheet } from '@/components/VoicePunctuationCheatSheet';
 import './TestAgents.css';
 
 type CallDirection = 'inbound' | 'outbound';
@@ -2081,14 +2082,20 @@ export default function TestAgents() {
                           Define your agent's role, responsibilities, tone and behavior.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowTemplateModal(true)}
-                        className="template-btn"
-                      >
-                        <LayoutTemplate style={{ width: '0.95rem', height: '0.95rem' }} />
-                        <span>Use Template</span>
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <VoicePunctuationCheatSheet
+                          currentPrompt={systemPrompt}
+                          onApplyPrompt={(newPrompt) => setSystemPrompt(newPrompt)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowTemplateModal(true)}
+                          className="template-btn"
+                        >
+                          <LayoutTemplate style={{ width: '0.95rem', height: '0.95rem' }} />
+                          <span>Use Template</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div style={{ marginTop: '0.35rem' }}>
