@@ -97,6 +97,7 @@ export interface FlowAgentCreateParams {
   detectLanguageEnabled?: boolean;
   expressiveMode?: boolean;
   backgroundSound?: string;
+  backgroundNoiseCancellation?: boolean;
   knowledgeBaseIds?: string[];
 }
 
@@ -113,6 +114,7 @@ export interface FlowAgentUpdateParams {
   detectLanguageEnabled?: boolean;
   expressiveMode?: boolean;
   backgroundSound?: string;
+  backgroundNoiseCancellation?: boolean;
   knowledgeBaseIds?: string[];
   voiceStability?: number;
   voiceSimilarityBoost?: number;
@@ -581,6 +583,7 @@ export class FlowAgentService {
       ttsModel: adminTtsModel,
       suggestedAudioTags: params.expressiveMode || false,
       backgroundSound: params.backgroundSound,
+      backgroundNoiseCancellation: params.backgroundNoiseCancellation !== false,
       toolErrorHandlingMode: "relaxed",
       workflow: workflow,
       webhookTools: initialWebhookTools.length > 0 ? initialWebhookTools : undefined,
@@ -685,7 +688,11 @@ export class FlowAgentService {
           undefined, // temperature
           undefined, // firstMessage
           undefined, // voiceId
-          { webhookTools: allWebhookTools, backgroundSound: params.backgroundSound }
+          { 
+            webhookTools: allWebhookTools, 
+            backgroundSound: params.backgroundSound,
+            backgroundNoiseCancellation: params.backgroundNoiseCancellation !== false
+          }
         );
         console.log(`✅ [Flow Agent] Post-creation webhook tools added (${postCreationTools.length} tools)`);
       } catch (toolError: any) {
@@ -1037,7 +1044,11 @@ When using a tool:
     if (effectiveBackgroundSound !== undefined) {
       additionalOptions.backgroundSound = effectiveBackgroundSound;
     }
-    console.log(`🎙️ [Flow] Voice settings: stability=${voiceStability}, similarity=${voiceSimilarityBoost}, speed=${voiceSpeed}, expressiveMode=${effectiveExpressiveMode}, endConversation=${effectiveEndConversation}, backgroundSound=${effectiveBackgroundSound}`);
+    const effectiveNoiseCancellation = params.backgroundNoiseCancellation !== undefined
+      ? params.backgroundNoiseCancellation
+      : (currentAgent.backgroundNoiseCancellation !== false);
+    additionalOptions.backgroundNoiseCancellation = effectiveNoiseCancellation;
+    console.log(`🎙️ [Flow] Voice settings: stability=${voiceStability}, similarity=${voiceSimilarityBoost}, speed=${voiceSpeed}, expressiveMode=${effectiveExpressiveMode}, endConversation=${effectiveEndConversation}, backgroundSound=${effectiveBackgroundSound}, noiseCancellation=${effectiveNoiseCancellation}`);
 
     // Update workflow using SINGLE consolidated API call
     // This prevents ElevenLabs PATCH from overwriting settings between multiple calls
@@ -1063,8 +1074,8 @@ When using a tool:
 
       console.log(`✅ [Flow Agent] Synced to ElevenLabs (all settings in single update)`);
 
-      if (effectiveBackgroundSound !== undefined && credential?.apiKey) {
-        await syncAgentBackgroundSoundInElevenLabs(elevenLabsAgentId, credential.apiKey, effectiveBackgroundSound);
+      if (credential?.apiKey) {
+        await syncAgentBackgroundSoundInElevenLabs(elevenLabsAgentId, credential.apiKey, effectiveBackgroundSound, effectiveNoiseCancellation);
       }
 
       return {};
@@ -1168,6 +1179,10 @@ When using a tool:
     if (effectiveBackgroundSound !== undefined) {
       voiceUpdates.backgroundSound = effectiveBackgroundSound;
     }
+    const effectiveNoiseCancellation = params.backgroundNoiseCancellation !== undefined
+      ? params.backgroundNoiseCancellation
+      : (currentAgent.backgroundNoiseCancellation !== false);
+    voiceUpdates.backgroundNoiseCancellation = effectiveNoiseCancellation;
 
     if (Object.keys(voiceUpdates).length > 0) {
       // CRITICAL: skipWorkflowRebuild prevents any workflow from being added
@@ -1178,8 +1193,8 @@ When using a tool:
       console.log(`✅ [Flow] Metadata synced to ElevenLabs`);
     }
 
-    if (effectiveBackgroundSound !== undefined && apiKey) {
-      await syncAgentBackgroundSoundInElevenLabs(elevenLabsAgentId, apiKey, effectiveBackgroundSound);
+    if (apiKey) {
+      await syncAgentBackgroundSoundInElevenLabs(elevenLabsAgentId, apiKey, effectiveBackgroundSound, effectiveNoiseCancellation);
     }
 
     // Note: RAG tool setup is handled by the caller (updateInElevenLabs)
@@ -1235,7 +1250,10 @@ When using a tool:
     await convertWorkflowTransferNodesForSIP(workflow, agentId);
 
     const [agentRow] = await db
-      .select({ backgroundSound: agents.backgroundSound })
+      .select({ 
+        backgroundSound: agents.backgroundSound,
+        backgroundNoiseCancellation: agents.backgroundNoiseCancellation
+      })
       .from(agents)
       .where(eq(agents.id, agentId))
       .limit(1);
@@ -1252,7 +1270,10 @@ When using a tool:
       options?.temperature,
       effectiveFirstMessage,
       undefined,
-      agentRow?.backgroundSound !== undefined ? { backgroundSound: agentRow.backgroundSound } : undefined
+      agentRow ? { 
+        backgroundSound: agentRow.backgroundSound || undefined,
+        backgroundNoiseCancellation: agentRow.backgroundNoiseCancellation !== false
+      } : undefined
     );
 
     console.log(`✅ [Flow Agent] Flow synced to ElevenLabs`);

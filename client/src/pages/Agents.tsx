@@ -116,6 +116,7 @@ interface Agent {
   appointmentBookingEnabled: boolean | null;
   expressiveMode: boolean | null;
   backgroundSound?: string | null;
+  backgroundNoiseCancellation?: boolean | null;
   telephonyProvider: 'twilio' | 'plivo' | 'plivo_elevenlabs' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip' | 'custom-voice-engine' | null;
   openaiVoice: string | null;
   createdAt: string;
@@ -348,6 +349,7 @@ export default function Agents() {
     messagingWhatsappVariables: "",
     expressiveMode: false,
     backgroundSound: "",
+    backgroundNoiseCancellation: true,
     // Flow Agent specific fields
     flowId: "",
     maxDurationSeconds: 600,
@@ -838,6 +840,7 @@ export default function Agents() {
       messagingWhatsappVariables: "",
       expressiveMode: false,
       backgroundSound: "",
+      backgroundNoiseCancellation: true,
       flowId: "",
       maxDurationSeconds: 600,
       voiceStability: 0.5,
@@ -974,6 +977,7 @@ export default function Agents() {
       messagingWhatsappVariables: (agent as any).messagingWhatsappVariables || "",
       expressiveMode: agent.expressiveMode ?? false,
       backgroundSound: (agent as any).backgroundSound || "",
+      backgroundNoiseCancellation: (agent as any).backgroundNoiseCancellation !== false,
       flowId: agent.flowId || "",
       maxDurationSeconds: agent.maxDurationSeconds ?? 600,
       voiceStability: agent.voiceStability ?? 0.5,
@@ -1850,6 +1854,26 @@ export default function Agents() {
                           </Select>
                           <AmbientSoundPreviewButton soundKey={formData.backgroundSound || ""} />
                           <p className="text-xs text-muted-foreground">Plays a subtle ambient background sound during calls to make the AI agent sound more realistic.</p>
+
+                          {/* Caller Background Noise & Voice Cancellation (AI VAD Filter) */}
+                          <div className="border-t pt-3 mt-3">
+                            <label className="flex items-center gap-3 cursor-pointer" data-testid="label-flow-noise-cancellation">
+                              <Checkbox
+                                checked={formData.backgroundNoiseCancellation !== false}
+                                onCheckedChange={(checked) => setFormData({ ...formData, backgroundNoiseCancellation: Boolean(checked) })}
+                                data-testid="checkbox-flow-noise-cancellation"
+                              />
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-medium">Caller Background Noise & Voice Filter (AI VAD)</span>
+                                  <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                    🛡️ Recommended
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground">Automatically filters out background TV sounds, room chatter, and secondary voices so the agent never gets confused or interrupts.</p>
+                              </div>
+                            </label>
+                          </div>
                         </div>
                       )}
 
@@ -3562,6 +3586,26 @@ export default function Agents() {
                               </Select>
                               <AmbientSoundPreviewButton soundKey={formData.backgroundSound || ""} />
                               <p className="text-xs text-muted-foreground">Plays a subtle ambient background sound during calls to make the AI agent sound more realistic.</p>
+
+                              {/* Caller Background Noise & Voice Cancellation (AI VAD Filter) */}
+                              <div className="border-t pt-3 mt-3">
+                                <label className="flex items-center gap-3 cursor-pointer" data-testid="label-incoming-noise-cancellation">
+                                  <Checkbox
+                                    checked={formData.backgroundNoiseCancellation !== false}
+                                    onCheckedChange={(checked) => setFormData({ ...formData, backgroundNoiseCancellation: Boolean(checked) })}
+                                    data-testid="checkbox-incoming-noise-cancellation"
+                                  />
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-sm font-medium">Caller Background Noise & Voice Filter (AI VAD)</span>
+                                      <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                        🛡️ Recommended
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">Automatically filters out background TV sounds, room chatter, and secondary voices so the agent never gets confused or interrupts.</p>
+                                  </div>
+                                </label>
+                              </div>
                             </div>
                           )}
                         </div>

@@ -28,6 +28,7 @@ export interface ElevenLabsAgentConfig {
   transferPhoneNumber?: string;
   transferEnabled?: boolean;
   backgroundSound?: string | null;
+  backgroundNoiseCancellation?: boolean;
 }
 
 export interface CallSession {
@@ -52,6 +53,7 @@ export interface CallSession {
   transferPhoneNumber?: string;
   transferEnabled?: boolean;
   backgroundSound?: string | null;
+  backgroundNoiseCancellation?: boolean;
 }
 
 export interface TranscriptPart {

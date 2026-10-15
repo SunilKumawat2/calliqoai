@@ -188,6 +188,7 @@ export const agents = pgTable("agents", {
   // 'cafe' = cafe/coffee shop noise
   // 'city' = city/street ambient noise
   backgroundSound: text("background_sound"),
+  backgroundNoiseCancellation: boolean("background_noise_cancellation").default(true),
   
   // Knowledge Base (for incoming agents)
   knowledgeBaseIds: text("knowledge_base_ids").array(),

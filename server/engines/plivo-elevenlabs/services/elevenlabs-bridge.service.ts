@@ -130,42 +130,58 @@ export class ElevenLabsBridgeService {
       transferPhoneNumber: params.transferPhoneNumber || params.agentConfig?.transferPhoneNumber,
       transferEnabled: params.transferEnabled ?? params.agentConfig?.transferEnabled,
       backgroundSound: params.agentConfig?.backgroundSound,
+      backgroundNoiseCancellation: params.agentConfig?.backgroundNoiseCancellation,
     };
 
-    // Resolve background sound dynamically for this agent (per call)
+    // Resolve background sound & noise cancellation dynamically for this agent (per call)
     let bgSoundKey = params.agentConfig?.backgroundSound !== undefined ? params.agentConfig.backgroundSound : session.backgroundSound;
-    if ((bgSoundKey === undefined || bgSoundKey === null) && session.dbAgentId) {
+    let noiseCancellation = params.agentConfig?.backgroundNoiseCancellation !== undefined ? params.agentConfig.backgroundNoiseCancellation : true;
+
+    if (session.dbAgentId) {
       try {
         const [dbAgent] = await db
-          .select({ backgroundSound: agents.backgroundSound })
+          .select({ 
+            backgroundSound: agents.backgroundSound,
+            backgroundNoiseCancellation: agents.backgroundNoiseCancellation 
+          })
           .from(agents)
           .where(eq(agents.id, session.dbAgentId))
           .limit(1);
         if (dbAgent) {
-          bgSoundKey = dbAgent.backgroundSound;
+          if (dbAgent.backgroundSound !== undefined) bgSoundKey = dbAgent.backgroundSound;
+          if (dbAgent.backgroundNoiseCancellation !== null && dbAgent.backgroundNoiseCancellation !== undefined) {
+            noiseCancellation = dbAgent.backgroundNoiseCancellation;
+          }
         }
       } catch (_) {}
     }
-    if ((bgSoundKey === undefined || bgSoundKey === null) && session.agentId) {
+    if (session.agentId) {
       try {
         const [dbAgent] = await db
-          .select({ backgroundSound: agents.backgroundSound })
+          .select({ 
+            backgroundSound: agents.backgroundSound,
+            backgroundNoiseCancellation: agents.backgroundNoiseCancellation 
+          })
           .from(agents)
           .where(eq(agents.elevenLabsAgentId, session.agentId))
           .limit(1);
         if (dbAgent) {
-          bgSoundKey = dbAgent.backgroundSound;
+          if (bgSoundKey === undefined || bgSoundKey === null) bgSoundKey = dbAgent.backgroundSound;
+          if (dbAgent.backgroundNoiseCancellation !== null && dbAgent.backgroundNoiseCancellation !== undefined) {
+            noiseCancellation = dbAgent.backgroundNoiseCancellation;
+          }
         }
       } catch (_) {}
     }
     session.backgroundSound = bgSoundKey;
+    session.backgroundNoiseCancellation = noiseCancellation;
 
     // Guaranteed REST sync to ElevenLabs ConvAI agent BEFORE connecting WebSocket
     if (elevenLabsApiKey && session.agentId) {
       try {
-        await syncAgentBackgroundSoundInElevenLabs(session.agentId, elevenLabsApiKey, bgSoundKey);
+        await syncAgentBackgroundSoundInElevenLabs(session.agentId, elevenLabsApiKey, bgSoundKey, noiseCancellation);
       } catch (syncErr: any) {
-        logger.warn(`Failed background sound REST sync: ${syncErr.message}`, undefined, 'PlivoElevenLabsBridge');
+        logger.warn(`Failed background sound / noise filter REST sync: ${syncErr.message}`, undefined, 'PlivoElevenLabsBridge');
       }
     }
     
@@ -309,11 +325,23 @@ Politely tell the caller: "जी बिल्कुल, मैं आपकी 
           logger.info(`Disabling ElevenLabs background sound for call (none/disabled)`, undefined, 'PlivoElevenLabsBridge');
         }
 
+        const shouldFilterNoise = session.backgroundNoiseCancellation !== false;
+        if (shouldFilterNoise && agentOverride.prompt?.prompt) {
+          const noisePromptRule = `\n\n[SPEAKER & NOISE GUARD]: Ignore ambient background noise, chatter, TV/media sounds, or secondary voices in the room. Strictly listen and respond only to direct speech addressed to you by the primary caller.`;
+          if (!agentOverride.prompt.prompt.includes('[SPEAKER & NOISE GUARD]')) {
+            agentOverride.prompt.prompt += noisePromptRule;
+          }
+        }
+
         if (Object.keys(agentOverride).length > 0) {
           configOverride.agent = agentOverride;
         }
         if (Object.keys(conversationOverride).length > 0) {
           configOverride.conversation = conversationOverride;
+        }
+        if (shouldFilterNoise) {
+          configOverride.vad = { background_voice_detection: true };
+          configOverride.turn = { turn_eagerness: "patient" };
         }
         if (Object.keys(configOverride).length > 0) {
           initMessage.conversation_config_override = configOverride;

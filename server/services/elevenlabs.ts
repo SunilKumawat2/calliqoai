@@ -48,17 +48,19 @@ export function getBackgroundSoundConfig(soundKey?: string | null) {
   };
 }
 
-const agentBgSoundCache = new Map<string, string | null>();
+const agentBgSoundCache = new Map<string, string>();
 
 export async function syncAgentBackgroundSoundInElevenLabs(
   elevenLabsAgentId: string,
   apiKey: string,
-  soundKey?: string | null
+  soundKey?: string | null,
+  noiseCancellation: boolean = true
 ): Promise<void> {
   if (!elevenLabsAgentId || !apiKey) return;
   const normalizedKey = soundKey && soundKey !== 'none' && soundKey !== '' ? soundKey : null;
+  const cacheKey = `${normalizedKey || 'none'}_noise_${noiseCancellation}`;
 
-  if (agentBgSoundCache.get(elevenLabsAgentId) === normalizedKey) {
+  if (agentBgSoundCache.get(elevenLabsAgentId) === cacheKey) {
     return;
   }
 
@@ -75,19 +77,26 @@ export async function syncAgentBackgroundSoundInElevenLabs(
         conversation_config: {
           conversation: {
             background_sound: bgSoundConfig ?? clearConfig
+          },
+          vad: {
+            background_voice_detection: noiseCancellation
+          },
+          turn: {
+            mode: "turn",
+            turn_eagerness: noiseCancellation ? "patient" : "normal"
           }
         }
       })
     });
     if (res.ok) {
-      agentBgSoundCache.set(elevenLabsAgentId, normalizedKey);
-      console.log(`✅ [ElevenLabs] Synced background sound "${normalizedKey}" to agent ${elevenLabsAgentId}`);
+      agentBgSoundCache.set(elevenLabsAgentId, cacheKey);
+      console.log(`✅ [ElevenLabs] Synced agent ${elevenLabsAgentId} (bg: "${normalizedKey}", noiseCancellation: ${noiseCancellation})`);
     } else {
       const errText = await res.text();
-      console.warn(`⚠️ [ElevenLabs] Failed to sync background sound to agent ${elevenLabsAgentId}: ${res.status} ${errText}`);
+      console.warn(`⚠️ [ElevenLabs] Failed to sync agent settings to ${elevenLabsAgentId}: ${res.status} ${errText}`);
     }
   } catch (err: any) {
-    console.warn(`⚠️ [ElevenLabs] Network error syncing background sound to agent ${elevenLabsAgentId}: ${err?.message}`);
+    console.warn(`⚠️ [ElevenLabs] Network error syncing agent settings to ${elevenLabsAgentId}: ${err?.message}`);
   }
 }
 
@@ -480,6 +489,7 @@ interface CreateAgentParams {
   dynamicVariableSanitize?: boolean;
   suggestedAudioTags?: boolean;
   backgroundSound?: string;
+  backgroundNoiseCancellation?: boolean;
 }
 
 interface ElevenLabsAgent {
@@ -1111,12 +1121,20 @@ IMPORTANT: Do NOT ask the caller for their phone number - you already have it fr
           max_duration_seconds: 900,
           client_events: ["audio", "agent_response", "user_transcript", "interruption", "client_tool_call"],
           turn: {
-            mode: "turn_v3",
+            mode: "turn",
             turn_timeout: params.turnTimeout ?? 1.5,
           },
           ...(getBackgroundSoundConfig(params.backgroundSound) ? {
             background_sound: getBackgroundSoundConfig(params.backgroundSound)
           } : {}),
+        },
+        vad: {
+          background_voice_detection: params.backgroundNoiseCancellation ?? true,
+        },
+        turn: {
+          mode: "turn_v3",
+          turn_timeout: params.turnTimeout ?? 1.5,
+          turn_eagerness: (params.backgroundNoiseCancellation ?? true) ? "patient" : "normal",
         },
       },
     };
@@ -1389,12 +1407,20 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
           max_duration_seconds: params.maxDurationSeconds || 600,
           client_events: ["audio", "agent_response", "user_transcript", "interruption", "client_tool_call"],
           turn: {
-            mode: "turn_v3",
+            mode: "turn",
             turn_timeout: params.turnTimeout ?? 1.5,
           },
           ...(getBackgroundSoundConfig(params.backgroundSound) ? {
             background_sound: getBackgroundSoundConfig(params.backgroundSound)
           } : {}),
+        },
+        vad: {
+          background_voice_detection: params.backgroundNoiseCancellation ?? true,
+        },
+        turn: {
+          mode: "turn_v3",
+          turn_timeout: params.turnTimeout ?? 1.5,
+          turn_eagerness: (params.backgroundNoiseCancellation ?? true) ? "patient" : "normal",
         },
       },
       workflow: {
@@ -1471,6 +1497,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
     suggestedAudioTags?: boolean;  // Expressive Mode
     endConversationEnabled?: boolean;  // Allow agent to end call via end_call tool
     backgroundSound?: string;
+    backgroundNoiseCancellation?: boolean;
   }): Promise<ElevenLabsAgent> {
     console.log(`🔄 Updating Flow Agent workflow: ${agentId}`);
     console.log(`   Workflow nodes: ${Object.keys(workflow.nodes).length}`);
@@ -1523,6 +1550,14 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
       } : (additionalOptions?.backgroundSound === 'none' || additionalOptions?.backgroundSound === '' || additionalOptions?.backgroundSound === null ? {
         background_sound: { source_type: null, source_id: null },
       } : {})),
+    };
+    updatePayload.conversation_config.vad = {
+      background_voice_detection: additionalOptions?.backgroundNoiseCancellation ?? true,
+    };
+    updatePayload.conversation_config.turn = {
+      mode: "turn_v3",
+      turn_timeout: additionalOptions?.turnTimeout ?? 1.5,
+      turn_eagerness: (additionalOptions?.backgroundNoiseCancellation ?? true) ? "patient" : "normal",
     };
 
     // Include voice_id if provided
@@ -2361,6 +2396,14 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
       } : (params.backgroundSound === 'none' || params.backgroundSound === '' || params.backgroundSound === null ? {
         background_sound: { source_type: null, source_id: null },
       } : {})),
+    };
+    conversationConfigUpdates.vad = {
+      background_voice_detection: params.backgroundNoiseCancellation ?? true,
+    };
+    conversationConfigUpdates.turn = {
+      mode: "turn_v3",
+      turn_timeout: params.turnTimeout ?? 1.5,
+      turn_eagerness: (params.backgroundNoiseCancellation ?? true) ? "patient" : "normal",
     };
 
     // Add workflow at root level (per ElevenLabs API)

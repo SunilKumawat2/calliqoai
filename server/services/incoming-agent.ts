@@ -64,6 +64,7 @@ export interface IncomingAgentCreateParams {
   appointmentBookingEnabled?: boolean;
   expressiveMode?: boolean;
   backgroundSound?: string;
+  backgroundNoiseCancellation?: boolean;
   voiceStability?: number;
   voiceSimilarityBoost?: number;
   voiceSpeed?: number;
@@ -93,6 +94,7 @@ export interface IncomingAgentUpdateParams {
   messagingWhatsappSelectedTemplate?: string;
   expressiveMode?: boolean;
   backgroundSound?: string;
+  backgroundNoiseCancellation?: boolean;
   voiceStability?: number;
   voiceSimilarityBoost?: number;
   voiceSpeed?: number;
@@ -267,6 +269,7 @@ export class IncomingAgentService {
       turnTimeout: params.turnTimeout ?? 1.5,
       suggestedAudioTags: params.expressiveMode || false,
       backgroundSound: params.backgroundSound,
+      backgroundNoiseCancellation: params.backgroundNoiseCancellation !== false,
       // CRITICAL: Skip workflow for incoming agents
       // Workflows cause "Invalid message received" errors with ElevenLabs native Twilio integration
       skipWorkflow: true,
@@ -446,6 +449,11 @@ export class IncomingAgentService {
       elevenLabsUpdates.backgroundSound = effectiveBackgroundSound;
     }
 
+    const effectiveNoiseCancellation = params.backgroundNoiseCancellation !== undefined
+      ? params.backgroundNoiseCancellation
+      : (currentAgent.backgroundNoiseCancellation !== false);
+    elevenLabsUpdates.backgroundNoiseCancellation = effectiveNoiseCancellation;
+
     console.log(`🔧 [Incoming] System tools:`, {
       transferEnabled: effectiveTransferEnabled,
       transferPhoneNumber: effectiveTransferPhone ? `${effectiveTransferPhone.substring(0, 6)}***` : null,
@@ -482,8 +490,8 @@ export class IncomingAgentService {
 
       try {
         await elevenLabsService.updateAgent(elevenLabsAgentId, elevenLabsUpdates);
-        if (effectiveBackgroundSound !== undefined && credential?.apiKey) {
-          await syncAgentBackgroundSoundInElevenLabs(elevenLabsAgentId, credential.apiKey, effectiveBackgroundSound);
+        if (credential?.apiKey) {
+          await syncAgentBackgroundSoundInElevenLabs(elevenLabsAgentId, credential.apiKey, effectiveBackgroundSound, effectiveNoiseCancellation);
         }
         console.log(`✅ [Incoming] ElevenLabs sync complete`);
       } catch (updateError: any) {
@@ -522,6 +530,7 @@ export class IncomingAgentService {
             turnTimeout: params.turnTimeout ?? currentAgent.turnTimeout ?? 1.5,
             expressiveMode: effectiveExpressiveMode ?? currentAgent.expressiveMode ?? false,
             backgroundSound: effectiveBackgroundSound ?? currentAgent.backgroundSound ?? undefined,
+            backgroundNoiseCancellation: effectiveNoiseCancellation,
             databaseAgentId: agentId,
           };
 
