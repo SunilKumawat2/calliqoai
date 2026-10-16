@@ -206,6 +206,13 @@ const agents = pgTable("agents", {
   // Legacy/Common Fields
   agentLink: text("agent_link"),
   config: jsonb("config"),
+  // Master Agent (IVR Phone Tree Router)
+  isMasterAgent: boolean("is_master_agent").default(false),
+  masterAgentGreeting: text("master_agent_greeting"),
+  masterAgentRoutes: jsonb("master_agent_routes"),
+  // Array of { digit: string, label: string, targetAgentId: string }
+  masterAgentFallbackAgentId: varchar("master_agent_fallback_agent_id"),
+  masterAgentTimeout: integer("master_agent_timeout").default(7),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
@@ -347,6 +354,17 @@ const campaigns = pgTable("campaigns", {
   // Automated AI Follow-Up Calling Toggle
   autoFollowUpEnabled: boolean("auto_follow_up_enabled").notNull().default(true),
   // Whether to automatically dial callback requests at scheduled time
+  // Automated WhatsApp Notification & Follow-up
+  whatsappEnabled: boolean("whatsapp_enabled").notNull().default(false),
+  // Whether to send WhatsApp message post-call
+  whatsappTemplate: text("whatsapp_template"),
+  // Template name (e.g., "property_brochure", "appointment_confirmed")
+  whatsappTriggerCondition: text("whatsapp_trigger_condition").default("completed"),
+  // "all", "completed", "interested", "no_answer"
+  whatsappVariables: text("whatsapp_variables"),
+  // JSON string mapping for template variables {{1}}, {{2}}...
+  whatsappCustomMessage: text("whatsapp_custom_message"),
+  // Optional freeform message text for direct WhatsApp gateways
   // ElevenLabs Batch Calling Integration
   batchJobId: text("batch_job_id"),
   // ElevenLabs batch job ID when campaign is running

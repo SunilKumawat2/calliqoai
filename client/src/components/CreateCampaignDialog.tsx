@@ -27,7 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGr
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Loader2, Clock, Calendar, CheckCircle2, Target, RotateCcw, PhoneForwarded } from "lucide-react";
+import { Upload, Loader2, Clock, Calendar, CheckCircle2, Target, RotateCcw, PhoneForwarded, MessageSquare } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { AuthStorage } from "@/lib/auth-storage";
 import { TimezoneEnforcementModal } from "@/components/TimezoneEnforcementModal";
@@ -122,6 +122,11 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
     retryOnBusy: false,
     retryOnFailed: false,
     autoFollowUpEnabled: true,
+    whatsappEnabled: false,
+    whatsappTemplate: "",
+    whatsappTriggerCondition: "completed",
+    whatsappVariables: "",
+    whatsappCustomMessage: "",
   });
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [step, setStep] = useState(1);
@@ -187,6 +192,39 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
   const { data: flows = [] } = useQuery<Array<{ id: string; name: string; description?: string }>>({
     queryKey: ["/api/flow-automation/flows"],
     enabled: open,
+  });
+
+  const { data: activeProvider } = useQuery<string | null>({
+    queryKey: ["/api/messaging/active-provider"],
+    queryFn: async () => {
+      const [metaRes, whatswayRes] = await Promise.all([
+        apiRequest("GET", "/api/messaging/meta-whatsapp/settings").then((r: any) => r.json()).catch(() => null),
+        apiRequest("GET", "/api/messaging/whatsway/settings").then((r: any) => r.json()).catch(() => null),
+      ]);
+      const metaSettings = metaRes?.data || metaRes;
+      const whatswaySettings = whatswayRes?.data || whatswayRes;
+      if (metaSettings?.isActive) return 'meta';
+      if (whatswaySettings?.isActive) return 'whatsway';
+      return null;
+    },
+    staleTime: 60000,
+    enabled: open,
+  });
+
+  const { data: whatsappTemplates = [] } = useQuery<Array<{ name: string; language?: string; category?: string }>>({
+    queryKey: ["/api/messaging/templates", activeProvider],
+    queryFn: async () => {
+      const endpoint = activeProvider === 'whatsway'
+        ? "/api/messaging/whatsway/templates"
+        : "/api/messaging/meta-whatsapp/templates";
+      const res = await apiRequest("GET", endpoint);
+      return res.json();
+    },
+    select: (res: any) => {
+      const list = res?.data || res || [];
+      return Array.isArray(list) ? list : [];
+    },
+    enabled: open && !!activeProvider,
   });
 
   const createMutation = useMutation({
@@ -1036,6 +1074,158 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                         ? "Active: Leads who request a callback will automatically be called at their preferred time with contextual AI pitch."
                         : "Inactive: Callback requests will be saved in pending state, but automatic calls will NOT be placed until triggered manually."}
                     </p>
+                  </div>
+
+                  {/* Automated WhatsApp Follow-Up & Notification */}
+                  <div className="space-y-4 border-t pt-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5 text-emerald-500" />
+                        <div className="flex items-center gap-2">
+                          <Label className="text-base font-semibold">Automated WhatsApp Follow-Up</Label>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            formData.whatsappEnabled 
+                              ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" 
+                              : "bg-muted text-muted-foreground border border-border"
+                          }`}>
+                            {formData.whatsappEnabled ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+                        <InfoTooltip content="When enabled, leads will automatically receive a WhatsApp message or brochure template right after the call based on the trigger condition you choose." />
+                      </div>
+                      <Switch
+                        checked={formData.whatsappEnabled}
+                        onCheckedChange={(checked) => setFormData({ ...formData, whatsappEnabled: checked })}
+                        data-testid="switch-whatsapp-enabled"
+                      />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {formData.whatsappEnabled
+                        ? "Active: Leads in this campaign will automatically receive a WhatsApp template after the call."
+                        : "Inactive: WhatsApp messages are disabled for this campaign (calls only)."}
+                    </p>
+
+                    {formData.whatsappEnabled && (
+                      <div className="space-y-4 rounded-lg border p-4 bg-muted/20">
+                        {/* Trigger Condition */}
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Trigger Condition (When to send?)</Label>
+                          <Select
+                            value={formData.whatsappTriggerCondition || "completed"}
+                            onValueChange={(val) => setFormData({ ...formData, whatsappTriggerCondition: val })}
+                          >
+                            <SelectTrigger data-testid="select-whatsapp-trigger-condition">
+                              <SelectValue placeholder="Select trigger condition" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="completed">Answered / Completed Calls Only (Default)</SelectItem>
+                              <SelectItem value="interested">Interested / Converted Leads Only (AI Detected)</SelectItem>
+                              <SelectItem value="no_answer">Missed / No-Answer Calls (Fallback Info)</SelectItem>
+                              <SelectItem value="all">All Contacts (Send for Every Attempt)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            {formData.whatsappTriggerCondition === "interested"
+                              ? "Message will ONLY be sent if the AI agent marks the caller as interested or an appointment is scheduled."
+                              : formData.whatsappTriggerCondition === "no_answer"
+                              ? "Message will be sent as a fallback when the customer does not answer or call is missed."
+                              : formData.whatsappTriggerCondition === "all"
+                              ? "Message will be sent regardless of call outcome."
+                              : "Message will be sent to customers who answered and completed the call with the AI."}
+                          </p>
+                        </div>
+
+                        {/* Template Selection */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-sm font-medium">WhatsApp Template</Label>
+                            {activeProvider && (
+                              <span className="text-xs text-emerald-600 font-medium">
+                                Connected: {activeProvider === 'meta' ? 'Meta Cloud API' : 'WhatsWay'}
+                              </span>
+                            )}
+                          </div>
+
+                          {whatsappTemplates.length > 0 ? (
+                            <Select
+                              value={formData.whatsappTemplate}
+                              onValueChange={(val) => setFormData({ ...formData, whatsappTemplate: val })}
+                            >
+                              <SelectTrigger data-testid="select-whatsapp-template">
+                                <SelectValue placeholder="Choose an approved template" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {whatsappTemplates.map((tmpl) => (
+                                  <SelectItem key={tmpl.name} value={tmpl.name}>
+                                    {tmpl.name} {tmpl.language ? `(${tmpl.language})` : ''}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              placeholder="e.g. lead_followup_brochure, appointment_confirmation"
+                              value={formData.whatsappTemplate}
+                              onChange={(e) => setFormData({ ...formData, whatsappTemplate: e.target.value })}
+                              data-testid="input-whatsapp-template"
+                            />
+                          )}
+
+                          {whatsappTemplates.length > 0 && (
+                            <div className="flex items-center gap-2 pt-1">
+                              <span className="text-xs text-muted-foreground">Or enter custom template name:</span>
+                              <Input
+                                className="h-7 text-xs max-w-[240px]"
+                                placeholder="Custom template name"
+                                value={formData.whatsappTemplate}
+                                onChange={(e) => setFormData({ ...formData, whatsappTemplate: e.target.value })}
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Variables & Personalization */}
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Template Variables (Optional)</Label>
+                          <Input
+                            placeholder="e.g. {{contact_name}}, {{campaign_name}}, {{call_summary}}"
+                            value={formData.whatsappVariables}
+                            onChange={(e) => setFormData({ ...formData, whatsappVariables: e.target.value })}
+                            data-testid="input-whatsapp-variables"
+                          />
+                          <div className="text-xs text-muted-foreground space-y-1">
+                            <p>Available dynamic placeholders:</p>
+                            <div className="flex flex-wrap gap-1.5 pt-0.5">
+                              {["{{contact_name}}", "{{first_name}}", "{{phone}}", "{{agent_name}}", "{{campaign_name}}", "{{call_summary}}", "{{city}}", "{{company}}"].map((tag) => (
+                                <button
+                                  type="button"
+                                  key={tag}
+                                  onClick={() => {
+                                    const current = formData.whatsappVariables ? `${formData.whatsappVariables}, ${tag}` : tag;
+                                    setFormData({ ...formData, whatsappVariables: current });
+                                  }}
+                                  className="px-1.5 py-0.5 bg-muted rounded border border-border text-[11px] hover:bg-accent cursor-pointer transition-colors"
+                                >
+                                  {tag}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Custom Direct Message (Optional) */}
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Custom Message Text (Optional)</Label>
+                          <Textarea
+                            placeholder="Direct message body (used for WhatsWay / 24-hr session messages or dynamic preview)"
+                            value={formData.whatsappCustomMessage}
+                            onChange={(e) => setFormData({ ...formData, whatsappCustomMessage: e.target.value })}
+                            className="min-h-[70px] text-xs"
+                            data-testid="textarea-whatsapp-custom-message"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                 </div>

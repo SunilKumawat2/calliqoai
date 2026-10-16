@@ -613,6 +613,11 @@ export function createAgentRoutes(ctx: RouteContext): Router {
         personality: personality || null,
         systemPrompt,
         config: config || null,
+        isMasterAgent: req.body.isMasterAgent || false,
+        masterAgentGreeting: req.body.masterAgentGreeting || null,
+        masterAgentRoutes: req.body.masterAgentRoutes || null,
+        masterAgentFallbackAgentId: req.body.masterAgentFallbackAgentId || null,
+        masterAgentTimeout: req.body.masterAgentTimeout || 7,
         elevenLabsAgentId,
         elevenLabsCredentialId: usedCredentialId,
         elevenLabsVoiceId: (type === 'incoming' || type === 'flow') ? elevenLabsVoiceId : null,
@@ -946,7 +951,8 @@ export function createAgentRoutes(ctx: RouteContext): Router {
           'voiceStability', 'voiceSimilarityBoost', 'voiceSpeed', 'turnTimeout',
           'transferPhoneNumber', 'transferEnabled', 'detectLanguageEnabled',
           'endConversationEnabled', 'knowledgeBaseIds', 'maxDurationSeconds',
-          'flowId', 'config', 'telephonyProvider', 'openaiVoice'
+          'flowId', 'config', 'telephonyProvider', 'openaiVoice',
+          'isMasterAgent', 'masterAgentGreeting', 'masterAgentRoutes', 'masterAgentFallbackAgentId', 'masterAgentTimeout'
         ];
 
         for (const field of fieldsToCheck) {

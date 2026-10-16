@@ -1132,7 +1132,7 @@ IMPORTANT: Do NOT ask the caller for their phone number - you already have it fr
           background_voice_detection: params.backgroundNoiseCancellation ?? true,
         },
         turn: {
-          mode: "turn_v3",
+          mode: "turn",
           turn_timeout: params.turnTimeout ?? 1.5,
           turn_eagerness: (params.backgroundNoiseCancellation ?? true) ? "patient" : "normal",
         },
@@ -1418,7 +1418,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
           background_voice_detection: params.backgroundNoiseCancellation ?? true,
         },
         turn: {
-          mode: "turn_v3",
+          mode: "turn",
           turn_timeout: params.turnTimeout ?? 1.5,
           turn_eagerness: (params.backgroundNoiseCancellation ?? true) ? "patient" : "normal",
         },
@@ -1542,7 +1542,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
     updatePayload.conversation_config.conversation = {
       ...(maxDurationSeconds !== undefined && { max_duration_seconds: maxDurationSeconds }),
       turn: {
-        mode: "turn_v3",
+        mode: "turn",
         turn_timeout: additionalOptions?.turnTimeout ?? 1.5,
       },
       ...(flowBgSoundConfig ? {
@@ -1555,7 +1555,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
       background_voice_detection: additionalOptions?.backgroundNoiseCancellation ?? true,
     };
     updatePayload.conversation_config.turn = {
-      mode: "turn_v3",
+      mode: "turn",
       turn_timeout: additionalOptions?.turnTimeout ?? 1.5,
       turn_eagerness: (additionalOptions?.backgroundNoiseCancellation ?? true) ? "patient" : "normal",
     };
@@ -2388,7 +2388,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
       max_duration_seconds: 900,
       client_events: ["audio", "agent_response", "user_transcript", "interruption", "client_tool_call"],
       turn: {
-        mode: "turn_v3",
+        mode: "turn",
         turn_timeout: params.turnTimeout ?? 1.5,
       },
       ...(bgSoundConfig ? {
@@ -2401,7 +2401,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
       background_voice_detection: params.backgroundNoiseCancellation ?? true,
     };
     conversationConfigUpdates.turn = {
-      mode: "turn_v3",
+      mode: "turn",
       turn_timeout: params.turnTimeout ?? 1.5,
       turn_eagerness: (params.backgroundNoiseCancellation ?? true) ? "patient" : "normal",
     };

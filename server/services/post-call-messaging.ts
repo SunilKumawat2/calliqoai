@@ -51,6 +51,8 @@ async function lookupContactByPhone(phone: string, userId: string): Promise<Reco
         lastName: contacts.lastName,
         email: contacts.email,
         phone: contacts.phone,
+        campaignId: contacts.campaignId,
+        customFields: contacts.customFields,
       })
       .from(contacts)
       .innerJoin(campaigns, eq(contacts.campaignId, campaigns.id))
@@ -64,16 +66,37 @@ async function lookupContactByPhone(phone: string, userId: string): Promise<Reco
     if (results.length > 0) {
       const c = results[0];
       const name = c.lastName ? `${c.firstName || ''} ${c.lastName}`.trim() : (c.firstName || '');
-      return {
+      const data: Record<string, string> = {
         ...(name ? { contact_name: name } : {}),
         ...(c.phone ? { contact_phone: c.phone } : {}),
         ...(c.email ? { contact_email: c.email } : {}),
+        ...(c.campaignId ? { campaign_id: c.campaignId } : {}),
       };
+      if (c.customFields && typeof c.customFields === 'object') {
+        for (const [k, v] of Object.entries(c.customFields as Record<string, any>)) {
+          if (v !== undefined && v !== null && !data[k]) {
+            data[k] = String(v);
+          }
+        }
+      }
+      return data;
     }
   } catch (err: any) {
     console.warn(`[Post-Call Messaging] Contact lookup error: ${err.message}`);
   }
   return {};
+}
+
+async function lookupCallRecord(callId: string): Promise<any | null> {
+  if (!callId) return null;
+  for (const table of CALL_TABLES) {
+    try {
+      const res = await db.execute(sql`SELECT * FROM ${sql.identifier(table)} WHERE id = ${callId} LIMIT 1`);
+      const rows = extractRows(res);
+      if (rows.length > 0) return rows[0];
+    } catch (_) {}
+  }
+  return null;
 }
 
 async function lookupSipCallData(callId: string, userId: string): Promise<{ conversationId: string; contactData: Record<string, string> }> {
@@ -317,19 +340,13 @@ export async function triggerPostCallMessaging(params: {
 
     const agent = agentRows[0];
     const emailEnabled = !!agent.messagingEmailEnabled;
-    const whatsappEnabled = !!agent.messagingWhatsappEnabled;
+    let whatsappEnabled = !!agent.messagingWhatsappEnabled;
     const emailTemplate = agent.messagingEmailTemplate || null;
-    const whatsappTemplate = agent.messagingWhatsappTemplate || null;
-    const whatsappVariables = agent.messagingWhatsappVariables || null;
+    let whatsappTemplate = agent.messagingWhatsappTemplate || null;
+    let whatsappVariables = agent.messagingWhatsappVariables || null;
     const dbAgentId = agent.id;
     const agentName = agent.name || '';
     const userId = agent.userId;
-
-    console.log(`📨 [Post-Call Messaging] Agent ${dbAgentId}: emailEnabled=${emailEnabled}, whatsappEnabled=${whatsappEnabled}, caller=${callerPhone}, userId=${userId}`);
-
-    if (!emailEnabled && !whatsappEnabled) {
-      return;
-    }
 
     let callerEmail = params.callerEmail || '';
     if (!callerEmail && callId) {
@@ -346,10 +363,68 @@ export async function triggerPostCallMessaging(params: {
       system__caller_id: callerPhone,
     };
 
+    const callRecord = callId ? await lookupCallRecord(callId) : null;
+    let campaignId = callRecord?.campaign_id || callRecord?.campaignId || null;
+
     const contactInfo = await lookupContactByPhone(callerPhone, userId);
     if (Object.keys(contactInfo).length > 0) {
       contactData = { ...contactData, ...contactInfo };
+      if (!campaignId && contactInfo.campaign_id) {
+        campaignId = contactInfo.campaign_id;
+      }
       console.log(`[Post-Call Messaging] Enriched with contact data: ${Object.keys(contactInfo).join(', ')}`);
+    }
+
+    // Check campaign-level WhatsApp settings
+    let campaignRecord: any = null;
+    if (campaignId) {
+      const [c] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId)).limit(1);
+      campaignRecord = c;
+      if (campaignRecord) {
+        contactData.campaign_name = campaignRecord.name || '';
+        contactData.campaign_goal = campaignRecord.goal || '';
+      }
+    }
+
+    if (campaignRecord?.whatsappEnabled && campaignRecord?.whatsappTemplate) {
+      const triggerCond = (campaignRecord.whatsappTriggerCondition || 'completed').toLowerCase();
+      const callStatus = (callRecord?.status || '').toLowerCase();
+      const callDuration = Number(callRecord?.duration || 0);
+      const classification = (callRecord?.classification || callRecord?.metadata?.leadClassification || '').toLowerCase();
+      const sentiment = (callRecord?.sentiment || callRecord?.metadata?.sentiment || '').toLowerCase();
+
+      let campaignWhatsAppActive = false;
+      if (triggerCond === 'all') {
+        campaignWhatsAppActive = true;
+      } else if (triggerCond === 'interested') {
+        campaignWhatsAppActive = classification.includes('interested') || classification.includes('lead') || sentiment.includes('positive') || callRecord?.metadata?.isLead === true;
+      } else if (triggerCond === 'no_answer') {
+        campaignWhatsAppActive = callStatus.includes('no-answer') || callStatus.includes('busy') || callStatus.includes('failed') || callDuration === 0;
+      } else {
+        // 'completed' (default)
+        campaignWhatsAppActive = callStatus.includes('completed') || callDuration > 0 || !callRecord;
+      }
+
+      if (campaignWhatsAppActive) {
+        whatsappEnabled = true;
+        whatsappTemplate = campaignRecord.whatsappTemplate;
+        if (campaignRecord.whatsappVariables) {
+          whatsappVariables = campaignRecord.whatsappVariables;
+        }
+        console.log(`📱 [Post-Call Messaging] Campaign "${campaignRecord.name}" WhatsApp trigger matched (condition: ${triggerCond})`);
+      } else {
+        console.log(`ℹ️ [Post-Call Messaging] Campaign "${campaignRecord.name}" WhatsApp condition "${triggerCond}" did not match for call status "${callStatus}"`);
+      }
+    }
+
+    if (callRecord?.ai_summary || callRecord?.summary) {
+      contactData.call_summary = callRecord.ai_summary || callRecord.summary;
+    }
+
+    console.log(`📨 [Post-Call Messaging] Agent ${dbAgentId}: emailEnabled=${emailEnabled}, whatsappEnabled=${whatsappEnabled}, caller=${callerPhone}, userId=${userId}`);
+
+    if (!emailEnabled && !whatsappEnabled) {
+      return;
     }
 
     let conversationId = '';

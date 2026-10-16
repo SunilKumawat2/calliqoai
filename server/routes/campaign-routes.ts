@@ -140,7 +140,8 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
       const { name, type, goal, script, flowId, agentId, voiceId, phoneNumberId, sipPhoneNumberId, plivoPhoneNumberId, scheduledFor,
         retryEnabled, retryMaxAttempts, retryIntervalMinutes, retryOnNoAnswer, retryOnBusy, retryOnFailed,
         scheduleEnabled, scheduleTimeStart, scheduleTimeEnd, scheduleDays, daysOfWeek, scheduleTimezone,
-        autoFollowUpEnabled } = req.body;
+        autoFollowUpEnabled,
+        whatsappEnabled, whatsappTemplate, whatsappTriggerCondition, whatsappVariables, whatsappCustomMessage } = req.body;
 
       if (!name || !type) {
         return res.status(400).json({ error: "Name and type are required" });
@@ -342,6 +343,11 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
         scheduleDays: scheduleDays || daysOfWeek || [],
         scheduleTimezone: scheduleTimezone || "America/New_York",
         autoFollowUpEnabled: autoFollowUpEnabled !== undefined ? Boolean(autoFollowUpEnabled) : true,
+        whatsappEnabled: whatsappEnabled !== undefined ? Boolean(whatsappEnabled) : false,
+        whatsappTemplate: whatsappTemplate || null,
+        whatsappTriggerCondition: whatsappTriggerCondition || "completed",
+        whatsappVariables: typeof whatsappVariables === 'object' ? JSON.stringify(whatsappVariables) : (whatsappVariables || null),
+        whatsappCustomMessage: whatsappCustomMessage || null,
       });
 
       res.json(campaign);

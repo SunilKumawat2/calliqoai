@@ -8,17 +8,37 @@
  * ============================================================
  */
 
-import type { Express, Request, Response } from 'express';
-import { getSipStreamUrl } from '../config/config';
+import type { Express, Request, Response, NextFunction } from 'express';
+import { getSipStreamUrl, getSipWebhookUrl } from '../config/config';
 import { ElevenLabsBridgeService } from '../services/elevenlabs-bridge.service';
 import { db } from '../../../db';
-import { agents, plivoPhoneNumbers, sipPhoneNumbers, users, flowExecutions, plivoCalls, type InsertPlivoCall } from '@shared/schema';
+import { agents, plivoPhoneNumbers, sipPhoneNumbers, users, flowExecutions, plivoCalls, plivoCredentials, type InsertPlivoCall } from '@shared/schema';
 import { eq, or, sql } from 'drizzle-orm';
 import { deductCallCredits } from '../../../services/credit-service';
 import { logger } from '../../../utils/logger';
 import { ElevenLabsPoolService } from '../../../services/elevenlabs-pool';
 
 export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): void {
+  function escapeXml(str: string): string {
+    if (!str) return '';
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  function getPlivoTtsVoiceAndLang(language?: string): { voice: string; language: string } {
+    const lang = (language || 'en').toLowerCase().trim();
+    if (lang.startsWith('hi')) {
+      return { voice: 'Polly.Aditi', language: 'hi-IN' };
+    } else if (lang === 'en-in') {
+      return { voice: 'Polly.Aditi', language: 'en-IN' };
+    } else {
+      return { voice: 'Polly.Joanna', language: 'en-US' };
+    }
+  }
   
   /**
    * Answer URL for SIP trunk calls
@@ -318,12 +338,71 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
   /**
    * Answer URL with call ID path (for outbound calls)
    */
-  app.post('/api/plivo-elevenlabs/voice/:callId', async (req: Request, res: Response) => {
+  app.post('/api/plivo-elevenlabs/voice/:callId', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { callId } = req.params;
+      if (callId === 'ivr-selection' || callId === 'status') {
+        return next();
+      }
       const { CallUUID, From, To, Direction } = req.body;
 
       logger.info(`Answer for ${callId}: ${CallUUID} from ${From} to ${To} (${Direction})`, undefined, 'PlivoElevenLabs');
+
+      let agent: any = null;
+      if (callId) {
+        const [callRecord] = await db
+          .select()
+          .from(plivoCalls)
+          .where(or(
+            eq(plivoCalls.id, callId),
+            sql`${plivoCalls.metadata}->>'internalId' = ${callId}`
+          ))
+          .limit(1);
+        if (callRecord?.agentId) {
+          const [foundAgent] = await db.select().from(agents).where(eq(agents.id, callRecord.agentId)).limit(1);
+          agent = foundAgent;
+        }
+      }
+
+      // If Master Agent, serve IVR menu with keypad digits
+      if (agent?.isMasterAgent) {
+        let greeting = agent.masterAgentGreeting?.trim();
+        if (!greeting) {
+          const routes = (agent.masterAgentRoutes || []) as Array<{ digit: string; label: string; targetAgentId: string }>;
+          if (routes.length > 0) {
+            greeting = (agent.language === 'hi')
+              ? 'Namaste. ' + routes.map(r => `${r.label || 'Vibhag'} ke liye ${r.digit} dabayein.`).join(' ')
+              : 'Welcome. ' + routes.map(r => `For ${r.label || 'department'}, press ${r.digit}.`).join(' ');
+          } else {
+            greeting = (agent.language === 'hi')
+              ? 'Namaste! Hamari company me aapka swagat hai.'
+              : 'Welcome to our company. Please hold while we connect your call.';
+          }
+        }
+        const timeout = agent.masterAgentTimeout || 7;
+        const actionUrl = `${baseUrl}/api/plivo-elevenlabs/voice/ivr-selection?masterAgentId=${encodeURIComponent(agent.id)}&callRecordId=${encodeURIComponent(callId)}&internalId=${encodeURIComponent(callId)}`;
+        const safeActionUrl = escapeXml(actionUrl);
+
+        logger.info(`📞 [Outbound Master Agent IVR] Plivo-ElevenLabs Outbound call ${callId} (${CallUUID}) for Master Agent "${agent.name}" - serving GetDigits IVR menu`, undefined, 'PlivoElevenLabs');
+
+        const safeGreeting = escapeXml(greeting);
+        const tts = getPlivoTtsVoiceAndLang(agent.language);
+        const timeoutPrompt = agent.language === 'hi'
+          ? "Aapki taraf se koi vikalp nahi mila. Alvida."
+          : "We did not receive any input. Goodbye.";
+
+        const ivrXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <GetDigits action="${safeActionUrl}" method="POST" numDigits="1" timeout="${timeout}" retries="1" finishOnKey="#">
+    <Speak voice="${tts.voice}" language="${tts.language}">${safeGreeting}</Speak>
+  </GetDigits>
+  <Speak voice="${tts.voice}" language="${tts.language}">${escapeXml(timeoutPrompt)}</Speak>
+  <Hangup/>
+</Response>`;
+
+        res.set('Content-Type', 'text/xml');
+        return res.send(ivrXml);
+      }
 
       if (CallUUID && callId) {
         ElevenLabsBridgeService.aliasSession(callId, CallUUID);
@@ -387,6 +466,218 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
       res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`);
     }
   });
+
+  /**
+   * Master Agent IVR Keypad Selection Callback
+   */
+  app.post(['/api/plivo-elevenlabs/voice/ivr-selection', '/api/plivo-elevenlabs/ivr-selection'], async (req: Request, res: Response) => {
+    try {
+      const { Digits, CallUUID, From, To } = req.body;
+      const masterAgentId = (req.query.masterAgentId as string) || (req.body.masterAgentId as string);
+      const callRecordId = (req.query.callRecordId as string) || (req.body.callRecordId as string);
+      const internalId = (req.query.internalId as string) || (req.body.internalId as string);
+      const phoneNumberId = (req.query.phoneNumberId as string) || (req.body.phoneNumberId as string);
+
+      logger.info(`🔢 [Master Agent IVR] Keypad selection received: Digits="${Digits}", CallUUID="${CallUUID}", masterAgentId="${masterAgentId}"`, undefined, 'PlivoElevenLabs');
+
+      if (!masterAgentId) {
+        logger.error(`[Master Agent IVR] Missing masterAgentId`, undefined, 'PlivoElevenLabs');
+        res.set('Content-Type', 'text/xml');
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Speak voice="Polly.Joanna" language="en-US">An error occurred. Goodbye.</Speak><Hangup/></Response>`);
+      }
+
+      const [masterAgent] = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.id, masterAgentId))
+        .limit(1);
+
+      if (!masterAgent) {
+        logger.error(`[Master Agent IVR] Master agent ${masterAgentId} not found`, undefined, 'PlivoElevenLabs');
+        res.set('Content-Type', 'text/xml');
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Speak voice="Polly.Joanna" language="en-US">Configuration error. Goodbye.</Speak><Hangup/></Response>`);
+      }
+
+      const masterTts = getPlivoTtsVoiceAndLang(masterAgent.language);
+      const routes = ((masterAgent as any).masterAgentRoutes || (masterAgent.config as any)?.masterAgentRoutes || []) as Array<{ digit: string; label: string; targetAgentId: string }>;
+      
+      const cleanDigit = (Digits || '').toString().trim();
+      let matchedRoute = (cleanDigit && cleanDigit !== 'timeout') ? routes.find(r => r.digit?.toString().trim() === cleanDigit) : null;
+
+      let targetAgentId = matchedRoute?.targetAgentId || (masterAgent as any).masterAgentFallbackAgentId || (masterAgent.config as any)?.masterAgentFallbackAgentId;
+
+      if (!targetAgentId) {
+        logger.warn(`[Master Agent IVR] No route found for digit "${cleanDigit}" and no fallback agent configured`, undefined, 'PlivoElevenLabs');
+        const invalidMsg = masterAgent.language === 'hi' ? "Aapki taraf se chuna gaya vikalp uplabdh nahi hai. Alvida." : "Invalid option. Goodbye.";
+        res.set('Content-Type', 'text/xml');
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Speak voice="${masterTts.voice}" language="${masterTts.language}">${escapeXml(invalidMsg)}</Speak><Hangup/></Response>`);
+      }
+
+      // Load target Sub-Agent
+      let [subAgent] = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.id, targetAgentId))
+        .limit(1);
+
+      if (!subAgent) {
+        const veAgentResult = await db.execute(sql`
+          SELECT * FROM ve_voice_agents WHERE id = ${targetAgentId} LIMIT 1
+        `);
+        if (veAgentResult.rows.length > 0) {
+          const row: any = veAgentResult.rows[0];
+          subAgent = {
+            id: row.id,
+            userId: row.user_id,
+            name: row.name,
+            systemPrompt: row.system_prompt,
+            firstMessage: row.first_message,
+            elevenLabsAgentId: row.eleven_labs_agent_id || row.elevenlabs_agent_id,
+            elevenLabsVoiceId: row.tts_voice,
+            llmModel: row.llm_model || 'gpt-4o-mini',
+            language: row.language || 'en',
+            telephonyProvider: 'plivo_elevenlabs'
+          } as any;
+        }
+      }
+
+      if (!subAgent) {
+        logger.error(`[Master Agent IVR] Sub-agent ${targetAgentId} not found`, undefined, 'PlivoElevenLabs');
+        const notFoundMsg = masterAgent.language === 'hi' ? "Chuna gaya vibhag uplabdh nahi hai. Alvida." : "The selected department is not available. Goodbye.";
+        res.set('Content-Type', 'text/xml');
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Speak voice="${masterTts.voice}" language="${masterTts.language}">${escapeXml(notFoundMsg)}</Speak><Hangup/></Response>`);
+      }
+
+      // Check user credits
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, subAgent.userId))
+        .limit(1);
+
+      if (!user || Number(user.credits) < 1) {
+        logger.error(`[Master Agent IVR] User has insufficient credits`, undefined, 'PlivoElevenLabs');
+        const credMsg = masterAgent.language === 'hi' ? "Seva filhal uplabdh nahi hai. Alvida." : "Service temporarily unavailable. Goodbye.";
+        res.set('Content-Type', 'text/xml');
+        return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Speak voice="${masterTts.voice}" language="${masterTts.language}">${escapeXml(credMsg)}</Speak><Hangup/></Response>`);
+      }
+
+      const effectiveCallId = callRecordId || internalId;
+      if (effectiveCallId) {
+        await db.update(plivoCalls)
+          .set({
+            agentId: subAgent.id,
+            plivoCallUuid: CallUUID,
+          })
+          .where(or(
+            eq(plivoCalls.id, effectiveCallId),
+            sql`${plivoCalls.metadata}->>'internalId' = ${effectiveCallId}`
+          ));
+        logger.info(`✅ [Master Agent IVR Outbound] Switched outbound call ${effectiveCallId} (${CallUUID}) to Sub-Agent "${subAgent.name}" (${subAgent.id})`, undefined, 'PlivoElevenLabs');
+      } else {
+        try {
+          const insertValues: InsertPlivoCall = {
+            userId: subAgent.userId,
+            agentId: subAgent.id,
+            plivoPhoneNumberId: phoneNumberId || null,
+            plivoCallUuid: CallUUID,
+            fromNumber: From,
+            toNumber: To,
+            status: 'in-progress',
+            callDirection: 'inbound',
+            startedAt: new Date(),
+            answeredAt: new Date(),
+            metadata: { engine: 'plivo-elevenlabs' },
+          };
+          await db.insert(plivoCalls).values(insertValues);
+          logger.info(`✅ [Master Agent IVR Inbound] Call ${CallUUID} successfully connected to Sub-Agent "${subAgent.name}" (${subAgent.id})`, undefined, 'PlivoElevenLabs');
+        } catch (dbErr: any) {
+          logger.error(`Failed to insert inbound call record for ${CallUUID}: ${dbErr?.message || dbErr}`, dbErr, 'PlivoElevenLabs');
+        }
+      }
+
+      // If subAgent is ElevenLabs:
+      if (subAgent.elevenLabsAgentId) {
+        let elevenLabsApiKey: string | undefined;
+        const credential = await ElevenLabsPoolService.getCredentialForAgent(subAgent.id);
+        if (credential?.apiKey) {
+          elevenLabsApiKey = credential.apiKey;
+        } else {
+          elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+        }
+
+        if (!elevenLabsApiKey) {
+          logger.error('ElevenLabs API key not configured for sub-agent', undefined, 'PlivoElevenLabs');
+          res.set('Content-Type', 'text/xml');
+          return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Speak voice="${masterTts.voice}" language="${masterTts.language}">Service configuration error. Goodbye.</Speak><Hangup/></Response>`);
+        }
+
+        await ElevenLabsBridgeService.createSession({
+          callUuid: CallUUID,
+          agentId: subAgent.elevenLabsAgentId,
+          elevenLabsApiKey,
+          agentConfig: {
+            agentId: subAgent.elevenLabsAgentId,
+            firstMessage: subAgent.firstMessage || undefined,
+            language: subAgent.language || 'en',
+            transferPhoneNumber: subAgent.transferPhoneNumber || undefined,
+            transferEnabled: subAgent.transferEnabled,
+            backgroundSound: subAgent.backgroundSound || undefined,
+          },
+          fromNumber: From,
+          toNumber: To,
+          direction: effectiveCallId ? 'outbound' : 'inbound',
+          dbAgentId: subAgent.id,
+          transferPhoneNumber: subAgent.transferPhoneNumber || undefined,
+          transferEnabled: subAgent.transferEnabled,
+        });
+
+        const streamUrl = getSipStreamUrl(CallUUID);
+        const deptLabel = matchedRoute?.label || subAgent.name;
+        const subTts = getPlivoTtsVoiceAndLang(subAgent.language);
+        const transferMessage = subAgent.language === 'hi'
+          ? `Aapko ${deptLabel} se joda ja raha hai...`
+          : `Connecting you to ${deptLabel}...`;
+        const safeTransferMessage = escapeXml(transferMessage);
+
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Speak voice="${subTts.voice}" language="${subTts.language}">${safeTransferMessage}</Speak>
+  <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
+    ${streamUrl}
+  </Stream>
+  <Wait length="3600"/>
+</Response>`;
+
+        res.set('Content-Type', 'text/xml');
+        return res.send(xml);
+      } else {
+        // Fallback for OpenAI Sub-Agent: connect to OpenAI stream
+        const streamUrl = `${baseUrl.replace(/^http/, 'ws')}/api/plivo/stream/${CallUUID}`;
+        const deptLabel = matchedRoute?.label || subAgent.name;
+        const subTts = getPlivoTtsVoiceAndLang(subAgent.language);
+        const transferMessage = subAgent.language === 'hi'
+          ? `Aapko ${deptLabel} se joda ja raha hai...`
+          : `Connecting you to ${deptLabel}...`;
+        const safeTransferMessage = escapeXml(transferMessage);
+
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Speak voice="${subTts.voice}" language="${subTts.language}">${safeTransferMessage}</Speak>
+  <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
+    ${streamUrl}
+  </Stream>
+</Response>`;
+
+        res.set('Content-Type', 'text/xml');
+        return res.send(xml);
+      }
+    } catch (error: any) {
+      logger.error(`[Master Agent IVR] Selection error: ${error.message}`, error, 'PlivoElevenLabs');
+      res.set('Content-Type', 'text/xml');
+      res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Speak voice="Polly.Joanna" language="en-US">An error occurred. Goodbye.</Speak><Hangup/></Response>`);
+    }
+  });
   
   /**
    * Incoming call handler for SIP trunk
@@ -434,6 +725,48 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
         .from(agents)
         .where(eq(agents.id, assignedAgentId))
         .limit(1);
+
+      // Check if Master Agent
+      const isMasterAgent = (agent as any)?.isMasterAgent === true || (agent?.config as any)?.isMasterAgent === true;
+      if (isMasterAgent && agent) {
+        logger.info(`📞 [Master Agent IVR] Inbound SIP call ${CallUUID} assigned to Master Agent "${agent.name}" (${agent.id})`, undefined, 'PlivoElevenLabs');
+        
+        const actionUrl = `${baseUrl}/api/plivo-elevenlabs/voice/ivr-selection?masterAgentId=${encodeURIComponent(agent.id)}&phoneNumberId=${encodeURIComponent(plivoPhone?.id || '')}`;
+        const safeActionUrl = escapeXml(actionUrl);
+        const timeout = (agent as any).masterAgentTimeout || 7;
+        
+        let greeting = (agent as any).masterAgentGreeting?.trim();
+        if (!greeting) {
+          const routes = ((agent as any).masterAgentRoutes || (agent.config as any)?.masterAgentRoutes || []) as Array<{ digit: string; label: string; targetAgentId: string }>;
+          if (routes.length > 0) {
+            greeting = (agent.language === 'hi')
+              ? 'Namaste. ' + routes.map(r => `${r.label || 'Vibhag'} ke liye ${r.digit} dabayein.`).join(' ')
+              : 'Welcome. ' + routes.map(r => `For ${r.label || 'Department'}, press ${r.digit}.`).join(' ');
+          } else {
+            greeting = (agent.language === 'hi')
+              ? 'Namaste! Hamari company me aapka swagat hai.'
+              : 'Welcome. Please wait while we connect your call.';
+          }
+        }
+
+        const safeGreeting = escapeXml(greeting);
+        const tts = getPlivoTtsVoiceAndLang(agent.language);
+        const timeoutPrompt = agent.language === 'hi'
+          ? "Aapki taraf se koi vikalp nahi mila. Alvida."
+          : "We did not receive any input. Goodbye.";
+
+        const ivrXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <GetDigits action="${safeActionUrl}" method="POST" numDigits="1" timeout="${timeout}" retries="1" finishOnKey="#">
+    <Speak voice="${tts.voice}" language="${tts.language}">${safeGreeting}</Speak>
+  </GetDigits>
+  <Speak voice="${tts.voice}" language="${tts.language}">${escapeXml(timeoutPrompt)}</Speak>
+  <Hangup/>
+</Response>`;
+
+        res.set('Content-Type', 'text/xml');
+        return res.send(ivrXml);
+      }
       
       if (!agent || !agent.elevenLabsAgentId) {
         logger.error(`Agent not found or no ElevenLabs ID: ${assignedAgentId}`, undefined, 'PlivoElevenLabs');

@@ -26,7 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DataPagination, usePagination } from "@/components/ui/data-pagination";
-import { Plus, Search, Trash2, Edit, Bot, Upload, Sparkles, GitBranch, CheckCircle2, XCircle, Mic, Brain, Settings2, Wrench, Check, FileText, History, Info, Loader2 } from "lucide-react";
+import { Plus, Search, Trash2, Edit, Bot, Upload, Sparkles, GitBranch, CheckCircle2, XCircle, Mic, Brain, Settings2, Wrench, Check, FileText, History, Info, Loader2, Network, PhoneCall } from "lucide-react";
 import { AuthStorage } from "@/lib/auth-storage";
 import PromptTemplatesLibrary from "@/components/PromptTemplatesLibrary";
 import Voices from "@/pages/Voices";
@@ -119,6 +119,11 @@ interface Agent {
   backgroundNoiseCancellation?: boolean | null;
   telephonyProvider: 'twilio' | 'plivo' | 'plivo_elevenlabs' | 'twilio_openai' | 'elevenlabs-sip' | 'openai-sip' | 'custom-voice-engine' | null;
   openaiVoice: string | null;
+  isMasterAgent?: boolean | null;
+  masterAgentGreeting?: string | null;
+  masterAgentRoutes?: Array<{ digit: string; label: string; targetAgentId: string }> | null;
+  masterAgentFallbackAgentId?: string | null;
+  masterAgentTimeout?: number | null;
   createdAt: string;
 }
 
@@ -366,6 +371,12 @@ export default function Agents() {
     ttsModel: "",
     // SIP phone number selection (for SIP engines)
     sipPhoneNumberId: "",
+    // Master Agent (IVR Phone Tree Router)
+    isMasterAgent: false,
+    masterAgentGreeting: "",
+    masterAgentRoutes: [] as Array<{ digit: string; label: string; targetAgentId: string }>,
+    masterAgentFallbackAgentId: "",
+    masterAgentTimeout: 7,
   });
   const [knowledgeData, setKnowledgeData] = useState({
     title: "",
@@ -855,6 +866,12 @@ export default function Agents() {
       sttModel: "",
       ttsProvider: "deepgram",
       ttsModel: "",
+      // Master Agent (IVR Phone Tree Router)
+      isMasterAgent: false,
+      masterAgentGreeting: "",
+      masterAgentRoutes: [],
+      masterAgentFallbackAgentId: "",
+      masterAgentTimeout: 7,
     });
   };
 
@@ -884,10 +901,18 @@ export default function Agents() {
         });
         return;
       }
-      if (!formData.systemPrompt) {
+      if (!formData.isMasterAgent && !formData.systemPrompt) {
         toast({
           title: t('agents.toast.missingFields'),
           description: t('agents.toast.systemPromptRequired'),
+          variant: "destructive",
+        });
+        return;
+      }
+      if (formData.isMasterAgent && !formData.masterAgentGreeting?.trim()) {
+        toast({
+          title: t('agents.toast.missingFields'),
+          description: "Please enter an IVR menu greeting for the Master Agent.",
           variant: "destructive",
         });
         return;
@@ -945,7 +970,11 @@ export default function Agents() {
       }
     }
 
-    createMutation.mutate(formData);
+    const submitData = {
+      ...formData,
+      systemPrompt: formData.systemPrompt || (formData.isMasterAgent ? (formData.masterAgentGreeting || "Master Agent IVR phone tree receptionist.") : "")
+    };
+    createMutation.mutate(submitData);
   };
 
   const handleEdit = (agent: Agent) => {
@@ -992,6 +1021,12 @@ export default function Agents() {
       sttModel: (agent as any).stt_model || (agent as any).config?.sttModel || (((agent as any).stt_provider || (agent as any).config?.sttProvider) === 'sarvam' ? (currentSttAllowedModels[0] || 'saaras:v3') : ""),
       ttsModel: (agent as any).tts_model || (agent as any).config?.ttsModel || (((agent as any).tts_provider || (agent as any).config?.ttsProvider) === 'sarvam' ? (currentTtsAllowedModels[0] || 'bulbul:v3') : ""),
       sipPhoneNumberId: (agent as any).sipPhoneNumberId || "",
+      // Master Agent (IVR Phone Tree Router)
+      isMasterAgent: (agent as any).isMasterAgent ?? (agent as any).is_master_agent ?? false,
+      masterAgentGreeting: (agent as any).masterAgentGreeting || (agent as any).master_agent_greeting || "",
+      masterAgentRoutes: (agent as any).masterAgentRoutes || (agent as any).master_agent_routes || [],
+      masterAgentFallbackAgentId: (agent as any).masterAgentFallbackAgentId || (agent as any).master_agent_fallback_agent_id || "",
+      masterAgentTimeout: (agent as any).masterAgentTimeout ?? (agent as any).master_agent_timeout ?? 7,
     });
   };
 
@@ -1024,7 +1059,11 @@ export default function Agents() {
       return;
     }
 
-    updateMutation.mutate({ id: editingAgent.id, data: formData });
+    const submitData = {
+      ...formData,
+      systemPrompt: formData.systemPrompt || (formData.isMasterAgent ? (formData.masterAgentGreeting || "Master Agent IVR phone tree receptionist.") : "")
+    };
+    updateMutation.mutate({ id: editingAgent.id, data: submitData });
   };
 
   const filteredAgents = combinedAgents
@@ -1362,17 +1401,29 @@ export default function Agents() {
                               <h3 className="font-semibold truncate" data-testid="text-agent-name">
                                 {agent.name}
                               </h3>
-                              <Badge
-                                variant="outline"
-                                className={`mt-1 text-xs ${isCve
-                                  ? 'border-orange-500/50 text-orange-700 dark:text-orange-300 bg-orange-500/10'
-                                  : isIncoming
-                                    ? 'border-emerald-500/50 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10'
-                                    : 'border-violet-500/50 text-violet-700 dark:text-violet-300 bg-violet-500/10'}`}
-                                data-testid={`badge-agent-type-${agent.type}`}
-                              >
-                                {isCve ? "Custom Voice" : isIncoming ? t('agents.type.incoming') : t('agents.type.flow')}
-                              </Badge>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <Badge
+                                  variant="outline"
+                                  className={`mt-1 text-xs ${isCve
+                                    ? 'border-orange-500/50 text-orange-700 dark:text-orange-300 bg-orange-500/10'
+                                    : isIncoming
+                                      ? 'border-emerald-500/50 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10'
+                                      : 'border-violet-500/50 text-violet-700 dark:text-violet-300 bg-violet-500/10'}`}
+                                  data-testid={`badge-agent-type-${agent.type}`}
+                                >
+                                  {isCve ? "Custom Voice" : isIncoming ? t('agents.type.incoming') : t('agents.type.flow')}
+                                </Badge>
+                                {(agent.isMasterAgent || (agent as any).is_master_agent) && (
+                                  <Badge
+                                    variant="outline"
+                                    className="mt-1 text-xs border-indigo-500/50 text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 font-medium flex items-center gap-1"
+                                    data-testid="badge-master-ivr"
+                                  >
+                                    <Network className="h-3 w-3" />
+                                    Master IVR
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -3739,6 +3790,234 @@ export default function Agents() {
                         </p>
                       </div>
                     </>
+                  )}
+
+                  {/* Master Agent (IVR Phone Tree Router) Section */}
+                  {(formData.type === 'incoming' || formData.type === 'custom_engine') && (
+                    <div className="space-y-4 pt-4 border-t">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="h-8 w-8 rounded-lg bg-indigo-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <Network className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Label className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                                Master Agent (IVR Phone Tree Router)
+                              </Label>
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-indigo-300 text-indigo-600 dark:border-indigo-600 dark:text-indigo-400">
+                                Multi-Agent IVR
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Act as a central receptionist. Incoming callers hear your IVR greeting and press keypad digits (e.g. 1 for Sales, 2 for Support) to route instantly to sub-agents.
+                            </p>
+                          </div>
+                        </div>
+                        <Checkbox
+                          checked={formData.isMasterAgent}
+                          onCheckedChange={(checked) => setFormData({ ...formData, isMasterAgent: !!checked })}
+                          data-testid="checkbox-is-master-agent"
+                          className="mt-1"
+                        />
+                      </div>
+
+                      {formData.isMasterAgent && (
+                        <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 space-y-4 ml-1 sm:ml-4">
+                          {/* IVR Menu Greeting */}
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <Label htmlFor="master-greeting" className="text-xs font-medium text-foreground flex items-center gap-1">
+                                IVR Menu Greeting <span className="text-destructive">*</span>
+                              </Label>
+                              <span className="text-[11px] text-muted-foreground">Spoken to caller upon answer</span>
+                            </div>
+                            <Textarea
+                              id="master-greeting"
+                              placeholder="Welcome to our company! For Sales, press 1. For Customer Support, press 2. For Billing, press 3..."
+                              value={formData.masterAgentGreeting || ""}
+                              onChange={(e) => setFormData({ ...formData, masterAgentGreeting: e.target.value })}
+                              rows={3}
+                              className="text-sm bg-background"
+                              data-testid="input-master-agent-greeting"
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                              Clearly announce which keypad numbers connect to each department or team.
+                            </p>
+                          </div>
+
+                          {/* Dynamic Keypad Routes Builder */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs font-semibold text-foreground flex items-center gap-1">
+                                <PhoneCall className="h-3.5 w-3.5 text-indigo-600" />
+                                Department Keypad Routes ({formData.masterAgentRoutes?.length || 0})
+                              </Label>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs border-indigo-500/30 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                                onClick={() => {
+                                  const existingDigits = (formData.masterAgentRoutes || []).map(r => r.digit);
+                                  const nextDigit = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '*', '#'].find(d => !existingDigits.includes(d)) || '1';
+                                  setFormData({
+                                    ...formData,
+                                    masterAgentRoutes: [
+                                      ...(formData.masterAgentRoutes || []),
+                                      { digit: nextDigit, label: `Department ${nextDigit}`, targetAgentId: "" }
+                                    ]
+                                  });
+                                }}
+                                data-testid="button-add-ivr-route"
+                              >
+                                <Plus className="h-3.5 w-3.5 mr-1" />
+                                Add Department Route
+                              </Button>
+                            </div>
+
+                            {(!formData.masterAgentRoutes || formData.masterAgentRoutes.length === 0) ? (
+                              <div className="p-3 text-center rounded-lg border border-dashed border-indigo-300/40 text-xs text-muted-foreground bg-background/50">
+                                No department routes added yet. Click &quot;Add Department Route&quot; above to route keypad numbers to sub-agents.
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                {formData.masterAgentRoutes.map((route, idx) => (
+                                  <div key={idx} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-2.5 rounded-lg border bg-background text-xs shadow-xs">
+                                    {/* Digit Select */}
+                                    <div className="w-full sm:w-24">
+                                      <Label className="text-[10px] text-muted-foreground block mb-0.5">Key</Label>
+                                      <Select
+                                        value={route.digit}
+                                        onValueChange={(val) => {
+                                          const updated = [...(formData.masterAgentRoutes || [])];
+                                          updated[idx] = { ...updated[idx], digit: val };
+                                          setFormData({ ...formData, masterAgentRoutes: updated });
+                                        }}
+                                      >
+                                        <SelectTrigger className="h-8 text-xs font-mono font-bold">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '*', '#'].map(d => (
+                                            <SelectItem key={d} value={d}>Key {d}</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    {/* Route / Department Label */}
+                                    <div className="flex-1">
+                                      <Label className="text-[10px] text-muted-foreground block mb-0.5">Department Name</Label>
+                                      <Input
+                                        className="h-8 text-xs"
+                                        placeholder="e.g. Sales, Support"
+                                        value={route.label}
+                                        onChange={(e) => {
+                                          const updated = [...(formData.masterAgentRoutes || [])];
+                                          updated[idx] = { ...updated[idx], label: e.target.value };
+                                          setFormData({ ...formData, masterAgentRoutes: updated });
+                                        }}
+                                      />
+                                    </div>
+
+                                    {/* Target Sub-Agent Select */}
+                                    <div className="flex-1">
+                                      <Label className="text-[10px] text-muted-foreground block mb-0.5">Target Agent</Label>
+                                      <Select
+                                        value={route.targetAgentId}
+                                        onValueChange={(val) => {
+                                          const updated = [...(formData.masterAgentRoutes || [])];
+                                          updated[idx] = { ...updated[idx], targetAgentId: val };
+                                          setFormData({ ...formData, masterAgentRoutes: updated });
+                                        }}
+                                      >
+                                        <SelectTrigger className="h-8 text-xs">
+                                          <SelectValue placeholder="Select Sub-Agent..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {combinedAgents
+                                            .filter(a => !editingAgent || a.id !== editingAgent.id)
+                                            .map(a => (
+                                              <SelectItem key={a.id} value={a.id}>
+                                                {a.name} ({a.telephonyProvider || a.type})
+                                              </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    {/* Remove Button */}
+                                    <div className="self-end sm:self-center sm:pt-3">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                                        onClick={() => {
+                                          const updated = (formData.masterAgentRoutes || []).filter((_, i) => i !== idx);
+                                          setFormData({ ...formData, masterAgentRoutes: updated });
+                                        }}
+                                        title="Remove route"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Fallback Agent & Timeout Configuration */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-indigo-500/15">
+                            <div>
+                              <Label className="text-xs font-medium block mb-1">
+                                Fallback Agent (Optional)
+                              </Label>
+                              <Select
+                                value={formData.masterAgentFallbackAgentId || "none"}
+                                onValueChange={(val) => setFormData({ ...formData, masterAgentFallbackAgentId: val === "none" ? "" : val })}
+                              >
+                                <SelectTrigger className="h-8 text-xs bg-background">
+                                  <SelectValue placeholder="No Fallback (End call)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">None (Hang up if invalid)</SelectItem>
+                                  {combinedAgents
+                                    .filter(a => !editingAgent || a.id !== editingAgent.id)
+                                    .map(a => (
+                                      <SelectItem key={a.id} value={a.id}>
+                                        {a.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                Connect to this agent if caller doesn&apos;t press any key or presses an unknown key.
+                              </p>
+                            </div>
+
+                            <div>
+                              <Label className="text-xs font-medium block mb-1">
+                                Keypad Wait Timeout (Seconds)
+                              </Label>
+                              <Input
+                                type="number"
+                                min={3}
+                                max={30}
+                                className="h-8 text-xs bg-background"
+                                value={formData.masterAgentTimeout ?? 7}
+                                onChange={(e) => setFormData({ ...formData, masterAgentTimeout: parseInt(e.target.value) || 7 })}
+                              />
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                Seconds to wait for caller&apos;s keypress before routing to fallback (default: 7s).
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {/* System Tools Section - Now for ALL Agent types (Incoming and Flow) */}
