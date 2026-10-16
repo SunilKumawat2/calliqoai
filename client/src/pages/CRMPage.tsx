@@ -374,8 +374,9 @@ function LeadCard({ lead, onClick, stageColor, isSelected, onToggleSelect }: {
   const { t } = useTranslation();
   const hasValidPhone = lead.phone && lead.phone !== 'Unknown' && lead.phone.trim() !== '';
   const fullName = [lead.firstName, lead.lastName].filter(Boolean).join(" ");
-  // Primary display: Phone if valid, otherwise name, otherwise email, otherwise Unknown
-  const primaryDisplay = hasValidPhone ? lead.phone : (fullName || lead.email || t("crmPage.unknownContact"));
+  // Primary display: Name if available, otherwise phone, otherwise email, otherwise Unknown
+  const primaryDisplay = fullName || (hasValidPhone ? lead.phone : (lead.email || t("crmPage.unknownContact")));
+  const secondaryDisplay = fullName && hasValidPhone ? lead.phone : null;
   const theme = getStageTheme(lead.stage, stageColor);
   
   const description = lead.aiSummary || 
@@ -432,10 +433,17 @@ function LeadCard({ lead, onClick, stageColor, isSelected, onToggleSelect }: {
               {/* Lead Score */}
               <ScoreIndicator score={lead.leadScore} />
               
-              {/* Phone Number / Name - Primary display */}
-              <h4 className={`font-semibold text-sm text-foreground flex-1 truncate ${hasValidPhone ? 'font-mono' : ''}`} data-testid={`lead-primary-${lead.id}`}>
-                {primaryDisplay}
-              </h4>
+              {/* Name & Phone display */}
+              <div className="flex-1 min-w-0">
+                <h4 className="font-semibold text-sm text-foreground truncate" data-testid={`lead-primary-${lead.id}`}>
+                  {primaryDisplay}
+                </h4>
+                {secondaryDisplay && (
+                  <p className="text-[11px] text-muted-foreground font-mono truncate">
+                    {secondaryDisplay}
+                  </p>
+                )}
+              </div>
               
               {/* Notes icon - show if notes exist */}
               {hasNotes && (
@@ -1128,6 +1136,29 @@ function ListViewCard({ lead, onClick, stageColor, isSelected, onToggleSelect }:
           <ScoreIndicator score={lead.leadScore} />
 
           <ActivityIndicators lead={lead} />
+
+          {lead.aiCategory ? (() => {
+            const cat = AI_CATEGORIES.find(c => c.id === lead.aiCategory);
+            if (!cat) return null;
+            const CatIcon = cat.icon;
+            return (
+              <Badge 
+                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 border shadow-xs"
+                style={{ 
+                  backgroundColor: `${cat.color}20`, 
+                  color: cat.color,
+                  borderColor: `${cat.color}50`
+                }}
+              >
+                <CatIcon className="w-3.5 h-3.5" />
+                <span>{cat.label}</span>
+              </Badge>
+            );
+          })() : (
+            <Badge variant="outline" className="text-[11px] text-muted-foreground/70 border-dashed">
+              Uncategorized
+            </Badge>
+          )}
 
           <Badge className={theme.badgeBg} variant="secondary">
             {lead.stage.replace(/_/g, " ")}

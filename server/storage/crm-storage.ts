@@ -182,7 +182,7 @@ export class CRMStorage {
       .select()
       .from(leads)
       .where(and(...conditions))
-      .orderBy(desc(leads.createdAt));
+      .orderBy(desc(sql`COALESCE(${leads.lastCallAt}, ${leads.updatedAt}, ${leads.createdAt})`));
   }
 
   static async getAllLeads(
@@ -234,7 +234,7 @@ export class CRMStorage {
       .select()
       .from(leads)
       .where(and(...conditions))
-      .orderBy(desc(leads.createdAt));
+      .orderBy(desc(sql`COALESCE(${leads.lastCallAt}, ${leads.updatedAt}, ${leads.createdAt})`));
   }
 
   static async getLeadsBySourceType(
@@ -290,7 +290,7 @@ export class CRMStorage {
       .select()
       .from(leads)
       .where(and(...conditions))
-      .orderBy(desc(leads.createdAt));
+      .orderBy(desc(sql`COALESCE(${leads.lastCallAt}, ${leads.updatedAt}, ${leads.createdAt})`));
   }
 
   static async getLeadsGroupedByStage(
@@ -403,7 +403,7 @@ export class CRMStorage {
     let orderBy;
     switch (options.sortBy) {
       case 'oldest':
-        orderBy = asc(leads.createdAt);
+        orderBy = asc(sql`COALESCE(${leads.lastCallAt}, ${leads.updatedAt}, ${leads.createdAt})`);
         break;
       case 'score-high':
         orderBy = desc(leads.leadScore);
@@ -411,8 +411,9 @@ export class CRMStorage {
       case 'score-low':
         orderBy = asc(leads.leadScore);
         break;
+      case 'newest':
       default:
-        orderBy = desc(leads.createdAt);
+        orderBy = desc(sql`COALESCE(${leads.lastCallAt}, ${leads.updatedAt}, ${leads.createdAt})`);
     }
 
     // Get paginated leads
