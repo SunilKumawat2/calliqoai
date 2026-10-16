@@ -2204,39 +2204,51 @@ export default function CRMPage() {
           <div className="flex items-center rounded-lg border bg-background p-1 gap-1">
             <Button
               variant={viewMode === "kanban" ? "secondary" : "ghost"}
-              size="icon"
+              size="sm"
               onClick={() => setViewMode("kanban")}
               data-testid="view-kanban"
               title={t("crmPage.kanbanView")}
+              className="h-8 text-xs gap-1.5 px-2.5 font-medium"
             >
-              <LayoutGrid className="w-4 h-4" />
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Kanban</span>
             </Button>
             <Button
               variant={viewMode === "list" ? "secondary" : "ghost"}
-              size="icon"
+              size="sm"
               onClick={() => setViewMode("list")}
               data-testid="view-list"
               title={t("crmPage.listView")}
+              className="h-8 text-xs gap-1.5 px-2.5 font-medium"
             >
-              <List className="w-4 h-4" />
+              <List className="w-3.5 h-3.5" />
+              <span>List</span>
             </Button>
             <Button
               variant={viewMode === "analytics" ? "secondary" : "ghost"}
-              size="icon"
+              size="sm"
               onClick={() => setViewMode("analytics")}
               data-testid="view-analytics"
               title={t("crmPage.analyticsView")}
+              className="h-8 text-xs gap-1.5 px-2.5 font-medium"
             >
-              <BarChart3 className="w-4 h-4" />
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Analytics</span>
             </Button>
             <Button
               variant={viewMode === "integrations" ? "secondary" : "ghost"}
-              size="icon"
+              size="sm"
               onClick={() => setViewMode("integrations")}
               data-testid="view-integrations"
               title="Google Sheets & Calendar Sync"
+              className={`h-8 text-xs gap-1.5 px-3 font-medium transition-colors ${
+                viewMode === "integrations" 
+                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-500/30" 
+                  : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              }`}
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Integrations & Sync</span>
             </Button>
           </div>
         </div>

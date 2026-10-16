@@ -76,6 +76,7 @@ export function AppSidebar() {
     { title: t('nav.agents'), url: "/app/agents", icon: Bot, hasPlus: true, iconColor: "text-blue-500" },
     { title: t('nav.knowledgeBase'), url: "/app/knowledge-base", icon: BookOpen, iconColor: "text-violet-500" },
     { title: t('nav.flowBuilder'), url: "/app/flows", icon: Workflow, iconColor: "text-indigo-500" },
+    { title: "CRM & Leads", url: "/app/crm", icon: ContactRound, iconColor: "text-cyan-500" },
     { title: t('nav.tools', 'Tools'), url: "/app/tools", icon: Wrench, iconColor: "text-slate-500" },
   ];
 
