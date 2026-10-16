@@ -56,6 +56,7 @@ export function CRMIntegrationsDashboard() {
   const [selectedTab, setSelectedTab] = useState("Sheet1");
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("none");
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [manualInput, setManualInput] = useState(false);
 
   // Column mapping form state
   const [mapping, setMapping] = useState({
@@ -91,14 +92,14 @@ export function CRMIntegrationsDashboard() {
   });
 
   // User spreadsheets
-  const { data: sheetsList = [] } = useQuery<Array<{ id: string; name: string }>>({
-    queryKey: ["/api/google-sheets/sheets"],
+  const { data: sheetsList = [], isLoading: sheetsLoading } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ["/api/integrations/google/sheets"],
     enabled: statusData?.googleSheets?.connected === true && createDialogOpen,
   });
 
   // Tabs for selected sheet
-  const { data: tabsList = [] } = useQuery<Array<{ sheetId: number; title: string }>>({
-    queryKey: [`/api/google-sheets/sheets/${selectedSheetId}/tabs`],
+  const { data: tabsList = [], isLoading: tabsLoading } = useQuery<Array<{ sheetId: number; title: string }>>({
+    queryKey: [`/api/integrations/google/sheets/${selectedSheetId}/tabs`],
     enabled: !!selectedSheetId && createDialogOpen,
   });
 
@@ -518,35 +519,60 @@ export function CRMIntegrationsDashboard() {
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Select Google Spreadsheet</Label>
-                <Select value={selectedSheetId} onValueChange={setSelectedSheetId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a spreadsheet..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sheetsList.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between">
+                  <Label>Google Spreadsheet</Label>
+                  <button 
+                    type="button" 
+                    className="text-[11px] text-primary hover:underline cursor-pointer"
+                    onClick={() => setManualInput(!manualInput)}
+                  >
+                    {manualInput ? "← Select from Drive" : "Paste Link or ID →"}
+                  </button>
+                </div>
+                {manualInput ? (
+                  <Input 
+                    placeholder="Paste Spreadsheet ID or Google Sheet Link"
+                    value={selectedSheetId}
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      const match = val.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+                      setSelectedSheetId(match ? match[1] : val);
+                    }}
+                  />
+                ) : (
+                  <Select value={selectedSheetId} onValueChange={setSelectedSheetId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={sheetsLoading ? "Loading spreadsheets..." : sheetsList.length === 0 ? "No spreadsheets found (click Paste Link)" : "Choose a spreadsheet..."} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sheetsList.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="space-y-1.5">
                 <Label>Sheet Tab Name</Label>
-                <Select value={selectedTab} onValueChange={setSelectedTab}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select tab..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tabsList.length > 0 ? (
-                      tabsList.map((t) => (
+                {tabsList.length > 0 ? (
+                  <Select value={selectedTab} onValueChange={setSelectedTab}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select tab..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tabsList.map((t) => (
                         <SelectItem key={t.title} value={t.title}>{t.title}</SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="Sheet1">Sheet1</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input 
+                    value={selectedTab}
+                    onChange={(e) => setSelectedTab(e.target.value)}
+                    placeholder="e.g. Sheet1"
+                  />
+                )}
               </div>
             </div>
 

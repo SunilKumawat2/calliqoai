@@ -1714,6 +1714,7 @@ When using a tool:
 
   // Google Sheets authenticated endpoints (auth, status, disconnect, sheets list)
   app.use("/api/integrations/google", authenticateToken as unknown as import('express').RequestHandler, googleSheetsRouter);
+  app.use("/api/google-sheets", authenticateToken as unknown as import('express').RequestHandler, googleSheetsRouter);
 
   // Google Calendar authenticated endpoints (auth, exchange, status, disconnect)
   const { googleCalendarRouter } = await import("./services/google-calendar/google-calendar.routes");
