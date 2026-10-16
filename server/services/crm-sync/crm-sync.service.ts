@@ -383,14 +383,24 @@ export class CrmSyncService {
     try {
       const normalizedPhone = this.normalizePhoneNumber(callOutcome.phone);
 
-      // Find lead with googleSheetId & googleSheetRowIndex
+      // Find lead with googleSheetId & googleSheetRowIndex (prioritize rows that have googleSheetId)
+      const last10 = normalizedPhone.replace(/\D/g, '').slice(-10);
       const [lead] = await db
         .select()
         .from(leads)
-        .where(and(eq(leads.userId, callOutcome.userId), eq(leads.phone, normalizedPhone)))
+        .where(and(
+          eq(leads.userId, callOutcome.userId),
+          or(
+            eq(leads.phone, normalizedPhone),
+            sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
+          ),
+          sql`${leads.googleSheetId} IS NOT NULL`
+        ))
+        .orderBy(sql`${leads.updatedAt} DESC`)
         .limit(1);
 
       if (!lead || !lead.googleSheetId || !lead.googleSheetRowIndex) {
+        logger.info(`ℹ️ [CRM Sync] No synced Google Sheet row found for phone ${normalizedPhone}, skipping writeback`, undefined, 'CrmSync');
         return false;
       }
 

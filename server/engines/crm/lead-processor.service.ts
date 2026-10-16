@@ -173,6 +173,11 @@ export class CRMLeadProcessor {
     // Determine if original had + prefix
     const hadPlus = normalized.startsWith('+');
     
+    // For Indian 10-digit mobile numbers, prefix with +91 if no country code provided
+    if (digitsOnly.length === 10 && /^[6-9]/.test(digitsOnly) && !hadPlus) {
+      return '+91' + digitsOnly;
+    }
+
     // For E.164 compliance, always add + prefix for international numbers
     if (digitsOnly.length >= 10) {
       // If already had +, keep it; otherwise add it for 10+ digit numbers
@@ -763,6 +768,29 @@ export class CRMLeadProcessor {
     const phoneNumber = this.resolveLeadPhone(callData);
     const hasValidPhone = phoneNumber && phoneNumber !== 'Unknown';
 
+    // First Priority: Check if a Google Sheet synced lead exists for this phone number
+    if (hasValidPhone) {
+      const last10 = phoneNumber.replace(/\D/g, '').slice(-10);
+      const [existingSheetLead] = await db
+        .select()
+        .from(leads)
+        .where(and(
+          eq(leads.userId, callData.userId),
+          or(
+            eq(leads.phone, phoneNumber),
+            sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
+          ),
+          sql`${leads.googleSheetId} IS NOT NULL`
+        ))
+        .orderBy(sql`${leads.updatedAt} DESC`)
+        .limit(1);
+
+      if (existingSheetLead) {
+        console.log(`${this.LOG_PREFIX} Matched existing Google Sheet synced lead ${existingSheetLead.id} for phone ${phoneNumber}`);
+        return existingSheetLead;
+      }
+    }
+
     // For ElevenLabs-Twilio engine, check callId first
     if (callData.engine === 'elevenlabs-twilio') {
       const [existingByCallId] = await db
@@ -807,16 +835,20 @@ export class CRMLeadProcessor {
       if (existingByConnection) return existingByConnection;
     }
 
-    // Fallback: Check by phone number without source scope (for incoming without connection ID)
-    if (hasValidPhone && !callData.campaignId) {
+    // Fallback: Check by phone number across all sources (matching exact or last 10 digits)
+    if (hasValidPhone) {
+      const last10 = phoneNumber.replace(/\D/g, '').slice(-10);
       const [existingByPhone] = await db
         .select()
         .from(leads)
         .where(and(
           eq(leads.userId, callData.userId),
-          eq(leads.phone, phoneNumber),
-          eq(leads.sourceType, 'incoming')
+          or(
+            eq(leads.phone, phoneNumber),
+            sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
+          )
         ))
+        .orderBy(sql`${leads.updatedAt} DESC`)
         .limit(1);
 
       return existingByPhone || null;
