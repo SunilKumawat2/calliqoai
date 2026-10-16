@@ -239,6 +239,19 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
             logger.error(`Failed to generate call insights for ${call.id}`, insightError, 'PlivoStream');
           }
         }
+
+        // CRM Lead Qualification & Google Sheet Writeback
+        if (call.userId) {
+          try {
+            const { CRMLeadProcessor } = await import('../../crm/lead-processor.service');
+            const crmResult = await CRMLeadProcessor.processPlivoOpenAICall(call.id);
+            if (crmResult?.leadId) {
+              logger.info(`✅ [PlivoStream] CRM Lead ${crmResult.leadId} updated/created (${crmResult.qualification.category})`, undefined, 'PlivoStream');
+            }
+          } catch (crmErr: any) {
+            logger.warn(`Failed to process CRM lead on stream close: ${crmErr.message}`, undefined, 'PlivoStream');
+          }
+        }
         
         // For incoming calls, set answeredAt if not already set (stream start = answered)
         if (call.callDirection === 'inbound' && !call.answeredAt) {
