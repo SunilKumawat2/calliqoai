@@ -278,6 +278,27 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
                 logger.error(`Post-call messaging setup error: ${msgErr.message}`, msgErr, 'PlivoElevenLabs');
               }
             }
+
+            // Sync with CRM lead processor (Client requirement #1 & #4)
+            if (call.userId && (call.fromNumber || call.toNumber)) {
+              try {
+                const { CRMLeadProcessor } = await import('../../crm/lead-processor.service');
+                const leadPhone = call.callDirection === 'inbound' ? (call.fromNumber || '') : (call.toNumber || '');
+                CRMLeadProcessor.processCompletedCall({
+                  id: call.id,
+                  userId: call.userId,
+                  phoneNumber: leadPhone,
+                  fromNumber: call.fromNumber,
+                  toNumber: call.toNumber,
+                  callDirection: (call.callDirection as 'incoming' | 'outgoing') || 'outgoing',
+                  status: CallStatus,
+                  duration: durationSeconds,
+                  campaignId: call.campaignId || null,
+                  engine: 'plivo-elevenlabs',
+                  metadata: (call.metadata as Record<string, unknown>) || {},
+                }).catch(crmErr => logger.warn(`CRM lead processor notice: ${crmErr?.message || crmErr}`, undefined, 'PlivoElevenLabs'));
+              } catch (_) {}
+            }
           }
         } catch (dbError: any) {
           logger.error('Failed to update call status in database', dbError.message, 'PlivoElevenLabs');

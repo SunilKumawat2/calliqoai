@@ -322,6 +322,22 @@ export class CRMLeadProcessor {
         if (updatedLead) {
           const categoryChanged = existingLead.aiCategory !== updatedLead.aiCategory;
           console.log(`${this.LOG_PREFIX} Updated existing lead ${updatedLead.id} - aiCategory: ${existingLead.aiCategory || 'none'} -> ${updatedLead.aiCategory || qualification.category}${categoryChanged ? ' (changed)' : ''}`);
+
+          // Trigger Google Sheets writeback if lead is linked
+          try {
+            const { CrmSyncService } = await import('../../services/crm-sync/crm-sync.service');
+            CrmSyncService.writebackCallOutcome({
+              userId: callData.userId,
+              phone: updatedLead.phone,
+              callStatus: callData.status,
+              duration: callData.duration || undefined,
+              aiSummary: callData.aiSummary || undefined,
+              leadScore: qualification.score,
+              aiCategory: qualification.category || undefined,
+              appointmentDate: qualification.appointmentData?.date ? String(qualification.appointmentData.date) : undefined,
+            }).catch(wErr => console.error(`${this.LOG_PREFIX} Google Sheet writeback note:`, wErr?.message));
+          } catch (_) {}
+
           return {
             leadId: updatedLead.id,
             qualification,
@@ -390,6 +406,21 @@ export class CRMLeadProcessor {
       } catch (webhookError: any) {
         console.error(`${this.LOG_PREFIX} Failed to trigger form.lead_created webhook:`, webhookError.message);
       }
+
+      // Trigger Google Sheets writeback if lead is linked
+      try {
+        const { CrmSyncService } = await import('../../services/crm-sync/crm-sync.service');
+        CrmSyncService.writebackCallOutcome({
+          userId: callData.userId,
+          phone: lead.phone,
+          callStatus: callData.status,
+          duration: callData.duration || undefined,
+          aiSummary: callData.aiSummary || undefined,
+          leadScore: qualification.score,
+          aiCategory: qualification.category || undefined,
+          appointmentDate: qualification.appointmentData?.date ? String(qualification.appointmentData.date) : undefined,
+        }).catch(wErr => console.error(`${this.LOG_PREFIX} Google Sheet writeback note:`, wErr?.message));
+      } catch (_) {}
 
       return { leadId: lead.id, qualification };
     } catch (error) {

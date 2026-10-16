@@ -21,13 +21,14 @@ import {
   TrendingUp, TrendingDown, Minus, Clock, Flame, UserX, PhoneMissed,
   ClipboardCheck, UserCheck, ArrowDownUp, PhoneCall, Zap, Palette, Check,
   History, Tag, Trash2, BarChart3, Square, CheckSquare, X, Megaphone, PhoneIncoming,
-  GripVertical, Settings, EyeOff, Eye
+  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CRMIntegrationsDashboard } from "@/components/crm/CRMIntegrationsDashboard";
 import { motion, AnimatePresence } from "framer-motion";
 
 
@@ -1336,7 +1337,7 @@ export default function CRMPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const queryClientRef = useQueryClient();
-  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics">("kanban");
+  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations">("kanban");
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedSourceId, setSelectedSourceId] = useState<string>("all");
@@ -2228,6 +2229,15 @@ export default function CRMPage() {
             >
               <BarChart3 className="w-4 h-4" />
             </Button>
+            <Button
+              variant={viewMode === "integrations" ? "secondary" : "ghost"}
+              size="icon"
+              onClick={() => setViewMode("integrations")}
+              data-testid="view-integrations"
+              title="Google Sheets & Calendar Sync"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            </Button>
           </div>
         </div>
       </div>
@@ -2366,7 +2376,13 @@ export default function CRMPage() {
       </Dialog>
 
       <div className="flex-1 overflow-hidden">
-        {isLoading ? (
+        {viewMode === "integrations" ? (
+          <ScrollArea className="h-full">
+            <div className="p-6">
+              <CRMIntegrationsDashboard />
+            </div>
+          </ScrollArea>
+        ) : isLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>

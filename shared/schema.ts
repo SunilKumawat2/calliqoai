@@ -2483,10 +2483,15 @@ export const leads = pgTable("leads", {
   
   // Tags for organization
   tags: text("tags").array(),
-  
+
   // Assignment for team accounts
   assignedUserId: varchar("assigned_user_id").references(() => users.id, { onDelete: "set null" }),
-  
+
+  // Google Sheets / External CRM Sync tracking
+  googleSheetId: text("google_sheet_id"),
+  googleSheetRowIndex: integer("google_sheet_row_index"),
+  externalLeadId: text("external_lead_id"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -3205,4 +3210,81 @@ export const insertScheduledFollowUpSchema = createInsertSchema(scheduledFollowU
 });
 export type InsertScheduledFollowUp = z.infer<typeof insertScheduledFollowUpSchema>;
 export type ScheduledFollowUp = typeof scheduledFollowUps.$inferSelect;
+
+// ============================================================
+// Google Sheets Sync Configs - For CRM Lead Import & Outcome Writeback
+// ============================================================
+export const googleSheetsSyncConfigs = pgTable("google_sheets_sync_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  spreadsheetId: text("spreadsheet_id").notNull(),
+  spreadsheetName: text("spreadsheet_name"),
+  sheetTabName: text("sheet_tab_name").notNull().default("Sheet1"),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+  direction: text("direction").notNull().default("both"), // 'import_only' | 'export_only' | 'both'
+  columnMapping: jsonb("column_mapping").$type<{
+    firstName?: string;
+    lastName?: string;
+    phone: string;
+    email?: string;
+    company?: string;
+    notes?: string;
+    callStatus?: string;
+    aiSummary?: string;
+    leadScore?: string;
+    duration?: string;
+    appointmentDate?: string;
+    recordingUrl?: string;
+  }>().notNull(),
+  autoSyncEnabled: boolean("auto_sync_enabled").notNull().default(false),
+  syncIntervalMinutes: integer("sync_interval_minutes").notNull().default(15),
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastSyncedRow: integer("last_synced_row").notNull().default(1),
+  totalImported: integer("total_imported").notNull().default(0),
+  totalUpdated: integer("total_updated").notNull().default(0),
+  status: text("status").notNull().default("active"), // 'active' | 'paused' | 'error'
+  lastErrorMessage: text("last_error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  googleSheetsSyncConfigsUserIdIdx: index("google_sheets_sync_configs_user_id_idx").on(table.userId),
+}));
+
+export const insertGoogleSheetsSyncConfigSchema = createInsertSchema(googleSheetsSyncConfigs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertGoogleSheetsSyncConfig = z.infer<typeof insertGoogleSheetsSyncConfigSchema>;
+export type GoogleSheetsSyncConfig = typeof googleSheetsSyncConfigs.$inferSelect;
+
+// ============================================================
+// CRM Sync Logs - Audit trail for sync events, dedup & error handling
+// ============================================================
+export const crmSyncLogs = pgTable("crm_sync_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  configId: varchar("config_id").references(() => googleSheetsSyncConfigs.id, { onDelete: "set null" }),
+  source: text("source").notNull(), // 'google_sheets' | 'google_calendar' | 'campaign' | 'webhook'
+  action: text("action").notNull(), // 'import' | 'writeback' | 'calendar_book' | 'sync'
+  recordsProcessed: integer("records_processed").notNull().default(0),
+  recordsCreated: integer("records_created").notNull().default(0),
+  recordsUpdated: integer("records_updated").notNull().default(0),
+  recordsSkipped: integer("records_skipped").notNull().default(0),
+  status: text("status").notNull(), // 'success' | 'partial' | 'failed'
+  errorDetails: jsonb("error_details").$type<Array<{ row?: number; phone?: string; error: string }>>(),
+  summary: text("summary"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  crmSyncLogsUserIdIdx: index("crm_sync_logs_user_id_idx").on(table.userId),
+  crmSyncLogsCreatedAtIdx: index("crm_sync_logs_created_at_idx").on(table.createdAt),
+}));
+
+export const insertCrmSyncLogSchema = createInsertSchema(crmSyncLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCrmSyncLog = z.infer<typeof insertCrmSyncLogSchema>;
+export type CrmSyncLog = typeof crmSyncLogs.$inferSelect;
+
 
