@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calliqo AI - Real Estate Lead Ingestion Demo Form</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #090d16;
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .container {
+      max-width: 580px;
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 32px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 40px rgba(16, 185, 129, 0.1);
+      position: relative;
+      overflow: hidden;
+    }
+    .badge-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .badge {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .portal-tag {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 9999px;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+    p.subtitle {
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+    label span.req {
+      color: #ef4444;
+    }
+    input, select, textarea {
+      width: 100%;
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 11px 14px;
+      color: #ffffff;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: #10b981;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .webhook-box {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .webhook-box input {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 6px 10px;
+      margin-top: 4px;
+      background: #0f172a;
+    }
+    button.submit-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      border: none;
+      padding: 14px;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform 0.1s ease, filter 0.2s ease;
+      box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.4);
+    }
+    button.submit-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    button.submit-btn:active {
+      transform: translateY(0);
+    }
+    button.submit-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .result-card {
+      display: none;
+      margin-top: 20px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .result-card.error {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .result-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #34d399;
+      margin-bottom: 4px;
+    }
+    .result-card.error .result-title {
+      color: #f87171;
+    }
+    .result-desc {
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+    .footer-links {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .footer-links a {
+      color: #10b981;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .footer-links a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="badge-bar">
+      <span class="badge">⚡ Calliqo AI Speed-to-Lead</span>
+      <span class="portal-tag">99acres & Website Form Simulator</span>
+    </div>
+
+    <h1>DLF Cyber Heights Luxury Residences</h1>
+    <p class="subtitle">
+      Fill out this mock property enquiry form. When you click submit, the lead will flow directly into Calliqo CRM and trigger an instant AI voice callback!
+    </p>
+
+    <div class="webhook-box">
+      <label style="margin: 0; color: #94a3b8; font-size: 11px;">Target Webhook Endpoint:</label>
+      <input type="text" id="webhookUrl" value="/api/v1/integrations/99acres/demo-99acres-test-key" />
+    </div>
+
+    <form id="leadForm">
+      <div class="row">
+        <div class="form-group">
+          <label>Your Full Name <span class="req">*</span></label>
+          <input type="text" id="leadName" placeholder="e.g. Sunil Kumawat" required value="Sunil Kumawat" />
+        </div>
+        <div class="form-group">
+          <label>Mobile Number <span class="req">*</span></label>
+          <input type="tel" id="leadPhone" placeholder="+91 98XXXXXXXX" required />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="leadEmail" placeholder="sunil@example.com" value="sunil@example.com" />
+        </div>
+        <div class="form-group">
+          <label>City / Location</label>
+          <input type="text" id="leadCity" placeholder="Gurugram / Delhi" value="Gurugram" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="form-group">
+          <label>Project / Property</label>
+          <input type="text" id="leadProject" placeholder="DLF Cyber Heights 3BHK" value="DLF Cyber Heights 3BHK" />
+        </div>
+        <div class="form-group">
+          <label>Budget Range</label>
+          <select id="leadBudget">
+            <option value="1.5 - 2 Cr">₹1.5 - 2.0 Crore</option>
+            <option value="2.0 - 3.5 Cr" selected>₹2.0 - 3.5 Crore</option>
+            <option value="3.5 - 5.0 Cr">₹3.5 - 5.0 Crore</option>
+            <option value="5.0 Cr+">₹5.0 Crore +</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Inquiry Query / Message</label>
+        <textarea id="leadQuery" rows="2" placeholder="Looking for ready-to-move unit with park facing balcony...">Interested in 3BHK high-rise apartment. Please arrange a site visit this Saturday.</textarea>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">
+        <span>🚀 Submit Enquiry & Trigger Speed-to-Lead AI Call</span>
+      </button>
+    </form>
+
+    <div class="result-card" id="resultCard">
+      <div class="result-title" id="resultTitle">Success!</div>
+      <div class="result-desc" id="resultDesc">Lead processed.</div>
+    </div>
+
+    <div class="footer-links">
+      <a href="/app/crm" target="_blank">Open Calliqo CRM Pipeline →</a>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('leadForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const resultCard = document.getElementById('resultCard');
+    const resultTitle = document.getElementById('resultTitle');
+    const resultDesc = document.getElementById('resultDesc');
+    const webhookInput = document.getElementById('webhookUrl');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const name = document.getElementById('leadName').value.trim();
+      const phone = document.getElementById('leadPhone').value.trim();
+      const email = document.getElementById('leadEmail').value.trim();
+      const city = document.getElementById('leadCity').value.trim();
+      const project = document.getElementById('leadProject').value.trim();
+      const budget = document.getElementById('leadBudget').value;
+      const query = document.getElementById('leadQuery').value.trim();
+
+      if (!phone) {
+        alert('Please enter a phone number');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>⏳ Sending to Calliqo Webhook...</span>';
+      resultCard.style.display = 'none';
+
+      try {
+        const targetUrl = webhookInput.value.trim();
+        const payload = {
+          name,
+          mobile: phone,
+          phone: phone,
+          email,
+          city,
+          project_name: project,
+          project: project,
+          budget,
+          query,
+          notes: query,
+        };
+
+        const res = await fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        resultCard.style.display = 'block';
+        if (res.ok && data.success) {
+          resultCard.className = 'result-card';
+          resultTitle.innerHTML = '🎉 Lead Ingested into CRM Successfully!';
+          resultDesc.innerHTML = `
+            <strong>Lead ID:</strong> <code>${data.leadId}</code><br/>
+            <strong>Buyer Name:</strong> ${name} (${phone})<br/>
+            <strong>Project:</strong> ${project} (${budget})<br/>
+            <strong>Speed-to-Lead Call Status:</strong> ${data.autoCallInitiated ? '⚡ Outbound AI Call Triggered!' : 'Queued / Ready in CRM Pipeline'}<br/>
+            <a href="/app/crm" target="_blank" style="color: #34d399; font-weight: 700; text-decoration: underline; display: inline-block; margin-top: 8px;">
+              View Lead in CRM Kanban Board →
+            </a>
+          `;
+        } else {
+          resultCard.className = 'result-card error';
+          resultTitle.innerHTML = '❌ Ingestion Failed';
+          resultDesc.innerText = data.error || 'Server returned an error';
+        }
+      } catch (err) {
+        resultCard.style.display = 'block';
+        resultCard.className = 'result-card error';
+        resultTitle.innerHTML = '❌ Network Error';
+        resultDesc.innerText = err.message;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span>🚀 Submit Enquiry & Trigger Speed-to-Lead AI Call</span>';
+      }
+    });
+  </script>
+</body>
+</html>

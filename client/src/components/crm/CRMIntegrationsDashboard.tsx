@@ -92,6 +92,20 @@ export function CRMIntegrationsDashboard() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
 
+  // Inbound Form Simulator Dialog state
+  const [simulatorDialogOpen, setSimulatorDialogOpen] = useState(false);
+  const [simulatorSource, setSimulatorSource] = useState<LeadSourceIntegration | null>(null);
+  const [simulatorForm, setSimulatorForm] = useState({
+    name: "Sunil Kumawat",
+    phone: "",
+    email: "sunil@gmail.com",
+    project: "DLF Cyber Heights Luxury Residences",
+    budget: "2.0 - 3.5 Cr",
+    city: "Gurugram",
+    query: "Interested in 3BHK high-rise apartment. Please arrange a callback.",
+  });
+  const [isSubmittingSim, setIsSubmittingSim] = useState(false);
+
   // New Lead Source Form State
   const [newLeadSource, setNewLeadSource] = useState({
     name: "",
@@ -168,6 +182,61 @@ export function CRMIntegrationsDashboard() {
     setCopiedKey(id);
     toast({ title: "Copied!", description: "Webhook URL copied to clipboard" });
     setTimeout(() => setCopiedKey(null), 2500);
+  };
+
+  // Open Simulator modal
+  const handleOpenSimulator = (source: LeadSourceIntegration) => {
+    setSimulatorSource(source);
+    setSimulatorDialogOpen(true);
+  };
+
+  // Submit Simulator Form
+  const handleSimulateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!simulatorSource) return;
+    if (!simulatorForm.phone.trim()) {
+      toast({ title: "Phone Required", description: "Please enter your mobile number", variant: "destructive" });
+      return;
+    }
+
+    setIsSubmittingSim(true);
+    try {
+      const webhookUrl = getWebhookUrl(simulatorSource);
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: simulatorForm.name,
+          mobile: simulatorForm.phone,
+          phone: simulatorForm.phone,
+          email: simulatorForm.email,
+          project_name: simulatorForm.project,
+          project: simulatorForm.project,
+          budget: simulatorForm.budget,
+          city: simulatorForm.city,
+          query: simulatorForm.query,
+          notes: simulatorForm.query,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to submit form");
+      }
+
+      toast({
+        title: "Lead Submitted Successfully! 🚀",
+        description: `Lead for "${simulatorForm.name}" created in CRM. ${data.autoCallInitiated ? "⚡ Speed-to-Lead AI call triggered!" : "Queued in pipeline."}`,
+      });
+      setSimulatorDialogOpen(false);
+      refetchLeadSources();
+      refetchLogs();
+      queryClient.invalidateQueries({ queryKey: ["/api/crm/leads"] });
+    } catch (err: any) {
+      toast({ title: "Submission Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSubmittingSim(false);
+    }
   };
 
   // Connect Google Sheets OAuth
@@ -619,7 +688,15 @@ export function CRMIntegrationsDashboard() {
             Two-way synchronization with <strong>Google Sheets</strong> & <strong>Google Calendar</strong>, plus automated lead ingestion from <strong>99acres</strong>, <strong>Magicbricks</strong>, <strong>Meta Ads</strong>, and <strong>Website Forms</strong> with instant Speed-to-Lead AI voice calling.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            onClick={() => window.open('/test-lead-form.html', '_blank')}
+            variant="outline"
+            size="sm"
+            className="gap-2 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-semibold"
+          >
+            <ExternalLink className="w-4 h-4" /> Open Live Form Simulator
+          </Button>
           <Button
             onClick={() => { refetchConfigs(); refetchLogs(); refetchStatus(); refetchLeadSources(); }}
             variant="outline"
@@ -894,7 +971,15 @@ export function CRMIntegrationsDashboard() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm font-semibold"
+                              onClick={() => handleOpenSimulator(src)}
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              Fill Test Form
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"
@@ -911,8 +996,8 @@ export function CRMIntegrationsDashboard() {
                               disabled={testingId === src.id}
                               onClick={() => testLeadSourceMutation.mutate(src.id)}
                             >
-                              <Send className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
-                              {testingId === src.id ? "Testing..." : "Test Lead"}
+                              <RefreshCw className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
+                              {testingId === src.id ? "Testing..." : "Quick Ping"}
                             </Button>
                             <Button
                               size="icon"
@@ -1072,12 +1157,19 @@ export function CRMIntegrationsDashboard() {
                           <div className="flex items-center gap-2">
                             <Button
                               size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm"
+                              onClick={() => handleOpenSimulator(src)}
+                            >
+                              <Send className="w-3.5 h-3.5" /> Fill Test Form
+                            </Button>
+                            <Button
+                              size="sm"
                               variant="secondary"
                               className="text-xs gap-1.5"
                               disabled={testingId === src.id}
                               onClick={() => testLeadSourceMutation.mutate(src.id)}
                             >
-                              <Send className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
+                              <RefreshCw className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
                               {testingId === src.id ? "Simulating..." : "Send Test Lead"}
                             </Button>
                             <Button
@@ -1223,12 +1315,19 @@ export function CRMIntegrationsDashboard() {
                           <div className="flex items-center gap-2">
                             <Button
                               size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm"
+                              onClick={() => handleOpenSimulator(src)}
+                            >
+                              <Send className="w-3.5 h-3.5" /> Fill Test Form
+                            </Button>
+                            <Button
+                              size="sm"
                               variant="secondary"
                               className="text-xs gap-1.5"
                               disabled={testingId === src.id}
                               onClick={() => testLeadSourceMutation.mutate(src.id)}
                             >
-                              <Send className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
+                              <RefreshCw className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
                               {testingId === src.id ? "Simulating..." : "Send Test Lead"}
                             </Button>
                             <Button
@@ -1385,12 +1484,19 @@ export function CRMIntegrationsDashboard() {
                           <div className="flex items-center gap-2">
                             <Button
                               size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm"
+                              onClick={() => handleOpenSimulator(src)}
+                            >
+                              <Send className="w-3.5 h-3.5" /> Fill Test Form
+                            </Button>
+                            <Button
+                              size="sm"
                               variant="secondary"
                               className="text-xs gap-1.5"
                               disabled={testingId === src.id}
                               onClick={() => testLeadSourceMutation.mutate(src.id)}
                             >
-                              <Send className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
+                              <RefreshCw className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
                               {testingId === src.id ? "Simulating..." : "Send Test Lead"}
                             </Button>
                             <Button
@@ -1838,6 +1944,130 @@ export function CRMIntegrationsDashboard() {
               Save Configuration
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============================================================ */}
+      {/* MODAL 3: Inbound Lead Form Simulator (Interactive Test Form) */}
+      {/* ============================================================ */}
+      <Dialog open={simulatorDialogOpen} onOpenChange={setSimulatorDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600">
+                <Sparkles className="w-4 h-4" />
+              </span>
+              <DialogTitle>Live Lead Form Submission Simulator</DialogTitle>
+            </div>
+            <DialogDescription>
+              Fill out this enquiry form as a buyer on <strong>{simulatorSource?.name}</strong> ({simulatorSource?.sourceType.toUpperCase()}). Clicking Submit will push the lead to the webhook in real time!
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSimulateSubmit} className="space-y-4 py-2 text-xs">
+            <div className="p-2.5 bg-muted/40 rounded-lg text-muted-foreground flex justify-between items-center text-[11px]">
+              <span>Testing Webhook:</span>
+              <code className="font-mono text-foreground font-semibold">
+                /{simulatorSource?.sourceType}/{simulatorSource?.webhookKey.slice(0, 10)}...
+              </code>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[11px]">Full Name *</Label>
+                <Input
+                  required
+                  placeholder="e.g. Sunil Kumawat"
+                  value={simulatorForm.name}
+                  onChange={(e) => setSimulatorForm({ ...simulatorForm, name: e.target.value })}
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[11px]">Mobile Number *</Label>
+                <Input
+                  required
+                  type="tel"
+                  placeholder="+91 98XXXXXXXX"
+                  value={simulatorForm.phone}
+                  onChange={(e) => setSimulatorForm({ ...simulatorForm, phone: e.target.value })}
+                  className="h-9 font-mono"
+                />
+                <span className="text-[10px] text-muted-foreground">Put your number to receive AI call</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[11px]">Email Address</Label>
+                <Input
+                  type="email"
+                  placeholder="name@example.com"
+                  value={simulatorForm.email}
+                  onChange={(e) => setSimulatorForm({ ...simulatorForm, email: e.target.value })}
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[11px]">City</Label>
+                <Input
+                  placeholder="e.g. Gurugram / Delhi"
+                  value={simulatorForm.city}
+                  onChange={(e) => setSimulatorForm({ ...simulatorForm, city: e.target.value })}
+                  className="h-9"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[11px]">Interested Project / Property</Label>
+                <Input
+                  placeholder="e.g. DLF Cyber Park Luxury 3BHK"
+                  value={simulatorForm.project}
+                  onChange={(e) => setSimulatorForm({ ...simulatorForm, project: e.target.value })}
+                  className="h-9"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[11px]">Budget</Label>
+                <Input
+                  placeholder="e.g. 2 - 3 Cr"
+                  value={simulatorForm.budget}
+                  onChange={(e) => setSimulatorForm({ ...simulatorForm, budget: e.target.value })}
+                  className="h-9"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-[11px]">Inquiry Message / Requirement</Label>
+              <Textarea
+                placeholder="e.g. Looking for ready-to-move apartment with park view. Please share brochure."
+                value={simulatorForm.query}
+                onChange={(e) => setSimulatorForm({ ...simulatorForm, query: e.target.value })}
+                rows={2}
+                className="text-xs"
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setSimulatorDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                disabled={isSubmittingSim || !simulatorForm.phone}
+              >
+                {isSubmittingSim ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {isSubmittingSim ? "Submitting to Webhook..." : "Submit Form as Buyer 🚀"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
