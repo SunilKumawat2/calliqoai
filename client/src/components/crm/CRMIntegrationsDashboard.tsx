@@ -387,6 +387,221 @@ export function CRMIntegrationsDashboard() {
     }
   };
 
+  // Reusable Google Workspace (Sheets & Calendar) Cards and Active Mappings Section
+  const renderGoogleWorkspaceSection = () => (
+    <div className="space-y-6">
+      {/* 2 Main Integration Cards: Google Sheets & Google Calendar */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* Google Sheets Card */}
+        <Card className="border border-border/60 hover:shadow-md transition-all">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-semibold">Google Sheets 2-Way Sync</CardTitle>
+                  <CardDescription className="text-xs">Import leads & write back AI call results</CardDescription>
+                </div>
+              </div>
+              {statusData?.googleSheets?.connected ? (
+                <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/20 border-emerald-500/30 gap-1.5 py-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Connected
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-muted-foreground gap-1.5 py-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> Not Connected
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Connect your Google account to automatically pull phone numbers and prospect details into Calliqo AI, and automatically write call duration, transcripts, AI scores, and summaries back into your spreadsheet.
+            </p>
+
+            <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Account:</span>
+                <span className="font-medium text-foreground">{statusData?.googleSheets?.email || "Not linked"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Active Sync Sheets:</span>
+                <span className="font-medium text-foreground">{configs.length} configured</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              {statusData?.googleSheets?.connected ? (
+                <>
+                  <Button 
+                    size="sm" 
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                    onClick={() => setCreateDialogOpen(true)}
+                  >
+                    <Plus className="w-4 h-4" /> Link New Sheet
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={handleDisconnectSheets}
+                  >
+                    Disconnect
+                  </Button>
+                </>
+              ) : (
+                <Button 
+                  size="sm" 
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 w-full"
+                  onClick={handleConnectGoogleSheets}
+                >
+                  <ExternalLink className="w-4 h-4" /> Connect with Google Sheets
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Google Calendar Card */}
+        <Card className="border border-border/60 hover:shadow-md transition-all">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-semibold">Google Calendar Real-Time Booking</CardTitle>
+                  <CardDescription className="text-xs">Live slot verification & site visits booking</CardDescription>
+                </div>
+              </div>
+              {statusData?.googleCalendar?.connected ? (
+                <Badge className="bg-blue-500/15 text-blue-600 hover:bg-blue-500/20 border-blue-500/30 gap-1.5 py-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Connected
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-muted-foreground gap-1.5 py-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> Not Connected
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Allows your AI voice agents to query your Google Calendar in real time during a call to find free slots and book site visits or meetings directly onto your calendar with automatic attendee invites.
+            </p>
+
+            <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Connected Calendar:</span>
+                <span className="font-medium text-foreground">{statusData?.googleCalendar?.email || "Not linked"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Booking Mode:</span>
+                <span className="font-medium text-foreground">Real-Time FreeBusy Verification</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              {statusData?.googleCalendar?.connected ? (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={handleDisconnectCalendar}
+                >
+                  Disconnect Calendar
+                </Button>
+              ) : (
+                <Button 
+                  size="sm" 
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-2 w-full"
+                  onClick={handleConnectGoogleCalendar}
+                >
+                  <ExternalLink className="w-4 h-4" /> Connect with Google Calendar
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Configured Sheets Table */}
+      <Card>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base font-semibold">Active Google Sheet Sync Mappings</CardTitle>
+            <CardDescription className="text-xs">Spreadsheets actively monitored and synchronized with Calliqo CRM</CardDescription>
+          </div>
+          {statusData?.googleSheets?.connected && (
+            <Button size="sm" onClick={() => setCreateDialogOpen(true)} className="gap-1.5">
+              <Plus className="w-3.5 h-3.5" /> Add Sheet Sync
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          {configs.length === 0 ? (
+            <div className="text-center py-10 text-muted-foreground space-y-2 border border-dashed rounded-xl">
+              <FileSpreadsheet className="w-8 h-8 mx-auto text-muted-foreground/60" />
+              <p className="text-sm font-medium">No Google Sheets connected for sync yet.</p>
+              <p className="text-xs text-muted-foreground/80 max-w-md mx-auto">
+                Connect your Google account and link a spreadsheet to start automatically importing leads into Calliqo AI.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/60">
+              {configs.map((cfg) => (
+                <div key={cfg.id} className="py-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm text-foreground">{cfg.spreadsheetName}</span>
+                      <Badge variant="outline" className="text-[10px] font-mono px-2 py-0">
+                        {cfg.sheetTabName}
+                      </Badge>
+                      <Badge className={cfg.status === 'active' ? 'bg-emerald-500/10 text-emerald-600 border-0' : 'bg-amber-500/10 text-amber-600 border-0'}>
+                        {cfg.status}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                      <span>Imported: <strong className="text-foreground">{cfg.totalImported}</strong></span>
+                      <span>•</span>
+                      <span>Updated: <strong className="text-foreground">{cfg.totalUpdated}</strong></span>
+                      <span>•</span>
+                      <span>Last Synced: <strong className="text-foreground">{cfg.lastSyncedAt ? new Date(cfg.lastSyncedAt).toLocaleString() : "Never"}</strong></span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      disabled={syncingId === cfg.id}
+                      onClick={() => syncMutation.mutate(cfg.id)}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${syncingId === cfg.id ? "animate-spin" : ""}`} />
+                      {syncingId === cfg.id ? "Syncing..." : "Sync Now"}
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="text-muted-foreground hover:text-destructive h-8 w-8"
+                      onClick={() => deleteConfigMutation.mutate(cfg.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Overview Banner */}
@@ -394,14 +609,14 @@ export function CRMIntegrationsDashboard() {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wider flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5" /> Calliqo Omnichannel Lead Ingestion & AI Calling
+              <Sparkles className="w-3.5 h-3.5" /> Calliqo Omnichannel CRM & External Synchronization Hub
             </span>
           </div>
           <h2 className="text-xl font-bold tracking-tight text-foreground">
-            Central CRM Lead Sources & Speed-to-Lead Automation
+            Central CRM Lead Sources, Google Sheets & Calendar Synchronization
           </h2>
           <p className="text-sm text-muted-foreground max-w-3xl">
-            Automatically ingest leads from <strong>99acres</strong>, <strong>Magicbricks</strong>, <strong>Meta Lead Ads</strong>, <strong>Website Forms</strong>, and <strong>Google Sheets</strong> directly into your CRM. Instant AI voice calls engage prospects within seconds of submission.
+            Two-way synchronization with <strong>Google Sheets</strong> & <strong>Google Calendar</strong>, plus automated lead ingestion from <strong>99acres</strong>, <strong>Magicbricks</strong>, <strong>Meta Ads</strong>, and <strong>Website Forms</strong> with instant Speed-to-Lead AI voice calling.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -428,6 +643,34 @@ export function CRMIntegrationsDashboard() {
         <Card className="border border-border/60">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+              <FileSpreadsheet className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Google Sheets Sync</p>
+              <h3 className="text-sm font-bold text-foreground">
+                {statusData?.googleSheets?.connected ? "Connected & Active" : "Not Linked"}
+              </h3>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/60">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Google Calendar Booking</p>
+              <h3 className="text-sm font-bold text-foreground">
+                {statusData?.googleCalendar?.connected ? "Connected & Active" : "Not Linked"}
+              </h3>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/60">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
               <Database className="w-5 h-5" />
             </div>
             <div>
@@ -439,38 +682,12 @@ export function CRMIntegrationsDashboard() {
 
         <Card className="border border-border/60">
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
               <PhoneCall className="w-5 h-5" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-medium">Speed-to-Lead AI Calls</p>
               <h3 className="text-xl font-bold text-foreground">{totalInstantCalls}</h3>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-border/60">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
-              <Layers className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground font-medium">Active Integrations</p>
-              <h3 className="text-xl font-bold text-foreground">{leadSources.length + configs.length}</h3>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-border/60">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground font-medium">Calendar Real-Time Booking</p>
-              <h3 className="text-xs font-semibold text-foreground">
-                {statusData?.googleCalendar?.connected ? "Active & Linked" : "Ready to Link"}
-              </h3>
             </div>
           </CardContent>
         </Card>
@@ -481,7 +698,11 @@ export function CRMIntegrationsDashboard() {
         <TabsList className="grid grid-cols-2 md:grid-cols-5 h-auto p-1 bg-muted/60 border border-border/50 rounded-xl">
           <TabsTrigger value="overview" className="gap-2 py-2.5 text-xs font-semibold">
             <Sparkles className="w-4 h-4 text-emerald-500" />
-            Overview
+            Overview & Hub
+          </TabsTrigger>
+          <TabsTrigger value="sheets-calendar" className="gap-2 py-2.5 text-xs font-semibold">
+            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+            Google Sheets & Calendar ({configs.length})
           </TabsTrigger>
           <TabsTrigger value="real-estate" className="gap-2 py-2.5 text-xs font-semibold">
             <Building2 className="w-4 h-4 text-blue-500" />
@@ -495,194 +716,232 @@ export function CRMIntegrationsDashboard() {
             <Globe className="w-4 h-4 text-orange-500" />
             Website Forms ({webSources.length})
           </TabsTrigger>
-          <TabsTrigger value="sheets-calendar" className="gap-2 py-2.5 text-xs font-semibold">
-            <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-            Google Sheets & Calendar
-          </TabsTrigger>
         </TabsList>
 
         {/* ============================================================ */}
-        {/* TAB 1: OVERVIEW */}
+        {/* TAB 1: OVERVIEW & HUB (Includes Google Sheets, Calendar, Portals & Webhooks) */}
         {/* ============================================================ */}
-        <TabsContent value="overview" className="space-y-6 m-0">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Real Estate Quick Card */}
-            <Card className="border border-border/60 hover:border-blue-500/40 transition-all flex flex-col justify-between">
-              <CardHeader className="pb-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold mb-2">
-                  <Building2 className="w-5 h-5" />
-                </div>
-                <CardTitle className="text-base font-semibold">99acres & Magicbricks</CardTitle>
-                <CardDescription className="text-xs">
-                  Connect property inquiries from 99acres, Magicbricks, and Housing.com directly into Calliqo CRM.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 pt-0">
-                <div className="text-xs text-muted-foreground flex justify-between border-t pt-3">
-                  <span>Active Sources:</span>
-                  <strong className="text-foreground">{realEstateSources.length} configured</strong>
-                </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full text-xs gap-1.5"
-                  onClick={() => setActiveTab("real-estate")}
-                >
-                  Manage Real Estate Portals <ArrowRight className="w-3.5 h-3.5" />
-                </Button>
-              </CardContent>
-            </Card>
+        <TabsContent value="overview" className="space-y-8 m-0">
+          
+          {/* SECTION 1: Google Sheets & Google Calendar Sync (Front and Center!) */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  Google Sheets 2-Way Sync & Google Calendar Booking
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Connect your Google account to auto-import prospects from spreadsheets, book calendar site visits, and write back AI call results.
+                </p>
+              </div>
+            </div>
+            {renderGoogleWorkspaceSection()}
+          </div>
 
-            {/* Ads Quick Card */}
-            <Card className="border border-border/60 hover:border-purple-500/40 transition-all flex flex-col justify-between">
-              <CardHeader className="pb-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold mb-2">
-                  <Megaphone className="w-5 h-5" />
-                </div>
-                <CardTitle className="text-base font-semibold">Meta & Google Ads</CardTitle>
-                <CardDescription className="text-xs">
-                  Sync leads instantly from Facebook & Instagram Instant Forms and Google Lead Form extensions.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 pt-0">
-                <div className="text-xs text-muted-foreground flex justify-between border-t pt-3">
-                  <span>Active Ad Streams:</span>
-                  <strong className="text-foreground">{adSources.length} configured</strong>
-                </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full text-xs gap-1.5"
-                  onClick={() => setActiveTab("ads")}
-                >
-                  Manage Ad Integrations <ArrowRight className="w-3.5 h-3.5" />
-                </Button>
-              </CardContent>
-            </Card>
+          {/* SECTION 2: Omnichannel Lead Source Integrations */}
+          <div className="space-y-4 pt-6 border-t border-border/60">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-emerald-500" />
+                  Omnichannel Inbound Lead Integrations (99acres, Magicbricks, Meta, Web Forms)
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Connect property portals and advertising channels to automatically ingest leads into CRM and trigger Speed-to-Lead AI voice calls.
+                </p>
+              </div>
+              <Button size="sm" onClick={() => setLeadSourceDialogOpen(true)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shrink-0">
+                <Plus className="w-3.5 h-3.5" /> Add Lead Source
+              </Button>
+            </div>
 
-            {/* Website Forms Quick Card */}
-            <Card className="border border-border/60 hover:border-orange-500/40 transition-all flex flex-col justify-between">
-              <CardHeader className="pb-3">
-                <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-600 flex items-center justify-center font-bold mb-2">
-                  <Globe className="w-5 h-5" />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Real Estate Quick Card */}
+              <Card className="border border-border/60 hover:border-blue-500/40 transition-all flex flex-col justify-between">
+                <CardHeader className="pb-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold mb-2">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <CardTitle className="text-base font-semibold">99acres & Magicbricks</CardTitle>
+                  <CardDescription className="text-xs">
+                    Connect property inquiries from 99acres, Magicbricks, and Housing.com directly into Calliqo CRM.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 pt-0">
+                  <div className="text-xs text-muted-foreground flex justify-between border-t pt-3">
+                    <span>Active Sources:</span>
+                    <strong className="text-foreground">{realEstateSources.length} configured</strong>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full text-xs gap-1.5"
+                    onClick={() => setActiveTab("real-estate")}
+                  >
+                    Manage Real Estate Portals <ArrowRight className="w-3.5 h-3.5" />
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Ads Quick Card */}
+              <Card className="border border-border/60 hover:border-purple-500/40 transition-all flex flex-col justify-between">
+                <CardHeader className="pb-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold mb-2">
+                    <Megaphone className="w-5 h-5" />
+                  </div>
+                  <CardTitle className="text-base font-semibold">Meta & Google Ads</CardTitle>
+                  <CardDescription className="text-xs">
+                    Sync leads instantly from Facebook & Instagram Instant Forms and Google Lead Form extensions.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 pt-0">
+                  <div className="text-xs text-muted-foreground flex justify-between border-t pt-3">
+                    <span>Active Ad Streams:</span>
+                    <strong className="text-foreground">{adSources.length} configured</strong>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full text-xs gap-1.5"
+                    onClick={() => setActiveTab("ads")}
+                  >
+                    Manage Ad Integrations <ArrowRight className="w-3.5 h-3.5" />
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Website Forms Quick Card */}
+              <Card className="border border-border/60 hover:border-orange-500/40 transition-all flex flex-col justify-between">
+                <CardHeader className="pb-3">
+                  <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-600 flex items-center justify-center font-bold mb-2">
+                    <Globe className="w-5 h-5" />
+                  </div>
+                  <CardTitle className="text-base font-semibold">Website Enquiry Forms</CardTitle>
+                  <CardDescription className="text-xs">
+                    Embed ready-to-use webhooks on WordPress, Elementor, Contact Form 7, Webflow, or custom landing pages.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 pt-0">
+                  <div className="text-xs text-muted-foreground flex justify-between border-t pt-3">
+                    <span>Active Forms:</span>
+                    <strong className="text-foreground">{webSources.length} configured</strong>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full text-xs gap-1.5"
+                    onClick={() => setActiveTab("website-forms")}
+                  >
+                    Manage Website Forms <ArrowRight className="w-3.5 h-3.5" />
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Quick Active Sources List */}
+            <Card>
+              <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-base font-semibold">All Active Inbound Lead Integrations</CardTitle>
+                  <CardDescription className="text-xs">
+                    Configured webhooks pulling leads into CRM and triggering Speed-to-Lead voice calls
+                  </CardDescription>
                 </div>
-                <CardTitle className="text-base font-semibold">Website Enquiry Forms</CardTitle>
-                <CardDescription className="text-xs">
-                  Embed ready-to-use webhooks on WordPress, Elementor, Contact Form 7, Webflow, or custom landing pages.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 pt-0">
-                <div className="text-xs text-muted-foreground flex justify-between border-t pt-3">
-                  <span>Active Forms:</span>
-                  <strong className="text-foreground">{webSources.length} configured</strong>
-                </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full text-xs gap-1.5"
-                  onClick={() => setActiveTab("website-forms")}
-                >
-                  Manage Website Forms <ArrowRight className="w-3.5 h-3.5" />
+                <Button size="sm" onClick={() => setLeadSourceDialogOpen(true)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <Plus className="w-3.5 h-3.5" /> Add Lead Source
                 </Button>
+              </CardHeader>
+              <CardContent>
+                {leadSources.length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground space-y-2 border border-dashed rounded-xl">
+                    <Sparkles className="w-8 h-8 mx-auto text-muted-foreground/60" />
+                    <p className="text-sm font-medium">No lead source integrations created yet.</p>
+                    <p className="text-xs text-muted-foreground/80 max-w-md mx-auto">
+                      Click "Connect Lead Source" to create your first webhook for 99acres, Magicbricks, Facebook Ads, or your website.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border/60">
+                    {leadSources.map((src) => {
+                      const webhookUrl = getWebhookUrl(src);
+                      const campaign = campaignsList.find(c => c.id === src.campaignId);
+                      return (
+                        <div key={src.id} className="py-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-sm text-foreground">{src.name}</span>
+                              <Badge variant="outline" className="text-[10px] font-mono px-2 py-0 uppercase">
+                                {src.sourceType.replace('_', ' ')}
+                              </Badge>
+                              {src.autoCall && (
+                                <Badge className="bg-emerald-500/10 text-emerald-600 border-0 text-[10px] gap-1">
+                                  <Zap className="w-3 h-3" /> Auto-Call Enabled
+                                </Badge>
+                              )}
+                              <Badge className={src.status === 'active' ? 'bg-emerald-500/10 text-emerald-600 border-0' : 'bg-amber-500/10 text-amber-600 border-0'}>
+                                {src.status}
+                              </Badge>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                              <span>Campaign: <strong className="text-foreground">{campaign ? campaign.name : "CRM Only"}</strong></span>
+                              <span>•</span>
+                              <span>Leads: <strong className="text-foreground">{src.totalLeads}</strong></span>
+                              <span>•</span>
+                              <span>AI Calls: <strong className="text-foreground">{src.totalCalls}</strong></span>
+                              <span>•</span>
+                              <span>Last Lead: <strong className="text-foreground">{src.lastLeadAt ? new Date(src.lastLeadAt).toLocaleString() : "Never"}</strong></span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs gap-1.5"
+                              onClick={() => copyToClipboard(webhookUrl, src.id)}
+                            >
+                              {copiedKey === src.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                              Copy Webhook
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="text-xs gap-1.5"
+                              disabled={testingId === src.id}
+                              onClick={() => testLeadSourceMutation.mutate(src.id)}
+                            >
+                              <Send className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
+                              {testingId === src.id ? "Testing..." : "Test Lead"}
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-muted-foreground hover:text-destructive h-8 w-8"
+                              onClick={() => deleteLeadSourceMutation.mutate(src.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
-
-          {/* Quick Active Sources List */}
-          <Card>
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="text-base font-semibold">All Active Inbound Lead Integrations</CardTitle>
-                <CardDescription className="text-xs">
-                  Configured webhooks pulling leads into CRM and triggering Speed-to-Lead voice calls
-                </CardDescription>
-              </div>
-              <Button size="sm" onClick={() => setLeadSourceDialogOpen(true)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white">
-                <Plus className="w-3.5 h-3.5" /> Add Lead Source
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {leadSources.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground space-y-2 border border-dashed rounded-xl">
-                  <Sparkles className="w-8 h-8 mx-auto text-muted-foreground/60" />
-                  <p className="text-sm font-medium">No lead source integrations created yet.</p>
-                  <p className="text-xs text-muted-foreground/80 max-w-md mx-auto">
-                    Click "Connect Lead Source" to create your first webhook for 99acres, Magicbricks, Facebook Ads, or your website.
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-border/60">
-                  {leadSources.map((src) => {
-                    const webhookUrl = getWebhookUrl(src);
-                    const campaign = campaignsList.find(c => c.id === src.campaignId);
-                    return (
-                      <div key={src.id} className="py-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-sm text-foreground">{src.name}</span>
-                            <Badge variant="outline" className="text-[10px] font-mono px-2 py-0 uppercase">
-                              {src.sourceType.replace('_', ' ')}
-                            </Badge>
-                            {src.autoCall && (
-                              <Badge className="bg-emerald-500/10 text-emerald-600 border-0 text-[10px] gap-1">
-                                <Zap className="w-3 h-3" /> Auto-Call Enabled
-                              </Badge>
-                            )}
-                            <Badge className={src.status === 'active' ? 'bg-emerald-500/10 text-emerald-600 border-0' : 'bg-amber-500/10 text-amber-600 border-0'}>
-                              {src.status}
-                            </Badge>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                            <span>Campaign: <strong className="text-foreground">{campaign ? campaign.name : "CRM Only"}</strong></span>
-                            <span>•</span>
-                            <span>Leads: <strong className="text-foreground">{src.totalLeads}</strong></span>
-                            <span>•</span>
-                            <span>AI Calls: <strong className="text-foreground">{src.totalCalls}</strong></span>
-                            <span>•</span>
-                            <span>Last Lead: <strong className="text-foreground">{src.lastLeadAt ? new Date(src.lastLeadAt).toLocaleString() : "Never"}</strong></span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-xs gap-1.5"
-                            onClick={() => copyToClipboard(webhookUrl, src.id)}
-                          >
-                            {copiedKey === src.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                            Copy Webhook
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            className="text-xs gap-1.5"
-                            disabled={testingId === src.id}
-                            onClick={() => testLeadSourceMutation.mutate(src.id)}
-                          >
-                            <Send className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
-                            {testingId === src.id ? "Testing..." : "Test Lead"}
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="text-muted-foreground hover:text-destructive h-8 w-8"
-                            onClick={() => deleteLeadSourceMutation.mutate(src.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {/* ============================================================ */}
-        {/* TAB 2: REAL ESTATE PORTALS (99acres, Magicbricks, Housing) */}
+        {/* TAB 2: GOOGLE SHEETS & CALENDAR SYNC */}
+        {/* ============================================================ */}
+        <TabsContent value="sheets-calendar" className="space-y-6 m-0">
+          {renderGoogleWorkspaceSection()}
+        </TabsContent>
+
+        {/* ============================================================ */}
+        {/* TAB 3: REAL ESTATE PORTALS (99acres, Magicbricks, Housing) */}
         {/* ============================================================ */}
         <TabsContent value="real-estate" className="space-y-6 m-0">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -864,7 +1123,7 @@ export function CRMIntegrationsDashboard() {
         </TabsContent>
 
         {/* ============================================================ */}
-        {/* TAB 3: ADVERTISING CAMPAIGNS (Meta Ads & Google Ads) */}
+        {/* TAB 4: ADVERTISING CAMPAIGNS (Meta Ads & Google Ads) */}
         {/* ============================================================ */}
         <TabsContent value="ads" className="space-y-6 m-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1030,7 +1289,7 @@ export function CRMIntegrationsDashboard() {
         </TabsContent>
 
         {/* ============================================================ */}
-        {/* TAB 4: WEBSITE ENQUIRY FORMS (WordPress, Elementor, CF7, HTML) */}
+        {/* TAB 5: WEBSITE ENQUIRY FORMS (WordPress, Elementor, CF7, HTML) */}
         {/* ============================================================ */}
         <TabsContent value="website-forms" className="space-y-6 m-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1170,221 +1429,6 @@ export function CRMIntegrationsDashboard() {
                       </div>
                     );
                   })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ============================================================ */}
-        {/* TAB 5: GOOGLE SHEETS & CALENDAR (100% Preserved) */}
-        {/* ============================================================ */}
-        <TabsContent value="sheets-calendar" className="space-y-6 m-0">
-          {/* 2 Main Integration Cards: Google Sheets & Google Calendar */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            {/* Google Sheets Card */}
-            <Card className="border border-border/60 hover:shadow-md transition-all">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
-                      <FileSpreadsheet className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base font-semibold">Google Sheets 2-Way Sync</CardTitle>
-                      <CardDescription className="text-xs">Import leads & write back AI call results</CardDescription>
-                    </div>
-                  </div>
-                  {statusData?.googleSheets?.connected ? (
-                    <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/20 border-emerald-500/30 gap-1.5 py-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Connected
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground gap-1.5 py-1">
-                      <AlertCircle className="w-3.5 h-3.5" /> Not Connected
-                    </Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Connect your Google account to automatically pull phone numbers and prospect details into Calliqo AI, and automatically write call duration, transcripts, AI scores, and summaries back into your spreadsheet.
-                </p>
-
-                <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Account:</span>
-                    <span className="font-medium text-foreground">{statusData?.googleSheets?.email || "Not linked"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Active Sync Sheets:</span>
-                    <span className="font-medium text-foreground">{configs.length} configured</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  {statusData?.googleSheets?.connected ? (
-                    <>
-                      <Button 
-                        size="sm" 
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
-                        onClick={() => setCreateDialogOpen(true)}
-                      >
-                        <Plus className="w-4 h-4" /> Link New Sheet
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={handleDisconnectSheets}
-                      >
-                        Disconnect
-                      </Button>
-                    </>
-                  ) : (
-                    <Button 
-                      size="sm" 
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 w-full"
-                      onClick={handleConnectGoogleSheets}
-                    >
-                      <ExternalLink className="w-4 h-4" /> Connect with Google Sheets
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Google Calendar Card */}
-            <Card className="border border-border/60 hover:shadow-md transition-all">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
-                      <Calendar className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base font-semibold">Google Calendar Real-Time Booking</CardTitle>
-                      <CardDescription className="text-xs">Live slot verification & site visits booking</CardDescription>
-                    </div>
-                  </div>
-                  {statusData?.googleCalendar?.connected ? (
-                    <Badge className="bg-blue-500/15 text-blue-600 hover:bg-blue-500/20 border-blue-500/30 gap-1.5 py-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Connected
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground gap-1.5 py-1">
-                      <AlertCircle className="w-3.5 h-3.5" /> Not Connected
-                    </Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  Allows your AI voice agents to query your Google Calendar in real time during a call to find free slots and book site visits or meetings directly onto your calendar with automatic attendee invites.
-                </p>
-
-                <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Connected Calendar:</span>
-                    <span className="font-medium text-foreground">{statusData?.googleCalendar?.email || "Not linked"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Booking Mode:</span>
-                    <span className="font-medium text-foreground">Real-Time FreeBusy Verification</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  {statusData?.googleCalendar?.connected ? (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={handleDisconnectCalendar}
-                    >
-                      Disconnect Calendar
-                    </Button>
-                  ) : (
-                    <Button 
-                      size="sm" 
-                      className="bg-blue-600 hover:bg-blue-700 text-white gap-2 w-full"
-                      onClick={handleConnectGoogleCalendar}
-                    >
-                      <ExternalLink className="w-4 h-4" /> Connect with Google Calendar
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Configured Sheets Table */}
-          <Card>
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="text-base font-semibold">Active Google Sheet Sync Mappings</CardTitle>
-                <CardDescription className="text-xs">Spreadsheets actively monitored and synchronized with Calliqo CRM</CardDescription>
-              </div>
-              {statusData?.googleSheets?.connected && (
-                <Button size="sm" onClick={() => setCreateDialogOpen(true)} className="gap-1.5">
-                  <Plus className="w-3.5 h-3.5" /> Add Sheet Sync
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              {configs.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground space-y-2 border border-dashed rounded-xl">
-                  <FileSpreadsheet className="w-8 h-8 mx-auto text-muted-foreground/60" />
-                  <p className="text-sm font-medium">No Google Sheets connected for sync yet.</p>
-                  <p className="text-xs text-muted-foreground/80 max-w-md mx-auto">
-                    Connect your Google account and link a spreadsheet to start automatically importing leads into Calliqo AI.
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-border/60">
-                  {configs.map((cfg) => (
-                    <div key={cfg.id} className="py-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-foreground">{cfg.spreadsheetName}</span>
-                          <Badge variant="outline" className="text-[10px] font-mono px-2 py-0">
-                            {cfg.sheetTabName}
-                          </Badge>
-                          <Badge className={cfg.status === 'active' ? 'bg-emerald-500/10 text-emerald-600 border-0' : 'bg-amber-500/10 text-amber-600 border-0'}>
-                            {cfg.status}
-                          </Badge>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                          <span>Imported: <strong className="text-foreground">{cfg.totalImported}</strong></span>
-                          <span>•</span>
-                          <span>Updated: <strong className="text-foreground">{cfg.totalUpdated}</strong></span>
-                          <span>•</span>
-                          <span>Last Synced: <strong className="text-foreground">{cfg.lastSyncedAt ? new Date(cfg.lastSyncedAt).toLocaleString() : "Never"}</strong></span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1.5"
-                          disabled={syncingId === cfg.id}
-                          onClick={() => syncMutation.mutate(cfg.id)}
-                        >
-                          <RefreshCw className={`w-3.5 h-3.5 ${syncingId === cfg.id ? "animate-spin" : ""}`} />
-                          {syncingId === cfg.id ? "Syncing..." : "Sync Now"}
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-muted-foreground hover:text-destructive h-8 w-8"
-                          onClick={() => deleteConfigMutation.mutate(cfg.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               )}
             </CardContent>
