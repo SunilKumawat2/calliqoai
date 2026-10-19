@@ -508,7 +508,7 @@ export class CrmSyncService {
   /**
    * Automatically export / append newly captured inbound lead into user's active Google Sheet(s)
    */
-  static async exportLeadToGoogleSheets(userId: string, leadId: string): Promise<boolean> {
+  static async exportLeadToGoogleSheets(userId: string, leadId: string, targetSpreadsheetId?: string): Promise<boolean> {
     try {
       const [lead] = await db
         .select()
@@ -538,9 +538,19 @@ export class CrmSyncService {
       // Deduplicate active configs by unique spreadsheetId so a sheet is NEVER appended more than once
       const uniqueConfigs = Array.from(new Map(activeConfigs.map(c => [c.spreadsheetId, c])).values());
 
+      // If Admin assigned a specific destination spreadsheet for this integration, route only to that spreadsheet!
+      const targetConfigs = targetSpreadsheetId 
+        ? uniqueConfigs.filter(c => c.spreadsheetId === targetSpreadsheetId) 
+        : uniqueConfigs;
+
+      if (targetConfigs.length === 0) {
+        // Fallback to first active sheet if specific target not mapped
+        targetConfigs.push(uniqueConfigs[0]);
+      }
+
       let exportedAny = false;
 
-      for (const config of uniqueConfigs) {
+      for (const config of targetConfigs) {
         try {
           const mapping = (config.columnMapping || {}) as Record<string, string>;
           const custom = (lead.customFields || {}) as Record<string, any>;

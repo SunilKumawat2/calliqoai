@@ -3297,6 +3297,7 @@ export const leadSourceIntegrations = pgTable("lead_source_integrations", {
   sourceType: text("source_type").notNull(), // 'website_form' | 'meta_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'housing' | 'custom_webhook'
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
   agentId: varchar("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  spreadsheetId: text("spreadsheet_id"),
   webhookKey: text("webhook_key").notNull().unique(),
   apiKey: text("api_key"),
   autoCall: boolean("auto_call").notNull().default(true),

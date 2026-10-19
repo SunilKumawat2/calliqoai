@@ -304,7 +304,7 @@ export class LeadSourceService {
 
     // 4b. Auto-export newly ingested lead to connected Google Sheets (Real-time Omnichannel Sync)
     try {
-      await CrmSyncService.exportLeadToGoogleSheets(user.id, newLead.id);
+      await CrmSyncService.exportLeadToGoogleSheets(user.id, newLead.id, integration.spreadsheetId || undefined);
     } catch (sheetSyncErr: any) {
       console.warn(`[LeadSource] Google Sheet export note:`, sheetSyncErr.message);
     }
@@ -564,6 +564,7 @@ export class LeadSourceService {
     sourceType: string;
     campaignId?: string | null;
     agentId?: string | null;
+    spreadsheetId?: string | null;
     autoCall?: boolean;
     autoCallDelaySeconds?: number;
     customGreeting?: string | null;
@@ -576,6 +577,7 @@ export class LeadSourceService {
       sourceType: data.sourceType,
       campaignId: data.campaignId || null,
       agentId: data.agentId || null,
+      spreadsheetId: data.spreadsheetId || null,
       webhookKey,
       autoCall: data.autoCall ?? true,
       autoCallDelaySeconds: data.autoCallDelaySeconds ?? 15,

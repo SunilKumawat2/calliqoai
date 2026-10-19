@@ -18,7 +18,8 @@ import {
   FileSpreadsheet, Calendar, RefreshCw, CheckCircle2, AlertCircle, 
   ExternalLink, Plus, Trash2, ArrowRight, ShieldCheck, Clock, 
   Layers, Database, Zap, Sparkles, Building2, Globe, Megaphone,
-  Copy, Check, Send, Code2, PhoneCall, PhoneForwarded, Play
+  Copy, Check, Send, Code2, PhoneCall, PhoneForwarded, Play,
+  Sliders, Settings2
 } from "lucide-react";
 
 interface SheetSyncConfig {
@@ -58,6 +59,7 @@ export interface LeadSourceIntegration {
   sourceType: 'website_form' | 'meta_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'housing' | 'custom_webhook';
   campaignId: string | null;
   agentId: string | null;
+  spreadsheetId: string | null;
   webhookKey: string;
   apiKey: string | null;
   autoCall: boolean;
@@ -92,6 +94,22 @@ export function CRMIntegrationsDashboard() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
 
+  // Edit Lead Source Dialog State
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingSource, setEditingSource] = useState<{
+    id: string;
+    name: string;
+    sourceType: string;
+    campaignId: string;
+    agentId: string;
+    spreadsheetId: string;
+    autoCall: boolean;
+    autoCallDelaySeconds: number;
+    customGreeting: string;
+    propertyName: string;
+    city: string;
+  } | null>(null);
+
   // Inbound Form Simulator Dialog state
   const [simulatorDialogOpen, setSimulatorDialogOpen] = useState(false);
   const [simulatorSource, setSimulatorSource] = useState<LeadSourceIntegration | null>(null);
@@ -112,6 +130,8 @@ export function CRMIntegrationsDashboard() {
     name: "",
     sourceType: "website_form",
     campaignId: "none",
+    agentId: "none",
+    spreadsheetId: "none",
     autoCall: true,
     autoCallDelaySeconds: 15,
     customGreeting: "",
@@ -160,11 +180,28 @@ export function CRMIntegrationsDashboard() {
     queryKey: ["/api/lead-sources"],
   });
 
-  // User spreadsheets
+  // Agents list for dynamic voice routing
+  const { data: agentsList = [] } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ["/api/agents"],
+  });
+
+  // User spreadsheets from Google Drive
   const { data: sheetsList = [], isLoading: sheetsLoading } = useQuery<Array<{ id: string; name: string }>>({
     queryKey: ["/api/integrations/google/sheets"],
-    enabled: statusData?.googleSheets?.connected === true && createDialogOpen,
+    enabled: statusData?.googleSheets?.connected === true,
   });
+
+  // Combined available spreadsheets (configs + Drive sheets)
+  const availableSpreadsheets = React.useMemo(() => {
+    const map = new Map<string, string>();
+    configs.forEach(c => {
+      if (c.spreadsheetId) map.set(c.spreadsheetId, c.spreadsheetName || c.spreadsheetId);
+    });
+    sheetsList.forEach(s => {
+      if (s.id) map.set(s.id, s.name || s.id);
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [configs, sheetsList]);
 
   // Tabs for selected sheet
   const { data: tabsList = [] } = useQuery<Array<{ sheetId: number; title: string }>>({
@@ -188,7 +225,36 @@ export function CRMIntegrationsDashboard() {
   // Open Simulator modal
   const handleOpenSimulator = (source: LeadSourceIntegration) => {
     setSimulatorSource(source);
+    let initialAgentName = "Master Receptionist IVR 11labs";
+    if (source.agentId) {
+      const match = agentsList.find(a => a.id === source.agentId);
+      if (match) initialAgentName = match.name;
+    }
+    setSimulatorForm(prev => ({
+      ...prev,
+      agentName: initialAgentName,
+      project: source.portalConfig?.propertyName || prev.project,
+      city: source.portalConfig?.city || prev.city,
+    }));
     setSimulatorDialogOpen(true);
+  };
+
+  // Open Edit modal
+  const handleOpenEdit = (source: LeadSourceIntegration) => {
+    setEditingSource({
+      id: source.id,
+      name: source.name,
+      sourceType: source.sourceType,
+      campaignId: source.campaignId || "none",
+      agentId: source.agentId || "none",
+      spreadsheetId: source.spreadsheetId || "none",
+      autoCall: source.autoCall ?? true,
+      autoCallDelaySeconds: source.autoCallDelaySeconds || 15,
+      customGreeting: source.customGreeting || "",
+      propertyName: source.portalConfig?.propertyName || "",
+      city: source.portalConfig?.city || "",
+    });
+    setEditDialogOpen(true);
   };
 
   // Submit Simulator Form
@@ -360,6 +426,8 @@ export function CRMIntegrationsDashboard() {
         name: newLeadSource.name,
         sourceType: newLeadSource.sourceType,
         campaignId: newLeadSource.campaignId !== "none" ? newLeadSource.campaignId : null,
+        agentId: newLeadSource.agentId !== "none" ? newLeadSource.agentId : null,
+        spreadsheetId: newLeadSource.spreadsheetId !== "none" ? newLeadSource.spreadsheetId : null,
         autoCall: newLeadSource.autoCall,
         autoCallDelaySeconds: Number(newLeadSource.autoCallDelaySeconds) || 15,
         customGreeting: newLeadSource.customGreeting || null,
@@ -381,6 +449,8 @@ export function CRMIntegrationsDashboard() {
         name: "",
         sourceType: "website_form",
         campaignId: "none",
+        agentId: "none",
+        spreadsheetId: "none",
         autoCall: true,
         autoCallDelaySeconds: 15,
         customGreeting: "",
@@ -392,6 +462,42 @@ export function CRMIntegrationsDashboard() {
     },
     onError: (err: any) => {
       toast({ title: "Creation Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Update Existing Lead Source Mutation
+  const updateLeadSourceMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingSource) return;
+      const payload = {
+        name: editingSource.name,
+        sourceType: editingSource.sourceType,
+        campaignId: editingSource.campaignId !== "none" ? editingSource.campaignId : null,
+        agentId: editingSource.agentId !== "none" ? editingSource.agentId : null,
+        spreadsheetId: editingSource.spreadsheetId !== "none" ? editingSource.spreadsheetId : null,
+        autoCall: editingSource.autoCall,
+        autoCallDelaySeconds: Number(editingSource.autoCallDelaySeconds) || 15,
+        customGreeting: editingSource.customGreeting || null,
+        portalConfig: {
+          propertyName: editingSource.propertyName || undefined,
+          city: editingSource.city || undefined,
+        },
+      };
+      const res = await apiRequest("PATCH", `/api/lead-sources/${editingSource.id}`, payload);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Integration Updated! ⚡",
+        description: `Settings for "${data.name}" saved. Dynamic agent & sheet routing updated.`,
+      });
+      setEditDialogOpen(false);
+      setEditingSource(null);
+      refetchLeadSources();
+      queryClient.invalidateQueries({ queryKey: ["/api/lead-sources"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -457,6 +563,131 @@ export function CRMIntegrationsDashboard() {
       default:
         return `${baseUrl}/api/v1/integrations/lead-source/${source.webhookKey}`;
     }
+  };
+
+  // Helper to render a rich lead source integration card with Dynamic Agent & Google Sheet routing
+  const renderLeadSourceCard = (src: LeadSourceIntegration) => {
+    const webhookUrl = getWebhookUrl(src);
+    const campaign = campaignsList.find(c => c.id === src.campaignId);
+    const assignedAgent = agentsList.find(a => a.id === src.agentId);
+    const assignedSheet = availableSpreadsheets.find(s => s.id === src.spreadsheetId);
+
+    return (
+      <div key={src.id} className="py-4 space-y-3">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-sm text-foreground">{src.name}</span>
+            <Badge variant="outline" className="text-[10px] font-mono px-2 py-0 uppercase">
+              {src.sourceType.replace('_', ' ')}
+            </Badge>
+            {src.autoCall ? (
+              <Badge className="bg-emerald-500/10 text-emerald-600 border-0 text-[10px] gap-1 font-medium">
+                <Zap className="w-3 h-3 text-emerald-500" /> Speed-to-Lead ({src.autoCallDelaySeconds}s delay)
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                Auto-Call Paused
+              </Badge>
+            )}
+            
+            {/* Dynamic AI Agent Badge */}
+            <Badge className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 text-[10px] gap-1 font-semibold">
+              <PhoneCall className="w-3 h-3 text-purple-600" />
+              Agent: {assignedAgent ? assignedAgent.name : "Master Receptionist (Default)"}
+            </Badge>
+
+            {/* Dynamic Destination Google Sheet Badge */}
+            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] gap-1 font-semibold">
+              <FileSpreadsheet className="w-3 h-3 text-emerald-600" />
+              Sheet: {assignedSheet ? assignedSheet.name : "All Connected Sheets (Default)"}
+            </Badge>
+
+            <Badge className={src.status === 'active' ? 'bg-emerald-500/10 text-emerald-600 border-0 text-[10px]' : 'bg-amber-500/10 text-amber-600 border-0 text-[10px]'}>
+              {src.status}
+            </Badge>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs gap-1.5 border-primary/40 text-primary hover:bg-primary/10 font-medium"
+              onClick={() => handleOpenEdit(src)}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              Configure
+            </Button>
+            <Button
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm font-semibold"
+              onClick={() => handleOpenSimulator(src)}
+            >
+              <Send className="w-3.5 h-3.5" />
+              Fill Test Form
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="text-xs gap-1.5"
+              disabled={testingId === src.id}
+              onClick={() => testLeadSourceMutation.mutate(src.id)}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
+              {testingId === src.id ? "Testing..." : "Quick Test"}
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive h-8 w-8"
+              onClick={() => deleteLeadSourceMutation.mutate(src.id)}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground shrink-0 font-medium">Webhook Endpoint URL:</span>
+            <code className="bg-background px-2 py-1 rounded border text-[11px] font-mono text-foreground break-all flex-1 select-all">
+              {webhookUrl}
+            </code>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1 shrink-0"
+              onClick={() => copyToClipboard(webhookUrl, src.id)}
+            >
+              {copiedKey === src.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              Copy
+            </Button>
+          </div>
+          {src.sourceType === 'meta_ads' && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-muted-foreground shrink-0 font-medium">Verify Token:</span>
+              <code className="bg-background px-2 py-1 rounded border text-[11px] font-mono text-foreground">
+                {src.webhookKey}
+              </code>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1 shrink-0"
+                onClick={() => copyToClipboard(src.webhookKey, `${src.id}-key`)}
+              >
+                {copiedKey === `${src.id}-key` ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                Copy Key
+              </Button>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-4 text-muted-foreground text-[11px] pt-1 border-t border-border/40">
+            <span>Campaign: <strong className="text-foreground">{campaign ? campaign.name : "CRM Only"}</strong></span>
+            <span>Total Leads Captured: <strong className="text-foreground">{src.totalLeads}</strong></span>
+            <span>Speed-to-Lead Calls: <strong className="text-foreground">{src.totalCalls}</strong></span>
+            <span>Last Lead: <strong className="text-foreground">{src.lastLeadAt ? new Date(src.lastLeadAt).toLocaleString() : "Never"}</strong></span>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // Reusable Google Workspace (Sheets & Calendar) Cards and Active Mappings Section
@@ -943,77 +1174,7 @@ export function CRMIntegrationsDashboard() {
                   </div>
                 ) : (
                   <div className="divide-y divide-border/60">
-                    {leadSources.map((src) => {
-                      const webhookUrl = getWebhookUrl(src);
-                      const campaign = campaignsList.find(c => c.id === src.campaignId);
-                      return (
-                        <div key={src.id} className="py-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm text-foreground">{src.name}</span>
-                              <Badge variant="outline" className="text-[10px] font-mono px-2 py-0 uppercase">
-                                {src.sourceType.replace('_', ' ')}
-                              </Badge>
-                              {src.autoCall && (
-                                <Badge className="bg-emerald-500/10 text-emerald-600 border-0 text-[10px] gap-1">
-                                  <Zap className="w-3 h-3" /> Auto-Call Enabled
-                                </Badge>
-                              )}
-                              <Badge className={src.status === 'active' ? 'bg-emerald-500/10 text-emerald-600 border-0' : 'bg-amber-500/10 text-amber-600 border-0'}>
-                                {src.status}
-                              </Badge>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                              <span>Campaign: <strong className="text-foreground">{campaign ? campaign.name : "CRM Only"}</strong></span>
-                              <span>•</span>
-                              <span>Leads: <strong className="text-foreground">{src.totalLeads}</strong></span>
-                              <span>•</span>
-                              <span>AI Calls: <strong className="text-foreground">{src.totalCalls}</strong></span>
-                              <span>•</span>
-                              <span>Last Lead: <strong className="text-foreground">{src.lastLeadAt ? new Date(src.lastLeadAt).toLocaleString() : "Never"}</strong></span>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm font-semibold"
-                              onClick={() => handleOpenSimulator(src)}
-                            >
-                              <Send className="w-3.5 h-3.5" />
-                              Fill Test Form
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs gap-1.5"
-                              onClick={() => copyToClipboard(webhookUrl, src.id)}
-                            >
-                              {copiedKey === src.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                              Copy Webhook
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="text-xs gap-1.5"
-                              disabled={testingId === src.id}
-                              onClick={() => testLeadSourceMutation.mutate(src.id)}
-                            >
-                              <RefreshCw className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
-                              {testingId === src.id ? "Testing..." : "Quick Ping"}
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-muted-foreground hover:text-destructive h-8 w-8"
-                              onClick={() => deleteLeadSourceMutation.mutate(src.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {leadSources.map(renderLeadSourceCard)}
                   </div>
                 )}
               </CardContent>
@@ -1142,75 +1303,7 @@ export function CRMIntegrationsDashboard() {
                 </div>
               ) : (
                 <div className="divide-y divide-border/60">
-                  {realEstateSources.map((src) => {
-                    const webhookUrl = getWebhookUrl(src);
-                    const campaign = campaignsList.find(c => c.id === src.campaignId);
-                    return (
-                      <div key={src.id} className="py-4 space-y-3">
-                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-sm">{src.name}</span>
-                            <Badge className="bg-blue-500/10 text-blue-600 border-0 text-[10px] uppercase">{src.sourceType}</Badge>
-                            {src.autoCall && (
-                              <Badge className="bg-emerald-500/10 text-emerald-600 border-0 text-[10px] gap-1">
-                                <Zap className="w-3 h-3" /> Speed-to-Lead Active ({src.autoCallDelaySeconds}s delay)
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm"
-                              onClick={() => handleOpenSimulator(src)}
-                            >
-                              <Send className="w-3.5 h-3.5" /> Fill Test Form
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="text-xs gap-1.5"
-                              disabled={testingId === src.id}
-                              onClick={() => testLeadSourceMutation.mutate(src.id)}
-                            >
-                              <RefreshCw className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
-                              {testingId === src.id ? "Simulating..." : "Send Test Lead"}
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-muted-foreground hover:text-destructive h-8 w-8"
-                              onClick={() => deleteLeadSourceMutation.mutate(src.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-muted-foreground shrink-0 font-medium">Webhook Endpoint URL:</span>
-                            <code className="bg-background px-2 py-1 rounded border text-[11px] font-mono text-foreground break-all flex-1 select-all">
-                              {webhookUrl}
-                            </code>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1 shrink-0"
-                              onClick={() => copyToClipboard(webhookUrl, src.id)}
-                            >
-                              {copiedKey === src.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                              Copy
-                            </Button>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-4 text-muted-foreground text-[11px] pt-1 border-t border-border/40">
-                            <span>Campaign: <strong className="text-foreground">{campaign ? campaign.name : "CRM Only"}</strong></span>
-                            <span>Total Leads Received: <strong className="text-foreground">{src.totalLeads}</strong></span>
-                            <span>AI Calls Placed: <strong className="text-foreground">{src.totalCalls}</strong></span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {realEstateSources.map(renderLeadSourceCard)}
                 </div>
               )}
             </CardContent>
@@ -1300,90 +1393,7 @@ export function CRMIntegrationsDashboard() {
                 </div>
               ) : (
                 <div className="divide-y divide-border/60">
-                  {adSources.map((src) => {
-                    const webhookUrl = getWebhookUrl(src);
-                    const campaign = campaignsList.find(c => c.id === src.campaignId);
-                    return (
-                      <div key={src.id} className="py-4 space-y-3">
-                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-sm">{src.name}</span>
-                            <Badge className="bg-purple-500/10 text-purple-600 border-0 text-[10px] uppercase">{src.sourceType.replace('_', ' ')}</Badge>
-                            {src.autoCall && (
-                              <Badge className="bg-emerald-500/10 text-emerald-600 border-0 text-[10px] gap-1">
-                                <Zap className="w-3 h-3" /> Auto-Call Enabled
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm"
-                              onClick={() => handleOpenSimulator(src)}
-                            >
-                              <Send className="w-3.5 h-3.5" /> Fill Test Form
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="text-xs gap-1.5"
-                              disabled={testingId === src.id}
-                              onClick={() => testLeadSourceMutation.mutate(src.id)}
-                            >
-                              <RefreshCw className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
-                              {testingId === src.id ? "Simulating..." : "Send Test Lead"}
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-muted-foreground hover:text-destructive h-8 w-8"
-                              onClick={() => deleteLeadSourceMutation.mutate(src.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-muted-foreground shrink-0 font-medium">Callback URL:</span>
-                            <code className="bg-background px-2 py-1 rounded border text-[11px] font-mono text-foreground break-all flex-1 select-all">
-                              {webhookUrl}
-                            </code>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1 shrink-0"
-                              onClick={() => copyToClipboard(webhookUrl, src.id)}
-                            >
-                              {copiedKey === src.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                              Copy
-                            </Button>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-muted-foreground shrink-0 font-medium">Verify Token / Key:</span>
-                            <code className="bg-background px-2 py-1 rounded border text-[11px] font-mono text-foreground">
-                              {src.webhookKey}
-                            </code>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 text-xs gap-1 shrink-0"
-                              onClick={() => copyToClipboard(src.webhookKey, `${src.id}-key`)}
-                            >
-                              {copiedKey === `${src.id}-key` ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                              Copy Key
-                            </Button>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-4 text-muted-foreground text-[11px] pt-1 border-t border-border/40">
-                            <span>Campaign: <strong className="text-foreground">{campaign ? campaign.name : "CRM Only"}</strong></span>
-                            <span>Total Leads: <strong className="text-foreground">{src.totalLeads}</strong></span>
-                            <span>Speed-to-Lead Calls: <strong className="text-foreground">{src.totalCalls}</strong></span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {adSources.map(renderLeadSourceCard)}
                 </div>
               )}
             </CardContent>
@@ -1469,75 +1479,7 @@ export function CRMIntegrationsDashboard() {
                 </div>
               ) : (
                 <div className="divide-y divide-border/60">
-                  {webSources.map((src) => {
-                    const webhookUrl = getWebhookUrl(src);
-                    const campaign = campaignsList.find(c => c.id === src.campaignId);
-                    return (
-                      <div key={src.id} className="py-4 space-y-3">
-                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-sm">{src.name}</span>
-                            <Badge className="bg-orange-500/10 text-orange-600 border-0 text-[10px] uppercase">Website Form</Badge>
-                            {src.autoCall && (
-                              <Badge className="bg-emerald-500/10 text-emerald-600 border-0 text-[10px] gap-1">
-                                <Zap className="w-3 h-3" /> Auto-Call ({src.autoCallDelaySeconds}s delay)
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-sm"
-                              onClick={() => handleOpenSimulator(src)}
-                            >
-                              <Send className="w-3.5 h-3.5" /> Fill Test Form
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="text-xs gap-1.5"
-                              disabled={testingId === src.id}
-                              onClick={() => testLeadSourceMutation.mutate(src.id)}
-                            >
-                              <RefreshCw className={`w-3.5 h-3.5 ${testingId === src.id ? "animate-spin" : ""}`} />
-                              {testingId === src.id ? "Simulating..." : "Send Test Lead"}
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-muted-foreground hover:text-destructive h-8 w-8"
-                              onClick={() => deleteLeadSourceMutation.mutate(src.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-muted-foreground shrink-0 font-medium">Webhook URL:</span>
-                            <code className="bg-background px-2 py-1 rounded border text-[11px] font-mono text-foreground break-all flex-1 select-all">
-                              {webhookUrl}
-                            </code>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs gap-1 shrink-0"
-                              onClick={() => copyToClipboard(webhookUrl, src.id)}
-                            >
-                              {copiedKey === src.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                              Copy
-                            </Button>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-4 text-muted-foreground text-[11px] pt-1 border-t border-border/40">
-                            <span>Campaign: <strong className="text-foreground">{campaign ? campaign.name : "CRM Only"}</strong></span>
-                            <span>Leads Captured: <strong className="text-foreground">{src.totalLeads}</strong></span>
-                            <span>Calls Dispatched: <strong className="text-foreground">{src.totalCalls}</strong></span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {webSources.map(renderLeadSourceCard)}
                 </div>
               )}
             </CardContent>
@@ -1656,6 +1598,56 @@ export function CRMIntegrationsDashboard() {
               </Select>
               <p className="text-[11px] text-muted-foreground">
                 When selected, incoming leads will automatically be enqueued to this campaign.
+              </p>
+            </div>
+
+            {/* Dynamic Calling AI Agent */}
+            <div className="space-y-1.5 p-3 rounded-xl bg-purple-500/5 border border-purple-500/20">
+              <Label className="flex items-center gap-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300">
+                <PhoneCall className="w-3.5 h-3.5 text-purple-600" />
+                Assigned AI Calling Agent (Dynamic Voice Routing)
+              </Label>
+              <Select 
+                value={newLeadSource.agentId} 
+                onValueChange={(val) => setNewLeadSource({ ...newLeadSource, agentId: val })}
+              >
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Choose AI Agent to call this form's leads" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Master Receptionist IVR (Default)</SelectItem>
+                  {agentsList.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Whenever a lead submits this specific form, this AI Agent will place the outbound call.
+              </p>
+            </div>
+
+            {/* Dynamic Destination Google Spreadsheet */}
+            <div className="space-y-1.5 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+              <Label className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                Destination Google Spreadsheet (Dynamic Sync)
+              </Label>
+              <Select 
+                value={newLeadSource.spreadsheetId} 
+                onValueChange={(val) => setNewLeadSource({ ...newLeadSource, spreadsheetId: val })}
+              >
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Choose destination spreadsheet for leads" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">All Connected Spreadsheets (Default)</SelectItem>
+                  {availableSpreadsheets.map((sheet) => (
+                    <SelectItem key={sheet.id} value={sheet.id}>{sheet.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Incoming leads will automatically be appended as new rows into this Google Sheet.
               </p>
             </div>
 
@@ -2057,33 +2049,45 @@ export function CRMIntegrationsDashboard() {
               />
             </div>
 
-            <div className="space-y-1.5 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
-              <Label className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
-                <PhoneCall className="w-3.5 h-3.5" />
-                Select AI Calling Agent (Dynamic Routing)
-              </Label>
+            {/* Dynamic Calling Agent in Simulator */}
+            <div className="space-y-1.5 p-3 rounded-lg bg-purple-500/5 border border-purple-500/20">
+              <div className="flex items-center justify-between">
+                <Label className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                  <PhoneCall className="w-3.5 h-3.5" />
+                  Testing AI Calling Agent
+                </Label>
+                {simulatorSource?.agentId && (
+                  <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-500/30">
+                    Form Assigned Default
+                  </Badge>
+                )}
+              </div>
               <Select
                 value={simulatorForm.agentName}
                 onValueChange={(val) => setSimulatorForm({ ...simulatorForm, agentName: val })}
               >
-                <SelectTrigger className="h-9 text-xs">
+                <SelectTrigger className="h-9 text-xs bg-background">
                   <SelectValue placeholder="Choose Calling Agent" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Master Receptionist IVR 11labs">
-                    Master Receptionist IVR (Female Triage / Virtual Receptionist)
-                  </SelectItem>
-                  <SelectItem value=" TRI-CITY HOMES ( Outgoing Agent )">
-                    TRI-CITY HOMES (Real Estate Hindi Specialist)
-                  </SelectItem>
-                  <SelectItem value="ABC Real State">
-                    ABC Real State (Property Consultant)
-                  </SelectItem>
+                  {agentsList.length > 0 ? (
+                    agentsList.map((a) => (
+                      <SelectItem key={a.id} value={a.name}>
+                        {a.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <>
+                      <SelectItem value="Master Receptionist IVR 11labs">Master Receptionist IVR 11labs</SelectItem>
+                      <SelectItem value="TRI-CITY HOMES ( Outgoing Agent )">TRI-CITY HOMES ( Outgoing Agent )</SelectItem>
+                      <SelectItem value="ABC Real State">ABC Real State</SelectItem>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
-              <span className="text-[10px] text-muted-foreground block">
-                ⚡ The AI agent chosen here will call the buyer's phone dynamically. Nothing is hardcoded!
-              </span>
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
+                <span>Destination Sheet: <strong>{availableSpreadsheets.find(s => s.id === simulatorSource?.spreadsheetId)?.name || "All Connected Sheets (Default)"}</strong></span>
+              </div>
             </div>
 
             <DialogFooter className="pt-2">
@@ -2100,6 +2104,182 @@ export function CRMIntegrationsDashboard() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============================================================ */}
+      {/* MODAL 4: Configure / Edit Existing Lead Source Integration */}
+      {/* ============================================================ */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                <Sliders className="w-4 h-4" />
+              </span>
+              <DialogTitle>Configure Lead Source Integration</DialogTitle>
+            </div>
+            <DialogDescription>
+              Dynamically assign which AI Agent calls incoming leads and which Google Spreadsheet receives the data.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingSource && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Integration Name *</Label>
+                  <Input 
+                    value={editingSource.name}
+                    onChange={(e) => setEditingSource({ ...editingSource, name: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Source Platform</Label>
+                  <Input 
+                    disabled 
+                    value={editingSource.sourceType.toUpperCase()}
+                    className="bg-muted text-muted-foreground uppercase text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Dynamic Agent Assignment */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-purple-500/5 border border-purple-500/20">
+                <Label className="flex items-center gap-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300">
+                  <PhoneCall className="w-3.5 h-3.5 text-purple-600" />
+                  Assigned AI Calling Agent (Dynamic Voice Routing)
+                </Label>
+                <Select 
+                  value={editingSource.agentId} 
+                  onValueChange={(val) => setEditingSource({ ...editingSource, agentId: val })}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select Calling AI Agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Master Receptionist IVR (Default)</SelectItem>
+                    {agentsList.map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Whenever a prospect submits this form, this AI Agent will place the instant phone call.
+                </p>
+              </div>
+
+              {/* Dynamic Google Sheet Destination */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                <Label className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  Destination Google Spreadsheet (Dynamic Sync)
+                </Label>
+                <Select 
+                  value={editingSource.spreadsheetId} 
+                  onValueChange={(val) => setEditingSource({ ...editingSource, spreadsheetId: val })}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Select Destination Spreadsheet" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">All Connected Spreadsheets (Default)</SelectItem>
+                    {availableSpreadsheets.map((sheet) => (
+                      <SelectItem key={sheet.id} value={sheet.id}>{sheet.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Leads captured from this specific form will automatically be saved into this Google Spreadsheet.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Assign to AI Campaign (Optional)</Label>
+                <Select 
+                  value={editingSource.campaignId} 
+                  onValueChange={(val) => setEditingSource({ ...editingSource, campaignId: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose campaign" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Campaign (CRM Lead Only)</SelectItem>
+                    {campaignsList.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Speed-to-Lead Settings */}
+              <div className="space-y-3 p-3 bg-muted/40 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground">
+                      <Zap className="w-4 h-4 text-emerald-500" />
+                      Instant Speed-to-Lead AI Calling
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Automatically dial the prospect after form submission.
+                    </p>
+                  </div>
+                  <Switch 
+                    checked={editingSource.autoCall}
+                    onCheckedChange={(checked) => setEditingSource({ ...editingSource, autoCall: checked })}
+                  />
+                </div>
+
+                {editingSource.autoCall && (
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Dial Delay (Seconds)</Label>
+                      <Input 
+                        type="number"
+                        min="5"
+                        max="300"
+                        value={editingSource.autoCallDelaySeconds}
+                        onChange={(e) => setEditingSource({ ...editingSource, autoCallDelaySeconds: Number(e.target.value) })}
+                        className="h-8"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Property / Project Name</Label>
+                      <Input 
+                        placeholder="e.g. DLF Cyber Heights"
+                        value={editingSource.propertyName}
+                        onChange={(e) => setEditingSource({ ...editingSource, propertyName: e.target.value })}
+                        className="h-8"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Custom AI Prompt Context / Greeting Note</Label>
+                <Textarea 
+                  placeholder="e.g. Inquire about 3BHK high-rise apartment preferences."
+                  value={editingSource.customGreeting}
+                  onChange={(e) => setEditingSource({ ...editingSource, customGreeting: e.target.value })}
+                  rows={2}
+                  className="text-xs"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button 
+              className="bg-emerald-600 hover:bg-emerald-700 text-white" 
+              onClick={() => updateLeadSourceMutation.mutate()}
+              disabled={updateLeadSourceMutation.isPending || !editingSource?.name}
+            >
+              {updateLeadSourceMutation.isPending ? "Saving..." : "Save Configuration"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -216,7 +216,7 @@ leadSourceRouter.post('/lead-sources', async (req: Request, res: Response) => {
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    const { name, sourceType, campaignId, agentId, autoCall, autoCallDelaySeconds, customGreeting, portalConfig } = req.body;
+    const { name, sourceType, campaignId, agentId, spreadsheetId, autoCall, autoCallDelaySeconds, customGreeting, portalConfig } = req.body;
     if (!name || !sourceType) {
       return res.status(400).json({ error: 'name and sourceType are required' });
     }
@@ -226,6 +226,7 @@ leadSourceRouter.post('/lead-sources', async (req: Request, res: Response) => {
       sourceType,
       campaignId,
       agentId,
+      spreadsheetId,
       autoCall,
       autoCallDelaySeconds,
       customGreeting,
