@@ -259,11 +259,19 @@ export class CrmSyncService {
       const notes = notesIdx >= 0 ? (row[notesIdx] || '').trim() : '';
 
       try {
-        // DEDUPLICATION CHECK: Look for existing lead with this phone for this user
+        // DEDUPLICATION CHECK: Scope deduplication by campaignId when syncing a campaign sheet
+        const dedupeConditions = [
+          eq(leads.userId, userId),
+          eq(leads.phone, normalizedPhone),
+        ];
+        if (config.campaignId) {
+          dedupeConditions.push(eq(leads.campaignId, config.campaignId));
+        }
+
         const [existingLead] = await db
           .select()
           .from(leads)
-          .where(and(eq(leads.userId, userId), eq(leads.phone, normalizedPhone)))
+          .where(and(...dedupeConditions))
           .limit(1);
 
         if (existingLead) {
@@ -278,6 +286,8 @@ export class CrmSyncService {
               company: company || existingLead.company,
               googleSheetId: config.spreadsheetId,
               googleSheetRowIndex: rowNum,
+              campaignId: config.campaignId || existingLead.campaignId,
+              sourceType: config.campaignId ? 'campaign' : existingLead.sourceType,
               customFields: {
                 ...currentCustom,
                 sheetNotes: notes || currentCustom.sheetNotes,
@@ -296,7 +306,7 @@ export class CrmSyncService {
             lastName: lastName || '',
             email: email || null,
             company: company || null,
-            sourceType: 'campaign',
+            sourceType: config.campaignId ? 'campaign' : 'incoming',
             campaignId: config.campaignId || null,
             googleSheetId: config.spreadsheetId,
             googleSheetRowIndex: rowNum,

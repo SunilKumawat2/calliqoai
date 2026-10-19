@@ -1974,6 +1974,10 @@ const leads = pgTable("leads", {
   tags: text("tags").array(),
   // Assignment for team accounts
   assignedUserId: varchar("assigned_user_id").references(() => users.id, { onDelete: "set null" }),
+  // Google Sheets / External CRM Sync tracking
+  googleSheetId: text("google_sheet_id"),
+  googleSheetRowIndex: integer("google_sheet_row_index"),
+  externalLeadId: text("external_lead_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
@@ -2555,6 +2559,60 @@ const insertScheduledFollowUpSchema = createInsertSchema(scheduledFollowUps).omi
   createdAt: true,
   updatedAt: true
 });
+const googleSheetsSyncConfigs = pgTable("google_sheets_sync_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  spreadsheetId: text("spreadsheet_id").notNull(),
+  spreadsheetName: text("spreadsheet_name"),
+  sheetTabName: text("sheet_tab_name").notNull().default("Sheet1"),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+  direction: text("direction").notNull().default("both"),
+  // 'import_only' | 'export_only' | 'both'
+  columnMapping: jsonb("column_mapping").$type().notNull(),
+  autoSyncEnabled: boolean("auto_sync_enabled").notNull().default(false),
+  syncIntervalMinutes: integer("sync_interval_minutes").notNull().default(15),
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastSyncedRow: integer("last_synced_row").notNull().default(1),
+  totalImported: integer("total_imported").notNull().default(0),
+  totalUpdated: integer("total_updated").notNull().default(0),
+  status: text("status").notNull().default("active"),
+  // 'active' | 'paused' | 'error'
+  lastErrorMessage: text("last_error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+}, (table) => ({
+  googleSheetsSyncConfigsUserIdIdx: index("google_sheets_sync_configs_user_id_idx").on(table.userId)
+}));
+const insertGoogleSheetsSyncConfigSchema = createInsertSchema(googleSheetsSyncConfigs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+const crmSyncLogs = pgTable("crm_sync_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  configId: varchar("config_id").references(() => googleSheetsSyncConfigs.id, { onDelete: "set null" }),
+  source: text("source").notNull(),
+  // 'google_sheets' | 'google_calendar' | 'campaign' | 'webhook'
+  action: text("action").notNull(),
+  // 'import' | 'writeback' | 'calendar_book' | 'sync'
+  recordsProcessed: integer("records_processed").notNull().default(0),
+  recordsCreated: integer("records_created").notNull().default(0),
+  recordsUpdated: integer("records_updated").notNull().default(0),
+  recordsSkipped: integer("records_skipped").notNull().default(0),
+  status: text("status").notNull(),
+  // 'success' | 'partial' | 'failed'
+  errorDetails: jsonb("error_details").$type(),
+  summary: text("summary"),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+}, (table) => ({
+  crmSyncLogsUserIdIdx: index("crm_sync_logs_user_id_idx").on(table.userId),
+  crmSyncLogsCreatedAtIdx: index("crm_sync_logs_created_at_idx").on(table.createdAt)
+}));
+const insertCrmSyncLogSchema = createInsertSchema(crmSyncLogs).omit({
+  id: true,
+  createdAt: true
+});
 export {
   AI_CATEGORY_COLORS,
   AI_CATEGORY_LABELS,
@@ -2584,6 +2642,7 @@ export {
   creditPackages,
   creditTransactions,
   crmCategoryPreferences,
+  crmSyncLogs,
   demoSessions,
   determineAICategory,
   elevenLabsCredentials,
@@ -2598,6 +2657,7 @@ export {
   globalSettings,
   googleCalendarCredentials,
   googleSheetsCredentials,
+  googleSheetsSyncConfigs,
   incomingAgents,
   incomingConnections,
   insertAgentSchema,
@@ -2616,6 +2676,7 @@ export {
   insertCreditPackageSchema,
   insertCreditTransactionSchema,
   insertCrmCategoryPreferencesSchema,
+  insertCrmSyncLogSchema,
   insertDemoSessionSchema,
   insertElevenLabsCredentialSchema,
   insertEmailNotificationSettingsSchema,
@@ -2629,6 +2690,7 @@ export {
   insertGlobalSettingsSchema,
   insertGoogleCalendarCredentialSchema,
   insertGoogleSheetsCredentialSchema,
+  insertGoogleSheetsSyncConfigSchema,
   insertIncomingAgentSchema,
   insertIncomingConnectionSchema,
   insertInvoiceSchema,

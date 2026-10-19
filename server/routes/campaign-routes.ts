@@ -21,7 +21,7 @@ import multer from "multer";
 import { RouteContext, AuthRequest } from "./common";
 import { eq, and, sql } from "drizzle-orm";
 import { 
-  campaigns, contacts, calls, agents, phoneNumbers, incomingConnections, sipPhoneNumbers, plivoPhoneNumbers 
+  campaigns, contacts, calls, agents, phoneNumbers, incomingConnections, sipPhoneNumbers, plivoPhoneNumbers, googleSheetsSyncConfigs 
 } from "@shared/schema";
 import { ElevenLabsService } from "../services/elevenlabs";
 import { ElevenLabsPoolService } from "../services/elevenlabs-pool";
@@ -651,6 +651,49 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
       }
       console.error("Upload contacts error:", error);
       res.status(500).json({ error: "Failed to upload contacts" });
+    }
+  });
+
+  // Import contacts from connected Google Sheet into campaign
+  router.post("/api/campaigns/:campaignId/contacts/import-sheet", authenticateHybrid, async (req: AuthRequest, res: Response) => {
+    try {
+      const { configId } = req.body;
+      if (!configId) {
+        return res.status(400).json({ error: "configId is required" });
+      }
+
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign || campaign.userId !== req.userId) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const { db } = await import("../db");
+      // Link sync config to this campaign
+      await db
+        .update(googleSheetsSyncConfigs)
+        .set({ campaignId: campaign.id, updatedAt: new Date() })
+        .where(and(
+          eq(googleSheetsSyncConfigs.id, configId),
+          eq(googleSheetsSyncConfigs.userId, req.userId!)
+        ));
+
+      // Trigger sync
+      const { CrmSyncService } = await import("../services/crm-sync/crm-sync.service");
+      const result = await CrmSyncService.syncGoogleSheet(req.userId!, configId);
+
+      // Recalculate total contacts for campaign
+      const campaignContacts = await storage.getCampaignContacts(campaign.id);
+      await storage.updateCampaign(campaign.id, { totalContacts: campaignContacts.length });
+
+      res.json({
+        success: true,
+        count: campaignContacts.length,
+        inserted: result.created + result.updated,
+        ...result,
+      });
+    } catch (error: any) {
+      console.error("Import contacts from Google Sheet error:", error);
+      res.status(500).json({ error: error.message || "Failed to import contacts from Google Sheet" });
     }
   });
 

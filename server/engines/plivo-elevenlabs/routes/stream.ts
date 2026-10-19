@@ -189,6 +189,26 @@ function handleStreamConnection(ws: WebSocket, callUuid: string): void {
             sql`${plivoCalls.metadata}->>'internalId' = ${callUuid}`
           ))
           .catch(err => console.error(`[Plivo-ElevenLabs Stream] Error marking call completed:`, err?.message || err));
+
+        // Trigger CRM lead processor
+        const [updatedCall] = await db
+          .select()
+          .from(plivoCalls)
+          .where(or(
+            eq(plivoCalls.plivoCallUuid, callUuid),
+            eq(plivoCalls.id, callUuid),
+            sql`${plivoCalls.metadata}->>'internalId' = ${callUuid}`
+          ))
+          .limit(1);
+
+        if (updatedCall?.userId && updatedCall?.id) {
+          try {
+            const { CRMLeadProcessor } = await import('../../crm/lead-processor.service');
+            CRMLeadProcessor.processPlivoElevenLabsCall(updatedCall.id).catch(err => {
+              console.warn(`[Plivo-ElevenLabs Stream] CRM lead processor notice: ${err?.message || err}`);
+            });
+          } catch (_) {}
+        }
       } catch (err: any) {
         console.error(`[Plivo-ElevenLabs Stream] Error ending session:`, err.message);
       }

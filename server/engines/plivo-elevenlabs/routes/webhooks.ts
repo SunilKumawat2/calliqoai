@@ -166,6 +166,10 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
               if (internalId) {
                 metadataUpdate.internalId = internalId;
               }
+              let transcriptText: string | null = null;
+              if (result?.transcript && result.transcript.length > 0) {
+                transcriptText = result.transcript.map(t => `${t.role === 'user' ? 'User' : 'Agent'}: ${t.text}`).join('\n');
+              }
               await db
                 .update(plivoCalls)
                 .set({
@@ -174,6 +178,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
                   duration: durationSeconds > 0 ? durationSeconds : (call.duration ?? 0),
                   endedAt: new Date(),
                   ...(result?.recordingUrl ? { recordingUrl: result.recordingUrl } : {}),
+                  ...(transcriptText ? { transcript: transcriptText } : {}),
                   ...(Object.keys(metadataUpdate).length > 0 ? {
                     metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify(metadataUpdate)}::jsonb`
                   } : {}),
@@ -284,6 +289,10 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
               try {
                 const { CRMLeadProcessor } = await import('../../crm/lead-processor.service');
                 const leadPhone = call.callDirection === 'inbound' ? (call.fromNumber || '') : (call.toNumber || '');
+                let transcriptToUse = call.transcript;
+                if (!transcriptToUse && result?.transcript && result.transcript.length > 0) {
+                  transcriptToUse = result.transcript.map((t: any) => `${t.role === 'user' ? 'User' : 'Agent'}: ${t.text}`).join('\n');
+                }
                 CRMLeadProcessor.processCompletedCall({
                   id: call.id,
                   userId: call.userId,
@@ -293,6 +302,10 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
                   callDirection: (call.callDirection as 'incoming' | 'outgoing') || 'outgoing',
                   status: CallStatus,
                   duration: durationSeconds,
+                  transcript: transcriptToUse || null,
+                  aiSummary: call.aiSummary || null,
+                  sentiment: call.sentiment || null,
+                  classification: call.classification || null,
                   campaignId: call.campaignId || null,
                   engine: 'plivo-elevenlabs',
                   metadata: (call.metadata as Record<string, unknown>) || {},

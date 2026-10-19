@@ -138,7 +138,6 @@ export class CRMStorage {
   ): Promise<Lead[]> {
     const conditions = [
       eq(leads.userId, userId),
-      eq(leads.sourceType, sourceType),
     ];
 
     if (sourceType === 'campaign') {
@@ -370,15 +369,19 @@ export class CRMStorage {
       conditions.push(sql`LOWER(TRIM(${leads.phone})) != 'unknown'`);
     }
 
-    if (options.sourceType) {
-      conditions.push(eq(leads.sourceType, options.sourceType));
-      if (options.sourceId) {
-        if (options.sourceType === 'campaign') {
-          conditions.push(eq(leads.campaignId, options.sourceId));
-        } else {
-          conditions.push(eq(leads.incomingConnectionId, options.sourceId));
-        }
+    if (options.sourceId) {
+      if (options.sourceType === 'campaign') {
+        conditions.push(eq(leads.campaignId, options.sourceId));
+      } else if (options.sourceType === 'incoming') {
+        conditions.push(eq(leads.incomingConnectionId, options.sourceId));
+      } else {
+        conditions.push(or(
+          eq(leads.campaignId, options.sourceId),
+          eq(leads.incomingConnectionId, options.sourceId)
+        )!);
       }
+    } else if (options.sourceType) {
+      conditions.push(eq(leads.sourceType, options.sourceType));
     }
 
     if (options.search) {
@@ -462,15 +465,19 @@ export class CRMStorage {
       conditions.push(notInArray(leads.aiCategory, options.hiddenCategories as AILeadCategory[]));
     }
 
-    if (options?.sourceType) {
-      conditions.push(eq(leads.sourceType, options.sourceType));
-      if (options.sourceId) {
-        if (options.sourceType === 'campaign') {
-          conditions.push(eq(leads.campaignId, options.sourceId));
-        } else {
-          conditions.push(eq(leads.incomingConnectionId, options.sourceId));
-        }
+    if (options?.sourceId) {
+      if (options.sourceType === 'campaign') {
+        conditions.push(eq(leads.campaignId, options.sourceId));
+      } else if (options.sourceType === 'incoming') {
+        conditions.push(eq(leads.incomingConnectionId, options.sourceId));
+      } else {
+        conditions.push(or(
+          eq(leads.campaignId, options.sourceId),
+          eq(leads.incomingConnectionId, options.sourceId)
+        )!);
       }
+    } else if (options?.sourceType) {
+      conditions.push(eq(leads.sourceType, options.sourceType));
     }
 
     const results = await db

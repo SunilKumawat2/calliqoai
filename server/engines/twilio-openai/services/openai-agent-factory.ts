@@ -23,7 +23,7 @@ import { OPENAI_VOICES, MODEL_TIER_CONFIG } from '../types';
 import { RAGKnowledgeService } from '../../../services/rag-knowledge';
 import { db } from '../../../db';
 import { appointments, appointmentSettings, formSubmissions, agents, forms, formFields } from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { webhookDeliveryService } from '../../../services/webhook-delivery';
 import { validateWebhookUrl } from '../../../utils/url-validator';
@@ -451,6 +451,101 @@ export class OpenAIAgentFactory {
             .returning();
           
           console.log(`[Appointment Tool] Created appointment ${appointmentId}`);
+
+          // Auto-sync to Google Calendar if enabled
+          try {
+            const { isCalendarSyncEnabled, createCalendarEvent } = await import('../../../services/google-calendar/google-calendar.service');
+            const syncEnabled = await isCalendarSyncEnabled(userId);
+            if (syncEnabled) {
+              const calendarApt = {
+                id: appointmentId,
+                contactName: params.contactName as string,
+                contactPhone: params.contactPhone as string,
+                contactEmail: (params.contactEmail as string) || null,
+                appointmentDate: params.appointmentDate as string,
+                appointmentTime: params.appointmentTime as string,
+                duration: (params.duration as number) || 30,
+                serviceName: (params.serviceName as string) || 'Site Visit / Consultation',
+                notes: (params.notes as string) || 'Booked via Calliqo AI call',
+                status: 'scheduled',
+              };
+              const gEventId = await createCalendarEvent(userId, calendarApt);
+              if (gEventId) {
+                await db
+                  .update(appointments)
+                  .set({ googleCalendarEventId: gEventId, updatedAt: new Date() })
+                  .where(eq(appointments.id, appointmentId));
+                console.log(`📅 [GoogleCalendar] Auto-synced appointment ${appointmentId} → event ${gEventId}`);
+              }
+            }
+          } catch (calErr: any) {
+            console.error(`📅 [GoogleCalendar] Auto-sync error for ${appointmentId}:`, calErr.message);
+          }
+
+          // Update lead record in CRM if exists
+          try {
+            const { leads } = await import('@shared/schema');
+            const cleanPhone = (params.contactPhone as string || '').replace(/\D/g, '').slice(-10);
+            if (cleanPhone) {
+              const apptSummary = `Appointment booked for ${params.contactName || 'Customer'} on ${params.appointmentDate} at ${params.appointmentTime}.${params.serviceName ? ` Service: ${params.serviceName}.` : ''}${params.notes ? ` Requirement: ${params.notes}.` : ''}`.trim();
+              const apptDetailsObj = {
+                appointmentId,
+                date: params.appointmentDate,
+                time: params.appointmentTime,
+                serviceName: params.serviceName || 'Site Visit / Consultation',
+                notes: params.notes || null,
+                googleCalendarEventId: gEventId || null,
+              };
+
+              await db
+                .update(leads)
+                .set({
+                  hasAppointment: true,
+                  appointmentDate: new Date(`${params.appointmentDate}T${params.appointmentTime}:00`),
+                  stage: 'appointment_booked',
+                  aiCategory: 'appointment_booked',
+                  aiSummary: apptSummary,
+                  leadScore: 95,
+                  appointmentDetails: apptDetailsObj,
+                  updatedAt: new Date(),
+                })
+                .where(and(
+                  eq(leads.userId, userId),
+                  sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${cleanPhone}`
+                ));
+            }
+          } catch (leadErr: any) {
+            console.warn(`[Appointment Tool] Lead update note:`, leadErr.message);
+          }
+
+          // Auto-writeback to Google Sheets if lead is synced
+          try {
+            const { CrmSyncService } = await import('../../../services/crm-sync/crm-sync.service');
+            CrmSyncService.writebackCallOutcome({
+              userId,
+              phone: params.contactPhone as string,
+              callStatus: 'Completed',
+              leadScore: 95,
+              aiCategory: 'appointment_booked',
+              appointmentDate: `${params.appointmentDate} ${params.appointmentTime}`,
+              aiSummary: `Appointment booked for ${params.contactName} on ${params.appointmentDate} at ${params.appointmentTime}. Service: ${params.serviceName || 'Site Visit'}. Notes: ${params.notes || ''}`
+            }).catch(wErr => console.error(`[Appointment Tool] Google Sheet writeback note:`, wErr?.message));
+          } catch (_) {}
+
+          // Trigger webhook event
+          try {
+            await webhookDeliveryService.triggerEvent(userId, 'appointment.booked', {
+              appointment: {
+                id: appointmentId,
+                contactName: params.contactName,
+                contactPhone: params.contactPhone,
+                appointmentDate: params.appointmentDate,
+                appointmentTime: params.appointmentTime,
+                serviceName: params.serviceName,
+                status: 'scheduled',
+              }
+            });
+          } catch (_) {}
           
           return { 
             success: true, 
@@ -467,8 +562,19 @@ export class OpenAIAgentFactory {
       },
     };
 
+    const todayStr = new Date().toISOString().split('T')[0];
+    const appointmentPrompt = `\n\n[APPOINTMENT BOOKING TOOL INSTRUCTIONS]:
+You have the "book_appointment" function tool to schedule appointments, site visits, or meetings.
+When the customer wants to schedule a visit, consultation, or meeting:
+1. Ask for their preferred date and time. Today's date is ${todayStr}. Convert dates like 'kal', 'parson', 'tomorrow', 'Sunday' into YYYY-MM-DD. Convert time like '2 PM', 'दोपहर 2 बजे' into 24-hr HH:MM format (e.g. '14:00').
+2. Ask for their name if not known.
+3. For contactPhone, use their calling number (${callerPhone || 'their number'}) unless they explicitly specify another.
+4. CRITICAL: You MUST call the "book_appointment" tool immediately once you have the date and time. Do NOT simply say it's booked without invoking the tool.
+5. After the tool returns success, confirm the booking warmly with the customer.`;
+
     return {
       ...config,
+      systemPrompt: (config.systemPrompt || '') + appointmentPrompt,
       tools: [...(config.tools || []), appointmentTool],
     };
   }

@@ -486,6 +486,15 @@ export default function CampaignDetail() {
             <Download className="h-4 w-4 mr-2" />
             {t('campaignDetail.actions.exportCSV')}
           </Button>
+          <Button 
+            variant="default" 
+            className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+            onClick={() => setLocation(`/app/crm?campaignId=${campaign.id}`)}
+            data-testid="button-view-crm"
+          >
+            <Users className="h-4 w-4" />
+            <span>View Leads in CRM</span>
+          </Button>
         </div>
       </div>
 

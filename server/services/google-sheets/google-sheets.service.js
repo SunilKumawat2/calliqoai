@@ -242,5 +242,6 @@ export {
   getConnectionStatus,
   getGoogleCredentials,
   listSheetTabs,
-  listUserSheets
+  listUserSheets,
+  refreshAccessToken
 };

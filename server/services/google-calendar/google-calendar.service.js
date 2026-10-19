@@ -190,11 +190,67 @@ async function getCalendarConnectionStatus(userId) {
 async function disconnectGoogleCalendar(userId) {
   await db.delete(googleCalendarCredentials).where(eq(googleCalendarCredentials.userId, userId));
 }
+async function checkFreeBusySlots(userId, dateStr, slotDurationMinutes = 30) {
+  let token = await refreshCalendarToken(userId);
+  if (!token) return null;
+  const [user] = await db.select({ timezone: users.timezone }).from(users).where(eq(users.id, userId)).limit(1);
+  const timezone = user?.timezone || "Asia/Kolkata";
+  const timeMin = `${dateStr}T00:00:00Z`;
+  const timeMax = `${dateStr}T23:59:59Z`;
+  try {
+    const doQuery = (t) => fetch(`${GOOGLE_CALENDAR_API}/freeBusy`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        timeMin,
+        timeMax,
+        timeZone: timezone,
+        items: [{ id: "primary" }]
+      })
+    });
+    let resp = await doQuery(token);
+    if (resp.status === 401) {
+      const fresh = await refreshCalendarToken(userId, true);
+      if (!fresh) return null;
+      resp = await doQuery(fresh);
+    }
+    if (!resp.ok) {
+      console.error("[GoogleCalendar] FreeBusy query failed:", await resp.text());
+      return null;
+    }
+    const data = await resp.json();
+    const busyRanges = data.calendars?.primary?.busy || [];
+    const startHour = 9;
+    const endHour = 18;
+    const availableSlots = [];
+    for (let h = startHour; h < endHour; h++) {
+      for (let m = 0; m < 60; m += slotDurationMinutes) {
+        const slotTimeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        const slotStart = /* @__PURE__ */ new Date(`${dateStr}T${slotTimeStr}:00`);
+        const slotEnd = new Date(slotStart.getTime() + slotDurationMinutes * 60 * 1e3);
+        const isBusy = busyRanges.some((b) => {
+          const bStart = new Date(b.start);
+          const bEnd = new Date(b.end);
+          return slotStart < bEnd && slotEnd > bStart;
+        });
+        if (!isBusy) {
+          availableSlots.push(slotTimeStr);
+        }
+      }
+    }
+    return { slots: availableSlots, timezone };
+  } catch (err) {
+    console.error("[GoogleCalendar] FreeBusy query error:", err.message);
+    return null;
+  }
+}
 export {
+  checkFreeBusySlots,
   createCalendarEvent,
   deleteCalendarEvent,
   disconnectGoogleCalendar,
   getCalendarConnectionStatus,
   isCalendarSyncEnabled,
+  refreshCalendarToken,
   updateCalendarEvent
 };

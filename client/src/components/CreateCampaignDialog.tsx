@@ -27,7 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGr
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Loader2, Clock, Calendar, CheckCircle2, Target, RotateCcw, PhoneForwarded, MessageSquare } from "lucide-react";
+import { Upload, Loader2, Clock, Calendar, CheckCircle2, Target, RotateCcw, PhoneForwarded, MessageSquare, FileSpreadsheet } from "lucide-react";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { AuthStorage } from "@/lib/auth-storage";
 import { TimezoneEnforcementModal } from "@/components/TimezoneEnforcementModal";
@@ -132,6 +132,28 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
   const [step, setStep] = useState(1);
   const [conflictDialog, setConflictDialog] = useState<PhoneConflictState>(initialPhoneConflictState);
   const [showTimezoneModal, setShowTimezoneModal] = useState(false);
+  const [contactSource, setContactSource] = useState<'google_sheet' | 'csv'>('google_sheet');
+  const [selectedSheetConfigId, setSelectedSheetConfigId] = useState<string>('');
+
+  const { data: sheetConfigs = [], isLoading: loadingSheets } = useQuery<Array<{
+    id: string;
+    spreadsheetId: string;
+    spreadsheetName: string;
+    sheetTabName: string;
+    totalImported: number;
+    status: string;
+  }>>({
+    queryKey: ["/api/crm-sync/configs"],
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (sheetConfigs.length > 0 && !selectedSheetConfigId) {
+      setSelectedSheetConfigId(sheetConfigs[0].id);
+    }
+  }, [sheetConfigs, selectedSheetConfigId]);
+
+  const selectedSheetConfig = sheetConfigs.find(c => c.id === selectedSheetConfigId);
 
   const { data: userData } = useQuery<UserData>({
     queryKey: ["/api/auth/me"],
@@ -237,7 +259,36 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
       return res.json();
     },
     onSuccess: async (campaign) => {
-      if (csvFile) {
+      if (contactSource === 'google_sheet' && selectedSheetConfigId) {
+        try {
+          const importHeaders: Record<string, string> = { "Content-Type": "application/json" };
+          const authHeader = AuthStorage.getAuthHeader();
+          if (authHeader) {
+            importHeaders["Authorization"] = authHeader;
+          }
+
+          const res = await fetch(`/api/campaigns/${campaign.id}/contacts/import-sheet`, {
+            method: "POST",
+            headers: importHeaders,
+            body: JSON.stringify({ configId: selectedSheetConfigId }),
+          });
+
+          if (!res.ok) {
+            throw new Error("Failed to import contacts from Google Sheet");
+          }
+          const importData = await res.json();
+          toast({
+            title: "Contacts Imported",
+            description: `Successfully loaded ${importData.count || 1} contact(s) from your Google Sheet into the campaign.`,
+          });
+        } catch (error) {
+          toast({
+            title: "Google Sheet Import Warning",
+            description: "Campaign was created, but failed to pull rows from Google Sheet.",
+            variant: "destructive",
+          });
+        }
+      } else if (csvFile) {
         const formDataUpload = new FormData();
         formDataUpload.append("file", csvFile);
 
@@ -1233,58 +1284,140 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
 
               {step === 3 && (
                 <div className="space-y-4">
-                  <h3 className="font-semibold text-lg">{t("campaigns.create.step3Title")}</h3>
-
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="contacts-csv">{t("campaigns.create.uploadCSV")}</Label>
-                      <div className="border-2 border-dashed rounded-md p-8 text-center hover-elevate">
-                        <input
-                          id="contacts-csv"
-                          type="file"
-                          accept=".csv"
-                          onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-                          className="hidden"
-                          data-testid="input-csv-file"
-                        />
-                        <label htmlFor="contacts-csv" className="cursor-pointer">
-                          <Upload className="h-10 w-10 mx-auto mb-2 text-muted-foreground" />
-                          {csvFile ? (
-                            <p className="text-sm font-medium">{csvFile.name}</p>
-                          ) : (
-                            <>
-                              <p className="text-sm font-medium">{t("campaigns.create.clickToUpload")}</p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {t("campaigns.create.csvRequiredOptional")}
-                              </p>
-                            </>
-                          )}
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="bg-muted p-4 rounded-md">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm font-medium">{t("campaigns.create.csvFormatExample")}</p>
-                        <a
-                          href="/campaign_template.csv"
-                          download="campaign_template.csv"
-                          className="text-xs text-primary hover:underline"
-                          data-testid="link-download-sample-csv"
-                        >
-                          {t("campaigns.create.downloadTemplate")}
-                        </a>
-                      </div>
-                      <code className="text-xs block bg-background p-2 rounded">
-                        phone_number,first_name,last_name,contact_name,email,city,company,language<br />
-                        +12345678900,John,Smith,John Smith,john@example.com,London,Acme Inc,en<br />
-                        +48517067931,Anna,Kowalska,Anna Kowalska,anna@example.pl,Warsaw,Tech Corp,pl
-                      </code>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {t("campaigns.create.customColumnsInfo")}
-                      </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <h3 className="font-semibold text-lg">{t("campaigns.create.step3Title")}</h3>
+                    <div className="flex items-center gap-1 bg-muted p-1 rounded-lg border text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setContactSource('google_sheet')}
+                        className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                          contactSource === 'google_sheet'
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        Google Sheet
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setContactSource('csv')}
+                        className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                          contactSource === 'csv'
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        Upload CSV
+                      </button>
                     </div>
                   </div>
+
+                  {contactSource === 'google_sheet' ? (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="google-sheet-select">Select Connected Google Sheet</Label>
+                        {loadingSheets ? (
+                          <div className="p-4 border rounded-md flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading connected sheets...
+                          </div>
+                        ) : sheetConfigs.length === 0 ? (
+                          <div className="p-5 border rounded-md bg-muted/30 text-center space-y-2">
+                            <FileSpreadsheet className="w-8 h-8 mx-auto text-muted-foreground" />
+                            <p className="text-sm font-medium">No Google Sheets connected yet</p>
+                            <p className="text-xs text-muted-foreground">
+                              Connect your Google account in Settings/Tools or switch to the "Upload CSV" option.
+                            </p>
+                          </div>
+                        ) : (
+                          <Select
+                            value={selectedSheetConfigId}
+                            onValueChange={setSelectedSheetConfigId}
+                          >
+                            <SelectTrigger id="google-sheet-select" className="w-full h-11">
+                              <SelectValue placeholder="Select a Google Sheet..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {sheetConfigs.map((cfg) => (
+                                <SelectItem key={cfg.id} value={cfg.id}>
+                                  <div className="flex items-center gap-2 py-0.5">
+                                    <FileSpreadsheet className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                                    <span className="font-medium">{cfg.spreadsheetName || 'Untitled Sheet'}</span>
+                                    <span className="text-xs text-muted-foreground">({cfg.sheetTabName})</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+
+                      {selectedSheetConfig && (
+                        <div className="p-4 rounded-lg border bg-emerald-500/10 border-emerald-500/30 space-y-2">
+                          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium text-sm">
+                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                            <span>Direct 2-Way Real-Time Sync Active</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Leads will be loaded directly from <strong>{selectedSheetConfig.spreadsheetName}</strong>. 
+                            When calls finish, outcomes (Call Status, Duration, AI Summary, Lead Score, and Recording URL) will automatically write back to this sheet in real-time!
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="contacts-csv">{t("campaigns.create.uploadCSV")}</Label>
+                        <div className="border-2 border-dashed rounded-md p-8 text-center hover-elevate">
+                          <input
+                            id="contacts-csv"
+                            type="file"
+                            accept=".csv"
+                            onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                            data-testid="input-csv-file"
+                          />
+                          <label htmlFor="contacts-csv" className="cursor-pointer">
+                            <Upload className="h-10 w-10 mx-auto mb-2 text-muted-foreground" />
+                            {csvFile ? (
+                              <p className="text-sm font-medium">{csvFile.name}</p>
+                            ) : (
+                              <>
+                                <p className="text-sm font-medium">{t("campaigns.create.clickToUpload")}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {t("campaigns.create.csvRequiredOptional")}
+                                </p>
+                              </>
+                            )}
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="bg-muted p-4 rounded-md">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-medium">{t("campaigns.create.csvFormatExample")}</p>
+                          <a
+                            href="/campaign_template.csv"
+                            download="campaign_template.csv"
+                            className="text-xs text-primary hover:underline"
+                            data-testid="link-download-sample-csv"
+                          >
+                            {t("campaigns.create.downloadTemplate")}
+                          </a>
+                        </div>
+                        <code className="text-xs block bg-background p-2 rounded">
+                          phone_number,first_name,last_name,contact_name,email,city,company,language<br />
+                          +12345678900,John,Smith,John Smith,john@example.com,London,Acme Inc,en<br />
+                          +48517067931,Anna,Kowalska,Anna Kowalska,anna@example.pl,Warsaw,Tech Corp,pl
+                        </code>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {t("campaigns.create.customColumnsInfo")}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   <p className="text-sm text-muted-foreground">
                     {t("campaigns.create.skipContactsInfo")}

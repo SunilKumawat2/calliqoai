@@ -234,6 +234,32 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
                 .where(eq(calls.id, call.id))
                 .catch(() => {});
               logger.info(`Generated AI insights for call ${call.id}: sentiment=${insights.sentiment}, classification=${insights.classification}`, undefined, 'PlivoStream');
+
+              // Also ensure the CRM lead for this caller has aiSummary and score
+              if (insights.aiSummary && call.userId) {
+                const targetPhone = (call.callDirection === 'inbound' ? call.fromNumber : call.toNumber) || call.toNumber || call.fromNumber;
+                if (targetPhone) {
+                  const cleanPhone = targetPhone.replace(/\D/g, '').slice(-10);
+                  if (cleanPhone) {
+                    try {
+                      const { leads } = await import('@shared/schema');
+                      const { sql, and } = await import('drizzle-orm');
+                      await db
+                        .update(leads)
+                        .set({
+                          aiSummary: insights.aiSummary,
+                          sentiment: insights.sentiment || undefined,
+                          ...(insights.classification === 'hot' || insights.classification === 'appointment_booked' ? { leadScore: 95 } : {}),
+                          updatedAt: new Date(),
+                        })
+                        .where(and(
+                          eq(leads.userId, call.userId),
+                          sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${cleanPhone}`
+                        ));
+                    } catch (_) {}
+                  }
+                }
+              }
             }
           } catch (insightError: any) {
             logger.error(`Failed to generate call insights for ${call.id}`, insightError, 'PlivoStream');

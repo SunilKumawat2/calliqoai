@@ -24,7 +24,7 @@
  */
 
 import { db } from '../../db';
-import { leads, calls, plivoCalls, twilioOpenaiCalls, sipCalls, appointments, AI_LEAD_CATEGORIES, type AILeadCategory } from '@shared/schema';
+import { leads, calls, plivoCalls, twilioOpenaiCalls, sipCalls, appointments, googleSheetsSyncConfigs, AI_LEAD_CATEGORIES, type AILeadCategory } from '@shared/schema';
 import { CRMStorage } from '../../storage/crm-storage';
 import { eq, and, or, sql } from 'drizzle-orm';
 
@@ -317,6 +317,11 @@ export class CRMLeadProcessor {
       // Update call classification to match calculated category
       if (qualification.category) {
         await this.updateCallClassification(callData.id, callData.engine, qualification.category);
+      }
+
+      // If appointment was booked, ensure appointment is created in appointments table and synced to Google Calendar
+      if (qualification.hasAppointment || qualification.category === 'appointment_booked') {
+        await this.ensureAppointmentCreated(callData, qualification);
       }
 
       // Check if lead already exists for this call (by phone number)
@@ -700,6 +705,68 @@ export class CRMLeadProcessor {
   }
 
   /**
+   * Safety Fallback: Ensure an appointment record is created in DB and synced to Google Calendar
+   * if the call was classified as an appointment booking but no tool was invoked during the call.
+   */
+  private static async ensureAppointmentCreated(callData: CallData, qualification: LeadQualification): Promise<void> {
+    try {
+      const dbAppointment = await this.checkAppointmentInDatabase(callData);
+      if (dbAppointment) {
+        console.log(`${this.LOG_PREFIX} Appointment already exists in DB for call ${callData.id}`);
+        return;
+      }
+
+      console.log(`${this.LOG_PREFIX} Call ${callData.id} marked as appointment_booked, but no DB appointment row found. Creating via CrmSyncService fallback...`);
+      const phone = this.resolveLeadPhone(callData);
+      if (!phone || phone === 'Unknown') return;
+
+      let contactName = callData.firstName || '';
+      if (callData.lastName) contactName += ` ${callData.lastName}`;
+      contactName = contactName.trim();
+
+      if (!contactName && callData.aiSummary) {
+        const nameMatch = callData.aiSummary.match(/(?:named|customer|caller)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
+        if (nameMatch && nameMatch[1]) contactName = nameMatch[1].trim();
+      }
+      if (!contactName) contactName = 'Customer';
+
+      // Parse appointment date and time from summary / text
+      let apptDate = new Date();
+      apptDate.setDate(apptDate.getDate() + 1); // default tomorrow
+      let apptTimeStr = "14:00"; // default 2 PM
+
+      if (callData.aiSummary) {
+        try {
+          const { FollowUpSchedulerService } = await import('../../services/follow-up-scheduler.service');
+          const parsed = FollowUpSchedulerService.parseFollowUpTime(callData.aiSummary, null);
+          if (parsed && !isNaN(parsed.getTime()) && parsed.getTime() > Date.now()) {
+            apptDate = parsed;
+            const hours = String(parsed.getHours()).padStart(2, '0');
+            const mins = String(parsed.getMinutes()).padStart(2, '0');
+            if (hours !== '00') {
+              apptTimeStr = `${hours}:${mins}`;
+            }
+          }
+        } catch (_) {}
+      }
+
+      const appointmentDate = apptDate.toISOString().split('T')[0];
+      const { CrmSyncService } = await import('../../services/crm-sync/crm-sync.service');
+      const booked = await CrmSyncService.bookAppointment(callData.userId, {
+        contactName,
+        contactPhone: phone,
+        appointmentDate,
+        appointmentTime: apptTimeStr,
+        serviceName: 'Site Visit / Consultation',
+        notes: callData.aiSummary || 'Booked via Calliqo AI call',
+      });
+      console.log(`${this.LOG_PREFIX} Fallback created appointment ${booked.appointmentId} (Google Event: ${booked.googleEventId}) for ${contactName} on ${appointmentDate} at ${apptTimeStr}`);
+    } catch (err: any) {
+      console.warn(`${this.LOG_PREFIX} Error in ensureAppointmentCreated:`, err.message);
+    }
+  }
+
+  /**
    * Check if form was submitted during the call
    */
   private static checkFormSubmitted(callData: CallData, metadata: Record<string, unknown>): boolean {
@@ -805,37 +872,72 @@ export class CRMLeadProcessor {
       if (existingByCallId) return existingByCallId;
     }
 
-    // For campaign calls, scope by campaignId to prevent different campaigns from sharing leads
+    // For campaign calls, strictly scope by campaignId so each campaign owns its qualified leads
     if (callData.campaignId && hasValidPhone) {
+      const last10 = phoneNumber.replace(/\D/g, '').slice(-10);
       const [existingByCampaign] = await db
         .select()
         .from(leads)
         .where(and(
           eq(leads.userId, callData.userId),
-          eq(leads.phone, phoneNumber),
-          eq(leads.campaignId, callData.campaignId)
+          eq(leads.campaignId, callData.campaignId),
+          or(
+            eq(leads.phone, phoneNumber),
+            sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
+          )
         ))
         .limit(1);
       
       if (existingByCampaign) return existingByCampaign;
+
+      // Check if there is an unassigned campaign lead for this contact (e.g. from an import without campaignId)
+      const [unassignedCampaignLead] = await db
+        .select()
+        .from(leads)
+        .where(and(
+          eq(leads.userId, callData.userId),
+          isNull(leads.campaignId),
+          eq(leads.sourceType, 'campaign'),
+          or(
+            eq(leads.phone, phoneNumber),
+            sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
+          )
+        ))
+        .limit(1);
+
+      if (unassignedCampaignLead) {
+        await db
+          .update(leads)
+          .set({ campaignId: callData.campaignId, updatedAt: new Date() })
+          .where(eq(leads.id, unassignedCampaignLead.id));
+        return { ...unassignedCampaignLead, campaignId: callData.campaignId };
+      }
+
+      // STRICT ISOLATION: Do NOT fall back to leads from other campaigns or inbound calls!
+      // Returning null ensures a dedicated lead is created for this campaign.
+      return null;
     }
 
     // For incoming calls, scope by incomingConnectionId if available
     if (callData.incomingConnectionId && hasValidPhone) {
+      const last10 = phoneNumber.replace(/\D/g, '').slice(-10);
       const [existingByConnection] = await db
         .select()
         .from(leads)
         .where(and(
           eq(leads.userId, callData.userId),
-          eq(leads.phone, phoneNumber),
-          eq(leads.incomingConnectionId, callData.incomingConnectionId)
+          eq(leads.incomingConnectionId, callData.incomingConnectionId),
+          or(
+            eq(leads.phone, phoneNumber),
+            sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
+          )
         ))
         .limit(1);
       
       if (existingByConnection) return existingByConnection;
     }
 
-    // Fallback: Check by phone number across all sources (matching exact or last 10 digits)
+    // Fallback: Check by phone number across non-campaign leads (or leads without campaignId)
     if (hasValidPhone) {
       const last10 = phoneNumber.replace(/\D/g, '').slice(-10);
       const [existingByPhone] = await db
@@ -843,6 +945,7 @@ export class CRMLeadProcessor {
         .from(leads)
         .where(and(
           eq(leads.userId, callData.userId),
+          isNull(leads.campaignId),
           or(
             eq(leads.phone, phoneNumber),
             sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
@@ -870,16 +973,71 @@ export class CRMLeadProcessor {
     // Determine source type and IDs
     const sourceType = callData.campaignId ? 'campaign' : 'incoming';
 
+    // Enrich name/email if not provided in callData
+    let firstName = callData.firstName || null;
+    let lastName = callData.lastName || null;
+    let email = callData.email || null;
+    let company = callData.company || null;
+
+    if (!firstName && phoneNumber) {
+      const last10 = phoneNumber.replace(/\D/g, '').slice(-10);
+      try {
+        const [anyLeadWithInfo] = await db
+          .select({
+            firstName: leads.firstName,
+            lastName: leads.lastName,
+            email: leads.email,
+            company: leads.company,
+          })
+          .from(leads)
+          .where(and(
+            eq(leads.userId, callData.userId),
+            or(
+              eq(leads.phone, phoneNumber),
+              sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
+            ),
+            isNotNull(leads.firstName)
+          ))
+          .limit(1);
+
+        if (anyLeadWithInfo) {
+          firstName = anyLeadWithInfo.firstName;
+          lastName = anyLeadWithInfo.lastName;
+          email = email || anyLeadWithInfo.email;
+          company = company || anyLeadWithInfo.company;
+        }
+      } catch (_) {}
+    }
+
+    // Look up Google Sheets sync config if call is from a campaign
+    let googleSheetId: string | null = null;
+    if (callData.campaignId) {
+      try {
+        const [sheetConfig] = await db
+          .select({ spreadsheetId: googleSheetsSyncConfigs.spreadsheetId })
+          .from(googleSheetsSyncConfigs)
+          .where(and(
+            eq(googleSheetsSyncConfigs.userId, callData.userId),
+            eq(googleSheetsSyncConfigs.campaignId, callData.campaignId)
+          ))
+          .limit(1);
+        if (sheetConfig?.spreadsheetId) {
+          googleSheetId = sheetConfig.spreadsheetId;
+        }
+      } catch (_) {}
+    }
+
     const leadData = {
       userId: callData.userId,
       sourceType,
       campaignId: callData.campaignId || null,
       incomingConnectionId: callData.incomingConnectionId || null,
+      googleSheetId,
       phone: phoneNumber,
-      firstName: callData.firstName || null,
-      lastName: callData.lastName || null,
-      email: callData.email || null,
-      company: callData.company || null,
+      firstName,
+      lastName,
+      email,
+      company,
       stage: 'new',
       leadScore: qualification.score,
       aiSummary: callData.aiSummary,
@@ -958,13 +1116,13 @@ export class CRMLeadProcessor {
     }
 
     // Update flags - only set to true, never false (accumulate)
-    if (qualification.hasAppointment && !existingLead.hasAppointment) {
+    if (qualification.hasAppointment) {
       updates.hasAppointment = true;
       if (qualification.appointmentData) {
         updates.appointmentDetails = qualification.appointmentData;
       }
     }
-    if (qualification.hasFormSubmission && !existingLead.hasFormSubmission) {
+    if (qualification.hasFormSubmission) {
       updates.hasFormSubmission = true;
       if (qualification.formData) {
         updates.formData = qualification.formData;
@@ -984,6 +1142,13 @@ export class CRMLeadProcessor {
     // Update summary/sentiment if newer call has them
     if (callData.aiSummary) {
       updates.aiSummary = callData.aiSummary;
+    } else if (qualification.hasAppointment && qualification.appointmentData) {
+      const appt = qualification.appointmentData as any;
+      updates.aiSummary = `Appointment booked for ${appt.contactName || 'Customer'} on ${appt.date || ''} at ${appt.time || ''}.${appt.notes ? ` Requirement: ${appt.notes}` : ''}`;
+    }
+
+    if (qualification.score && (!existingLead.leadScore || qualification.score > existingLead.leadScore)) {
+      updates.leadScore = qualification.score;
     }
     if (callData.sentiment) {
       updates.sentiment = callData.sentiment;
@@ -1041,6 +1206,61 @@ export class CRMLeadProcessor {
       return 'Nurture lead with relevant content';
     }
     return 'Review call and determine next steps';
+  }
+
+  /**
+   * Universal processor for completed call data (used by plivo-elevenlabs)
+   */
+  static async processCompletedCall(callData: CallData): Promise<{ leadId: string | null; qualification: LeadQualification } | null> {
+    return this.processCall(callData);
+  }
+
+  /**
+   * Process a call from the Plivo-ElevenLabs engine (plivo_calls table)
+   */
+  static async processPlivoElevenLabsCall(callId: string): Promise<{ leadId: string | null; qualification: LeadQualification } | null> {
+    const [call] = await db
+      .select()
+      .from(plivoCalls)
+      .where(eq(plivoCalls.id, callId))
+      .limit(1);
+
+    if (!call || !call.userId) {
+      console.log(`${this.LOG_PREFIX} Plivo-ElevenLabs call not found or no user: ${callId}`);
+      return null;
+    }
+
+    if (call.status !== 'completed' && call.status !== 'done') {
+      console.log(`${this.LOG_PREFIX} Plivo-ElevenLabs call ${callId} not completed (status: ${call.status})`);
+      return null;
+    }
+
+    const metadata = (call.metadata as Record<string, unknown>) || {};
+    const aiInsights = metadata.aiInsights || this.parseAiSummaryAsInsights(call.aiSummary);
+
+    const callData: CallData = {
+      id: call.id,
+      userId: call.userId,
+      phoneNumber: call.fromNumber || call.toNumber || '',
+      fromNumber: call.fromNumber,
+      toNumber: call.toNumber,
+      callDirection: (call.callDirection as 'incoming' | 'outgoing') || 'outgoing',
+      status: call.status,
+      duration: call.duration,
+      transcript: call.transcript,
+      aiSummary: call.aiSummary,
+      sentiment: call.sentiment,
+      classification: call.classification,
+      wasTransferred: call.wasTransferred || false,
+      transferredTo: call.transferredTo,
+      campaignId: call.campaignId,
+      incomingConnectionId: null,
+      metadata,
+      aiInsights: aiInsights as Record<string, unknown>,
+      engine: 'plivo-elevenlabs',
+    };
+
+    return this.processCall(callData);
   }
 
   /**
@@ -1108,8 +1328,9 @@ export class CRMLeadProcessor {
       return null;
     }
 
-    // Only process completed calls
-    if (call.status !== 'completed' && call.status !== 'done') {
+    // Only process completed calls or calls that ended/have duration/transcript
+    const isFinished = call.status === 'completed' || call.status === 'done' || (call.duration && call.duration > 0) || (call.transcript && call.transcript.length > 20) || !!call.endedAt;
+    if (!isFinished) {
       console.log(`${this.LOG_PREFIX} Plivo call ${callId} not completed (status: ${call.status})`);
       return null;
     }
@@ -1158,8 +1379,9 @@ export class CRMLeadProcessor {
       return null;
     }
 
-    // Only process completed calls
-    if (call.status !== 'completed' && call.status !== 'done') {
+    // Only process completed calls or calls that ended/have duration/transcript
+    const isTwilioFinished = call.status === 'completed' || call.status === 'done' || (call.duration && call.duration > 0) || (call.transcript && call.transcript.length > 20) || !!call.endedAt;
+    if (!isTwilioFinished) {
       console.log(`${this.LOG_PREFIX} Twilio-OpenAI call ${callId} not completed (status: ${call.status})`);
       return null;
     }
@@ -1424,7 +1646,7 @@ Return ONLY the JSON object. No explanation, no markdown formatting.`;
           .update(calls)
           .set({ classification: category })
           .where(eq(calls.id, callId));
-      } else if (engine === 'plivo-openai') {
+      } else if (engine === 'plivo-openai' || engine === 'plivo-elevenlabs') {
         await db
           .update(plivoCalls)
           .set({ classification: category })

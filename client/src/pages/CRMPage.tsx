@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 import { 
   Loader2, Search, LayoutGrid, List, Users, Phone, Star, Calendar, 
   FileText, ArrowRightLeft, PhoneForwarded, Play, Pause, ChevronDown,
@@ -21,7 +22,7 @@ import {
   TrendingUp, TrendingDown, Minus, Clock, Flame, UserX, PhoneMissed,
   ClipboardCheck, UserCheck, ArrowDownUp, PhoneCall, Zap, Palette, Check,
   History, Tag, Trash2, BarChart3, Square, CheckSquare, X, Megaphone, PhoneIncoming,
-  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet
+  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet, ExternalLink, CalendarDays
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -52,12 +53,37 @@ interface Lead {
   hasFormSubmission: boolean;
   hasTransfer: boolean;
   hasCallback: boolean;
+  appointmentDate?: string | null;
+  appointmentDetails?: Record<string, any> | null;
+  customFields?: Record<string, any> | null;
   transcript: string | null;
   recordingUrl: string | null;
   tags: string[] | null;
   notesCount?: number;
+  googleSheetId?: string | null;
+  googleSheetRowIndex?: number | null;
+  externalLeadId?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+interface GoogleSheetsSyncConfig {
+  id: string;
+  userId: string;
+  campaignId?: string | null;
+  spreadsheetId: string;
+  spreadsheetName?: string | null;
+  sheetTabName?: string | null;
+  syncDirection?: string;
+  autoSync?: boolean;
+}
+
+interface LeadSheetInfo {
+  spreadsheetId: string;
+  spreadsheetName: string;
+  sheetTabName?: string;
+  rowIndex?: number | null;
+  url: string;
 }
 
 interface LeadNote {
@@ -330,12 +356,39 @@ function SentimentIcon({ sentiment }: { sentiment: string | null }) {
   return <Minus className="w-4 h-4 text-muted-foreground" />;
 }
 
-function ActivityIndicators({ lead }: { lead: Lead }) {
+function ActivityIndicators({ lead, sheetInfo }: { lead: Lead; sheetInfo?: LeadSheetInfo | null }) {
   const { t } = useTranslation();
-  const activities = [];
+  const activities: Array<{
+    icon: any;
+    color: string;
+    bg: string;
+    label: string;
+    onClick?: (e: React.MouseEvent) => void;
+  }> = [];
   
   if (lead.hasAppointment) {
-    activities.push({ icon: Calendar, color: "text-blue-500", bg: "bg-blue-100 dark:bg-blue-900/50", label: t("crmPage.appointmentBooked") });
+    activities.push({ 
+      icon: Calendar, 
+      color: "text-blue-500", 
+      bg: "bg-blue-100 dark:bg-blue-900/50 hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors cursor-pointer ring-1 ring-blue-500/30", 
+      label: "📅 Appointment Booked — Click to open Google Calendar",
+      onClick: (e) => {
+        e.stopPropagation();
+        window.open("https://calendar.google.com/calendar/r", "_blank", "noopener,noreferrer");
+      }
+    });
+  }
+  if (sheetInfo) {
+    activities.push({ 
+      icon: FileSpreadsheet, 
+      color: "text-emerald-500", 
+      bg: "bg-emerald-100 dark:bg-emerald-900/50 hover:bg-emerald-200 dark:hover:bg-emerald-800 transition-colors cursor-pointer ring-1 ring-emerald-500/30", 
+      label: `📊 Google Sheet: ${sheetInfo.spreadsheetName}${sheetInfo.rowIndex ? ` (Row ${sheetInfo.rowIndex})` : ''} — Click to open`,
+      onClick: (e) => {
+        e.stopPropagation();
+        window.open(sheetInfo.url, "_blank", "noopener,noreferrer");
+      }
+    });
   }
   if (lead.hasFormSubmission) {
     activities.push({ icon: ClipboardCheck, color: "text-purple-500", bg: "bg-purple-100 dark:bg-purple-900/50", label: t("crmPage.formSubmitted") });
@@ -356,6 +409,7 @@ function ActivityIndicators({ lead }: { lead: Lead }) {
           key={index} 
           className={`flex items-center justify-center w-6 h-6 rounded-md ${activity.bg}`}
           title={activity.label}
+          onClick={activity.onClick}
         >
           <activity.icon className={`w-3.5 h-3.5 ${activity.color}`} />
         </div>
@@ -364,12 +418,14 @@ function ActivityIndicators({ lead }: { lead: Lead }) {
   );
 }
 
-function LeadCard({ lead, onClick, stageColor, isSelected, onToggleSelect }: { 
+function LeadCard({ lead, onClick, stageColor, isSelected, onToggleSelect, campaignName, sheetInfo }: { 
   lead: Lead; 
   onClick: () => void; 
   stageColor?: string;
   isSelected?: boolean;
   onToggleSelect?: (leadId: string) => void;
+  campaignName?: string | null;
+  sheetInfo?: LeadSheetInfo | null;
 }) {
   const { t } = useTranslation();
   const hasValidPhone = lead.phone && lead.phone !== 'Unknown' && lead.phone.trim() !== '';
@@ -380,6 +436,8 @@ function LeadCard({ lead, onClick, stageColor, isSelected, onToggleSelect }: {
   const theme = getStageTheme(lead.stage, stageColor);
   
   const description = lead.aiSummary || 
+    (lead.appointmentDetails?.notes ? `Appointment: ${lead.appointmentDetails.notes}` : null) ||
+    (lead.customFields?.requirement ? `Requirement: ${lead.customFields.requirement}` : null) ||
     (lead.transcript ? (typeof lead.transcript === 'string' ? lead.transcript : JSON.stringify(lead.transcript)).slice(0, 80) + "..." : null);
 
   const timeAgo = (() => {
@@ -456,6 +514,47 @@ function LeadCard({ lead, onClick, stageColor, isSelected, onToggleSelect }: {
               )}
             </div>
 
+            {/* Campaign & Source & Google Sheet Badge */}
+            {(campaignName || lead.sourceType || sheetInfo) && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {campaignName ? (
+                  <Badge 
+                    variant="outline" 
+                    className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-primary/25 flex items-center gap-1 font-medium max-w-[190px] truncate"
+                    title={`Campaign: ${campaignName}`}
+                  >
+                    <Megaphone className="w-2.5 h-2.5 shrink-0" />
+                    <span className="truncate">{campaignName}</span>
+                  </Badge>
+                ) : lead.sourceType === 'incoming' ? (
+                  <Badge 
+                    variant="outline" 
+                    className="text-[10px] px-1.5 py-0 h-4 bg-blue-500/10 text-blue-400 border-blue-500/25 flex items-center gap-1 font-medium"
+                  >
+                    <PhoneIncoming className="w-2.5 h-2.5 shrink-0" />
+                    <span>Inbound</span>
+                  </Badge>
+                ) : null}
+
+                {sheetInfo && (
+                  <Badge 
+                    variant="outline" 
+                    className="text-[10px] px-1.5 py-0 h-4 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/20 cursor-pointer flex items-center gap-1 shrink-0 font-medium transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(sheetInfo.url, "_blank", "noopener,noreferrer");
+                    }}
+                    title={`Open ${sheetInfo.spreadsheetName} in Google Sheets${sheetInfo.rowIndex ? ` (Row ${sheetInfo.rowIndex})` : ''}`}
+                  >
+                    <FileSpreadsheet className="w-2.5 h-2.5 shrink-0 text-emerald-500" />
+                    <span className="truncate max-w-[100px]">{sheetInfo.spreadsheetName}</span>
+                    {sheetInfo.rowIndex && <span className="opacity-75 text-[9px]">#{sheetInfo.rowIndex}</span>}
+                    <ExternalLink className="w-2 h-2 shrink-0 opacity-70" />
+                  </Badge>
+                )}
+              </div>
+            )}
+
             {/* Description - AI Summary */}
             {description && (
               <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
@@ -487,7 +586,7 @@ function LeadCard({ lead, onClick, stageColor, isSelected, onToggleSelect }: {
             {/* Footer: Activity indicators and time */}
             <div className="flex items-center justify-between pt-1 border-t border-border/50">
               <div className="flex items-center gap-2">
-                <ActivityIndicators lead={lead} />
+                <ActivityIndicators lead={lead} sheetInfo={sheetInfo} />
                 {lead.sentiment && <SentimentIcon sentiment={lead.sentiment} />}
               </div>
               {timeAgo && (
@@ -501,7 +600,7 @@ function LeadCard({ lead, onClick, stageColor, isSelected, onToggleSelect }: {
   );
 }
 
-function KanbanColumn({ stage, leads, onLeadClick, onDrop, onSort, selectedLeadIds, onToggleSelect }: { 
+function KanbanColumn({ stage, leads, onLeadClick, onDrop, onSort, selectedLeadIds, onToggleSelect, campaignMap }: { 
   stage: LeadStage; 
   leads: Lead[]; 
   onLeadClick: (lead: Lead) => void;
@@ -509,6 +608,7 @@ function KanbanColumn({ stage, leads, onLeadClick, onDrop, onSort, selectedLeadI
   onSort: (stageId: string, sortBy: "score" | "date") => void;
   selectedLeadIds?: Set<string>;
   onToggleSelect?: (leadId: string) => void;
+  campaignMap?: Map<string, string>;
 }) {
   const { t } = useTranslation();
   const theme = getStageTheme(stage.name, stage.color);
@@ -591,6 +691,7 @@ function KanbanColumn({ stage, leads, onLeadClick, onDrop, onSort, selectedLeadI
                   stageColor={stage.color}
                   isSelected={selectedLeadIds?.has(lead.id)}
                   onToggleSelect={onToggleSelect}
+                  campaignName={lead.campaignId ? campaignMap?.get(lead.campaignId) : null}
                 />
               </div>
             ))}
@@ -628,7 +729,9 @@ function AIKanbanColumn({
   onDragOver,
   onDragLeave,
   onDrop,
-  onDragEnd
+  onDragEnd,
+  campaignMap,
+  getLeadSheetInfo
 }: { 
   category: { id: AICategory; label: string; color: string };
   leads: Lead[]; 
@@ -648,6 +751,8 @@ function AIKanbanColumn({
   onDragLeave?: () => void;
   onDrop?: (e: React.DragEvent) => void;
   onDragEnd?: () => void;
+  campaignMap?: Map<string, string>;
+  getLeadSheetInfo?: (lead: Lead) => LeadSheetInfo | null;
 }) {
   const { t } = useTranslation();
   const categoryInfo = AI_CATEGORIES.find(c => c.id === category.id);
@@ -774,6 +879,8 @@ function AIKanbanColumn({
                   stageColor={category.color}
                   isSelected={selectedLeadIds?.has(lead.id)}
                   onToggleSelect={onToggleSelect}
+                  campaignName={lead.campaignId ? campaignMap?.get(lead.campaignId) : null}
+                  sheetInfo={getLeadSheetInfo ? getLeadSheetInfo(lead) : null}
                 />
               </div>
             ))}
@@ -793,9 +900,17 @@ function AIKanbanColumn({
   );
 }
 
-function LeadDetailModal({ lead, open, onClose, stageColor }: { lead: Lead | null; open: boolean; onClose: () => void; stageColor?: string }) {
+function LeadDetailModal({ lead, open, onClose, stageColor, campaignName, sheetInfo }: { 
+  lead: Lead | null; 
+  open: boolean; 
+  onClose: () => void; 
+  stageColor?: string;
+  campaignName?: string | null;
+  sheetInfo?: LeadSheetInfo | null;
+}) {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const queryClientRef = useQueryClient();
   const [noteText, setNoteText] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -906,10 +1021,17 @@ function LeadDetailModal({ lead, open, onClose, stageColor }: { lead: Lead | nul
             )}
             <div>
               <p className="text-sm text-muted-foreground">{t("crmPage.source")}</p>
-              <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                {lead.sourceType === "campaign" ? <Zap className="w-3 h-3" /> : <PhoneCall className="w-3 h-3" />}
-                {lead.sourceType === "campaign" ? t("crmPage.campaigns") : t("crmPage.incoming")}
-              </Badge>
+              {campaignName ? (
+                <Badge variant="outline" className="flex items-center gap-1.5 w-fit mt-1 bg-primary/10 text-primary border-primary/30 font-medium">
+                  <Megaphone className="w-3.5 h-3.5 text-primary" />
+                  <span>{campaignName}</span>
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="flex items-center gap-1 w-fit mt-1">
+                  {lead.sourceType === "campaign" ? <Zap className="w-3 h-3" /> : <PhoneCall className="w-3 h-3" />}
+                  {lead.sourceType === "campaign" ? t("crmPage.campaigns") : t("crmPage.incoming")}
+                </Badge>
+              )}
             </div>
             <div>
               <p className="text-sm text-muted-foreground">{t("crmPage.created")}</p>
@@ -921,8 +1043,20 @@ function LeadDetailModal({ lead, open, onClose, stageColor }: { lead: Lead | nul
 
           <div className="flex flex-wrap gap-2">
             {lead.hasAppointment && (
-              <Badge className="bg-blue-500 text-white flex items-center gap-1">
+              <Badge className="bg-blue-500 text-white flex items-center gap-1 cursor-pointer hover:bg-blue-600 transition-colors" onClick={() => window.open('https://calendar.google.com/calendar/r', '_blank', 'noopener,noreferrer')}>
                 <Calendar className="w-3 h-3" /> {t("crmPage.appointmentBooked")}
+              </Badge>
+            )}
+            {sheetInfo && (
+              <Badge 
+                className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                onClick={() => window.open(sheetInfo.url, '_blank', 'noopener,noreferrer')}
+                title="Open Google Sheet in new tab"
+              >
+                <FileSpreadsheet className="w-3 h-3" />
+                <span>Google Sheet</span>
+                {sheetInfo.rowIndex && <span className="opacity-90 font-mono text-[10px]">(Row {sheetInfo.rowIndex})</span>}
+                <ExternalLink className="w-3 h-3 ml-0.5 opacity-80" />
               </Badge>
             )}
             {lead.hasFormSubmission && (
@@ -941,6 +1075,123 @@ function LeadDetailModal({ lead, open, onClose, stageColor }: { lead: Lead | nul
               </Badge>
             )}
           </div>
+
+          {/* Appointment Booked Details & Calendar Actions Card */}
+          {lead.hasAppointment && (
+            <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-500 flex items-center justify-center shrink-0">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                      <span>Appointment Booked</span>
+                      <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20 py-0">
+                        Google Calendar
+                      </Badge>
+                    </h4>
+                    {lead.appointmentDate && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {new Date(lead.appointmentDate).toLocaleString('en-IN', {
+                          dateStyle: 'full',
+                          timeStyle: 'short',
+                        })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs gap-1.5 border-blue-500/40 hover:bg-blue-500/10 text-blue-500 font-medium"
+                    onClick={() => window.open('https://calendar.google.com/calendar/r', '_blank', 'noopener,noreferrer')}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Google Calendar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => {
+                      onClose();
+                      setLocation('/app/flows/appointments');
+                    }}
+                  >
+                    View in Appointments
+                  </Button>
+                </div>
+              </div>
+
+              {(lead.appointmentDetails?.notes || lead.customFields?.requirement) && (
+                <div className="text-xs text-muted-foreground bg-background/80 p-2.5 rounded-lg border border-border/50">
+                  <span className="font-semibold text-foreground">Customer Requirement / Notes: </span>
+                  {lead.appointmentDetails?.notes || lead.customFields?.requirement}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Google Sheets Sync & Direct Sheet Link Card */}
+          {sheetInfo && (
+            <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-500 flex items-center justify-center shrink-0">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                      <span>Google Sheet Linked</span>
+                      <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 py-0">
+                        Connected
+                      </Badge>
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-foreground">{sheetInfo.spreadsheetName}</span>
+                      {sheetInfo.sheetTabName && (
+                        <span className="text-[11px] bg-muted px-1.5 py-0.5 rounded font-mono">
+                          Tab: {sheetInfo.sheetTabName}
+                        </span>
+                      )}
+                      {sheetInfo.rowIndex && (
+                        <span className="text-[11px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded font-mono font-semibold">
+                          Row #{sheetInfo.rowIndex}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs gap-1.5 border-emerald-500/40 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium"
+                    onClick={() => window.open(sheetInfo.url, '_blank', 'noopener,noreferrer')}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Open Google Sheet
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => {
+                      onClose();
+                      setLocation('/app/crm?tab=integrations');
+                    }}
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    Sync Settings
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {lead.recordingUrl && (
             <div>
@@ -1080,12 +1331,14 @@ function LeadDetailModal({ lead, open, onClose, stageColor }: { lead: Lead | nul
   );
 }
 
-function ListViewCard({ lead, onClick, stageColor, isSelected, onToggleSelect }: { 
+function ListViewCard({ lead, onClick, stageColor, isSelected, onToggleSelect, campaignName, sheetInfo }: { 
   lead: Lead; 
   onClick: () => void; 
   stageColor?: string;
   isSelected?: boolean;
   onToggleSelect?: (leadId: string) => void;
+  campaignName?: string | null;
+  sheetInfo?: LeadSheetInfo | null;
 }) {
   const { t } = useTranslation();
   // Show name if available, otherwise show phone number as the display name
@@ -1126,16 +1379,52 @@ function ListViewCard({ lead, onClick, stageColor, isSelected, onToggleSelect }:
           </Avatar>
           
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm truncate">{displayName}</h4>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="font-medium text-sm truncate">{displayName}</h4>
+              {campaignName ? (
+                <Badge 
+                  variant="outline" 
+                  className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-primary/25 flex items-center gap-1 font-medium max-w-[170px] truncate"
+                  title={`Campaign: ${campaignName}`}
+                >
+                  <Megaphone className="w-2.5 h-2.5 shrink-0" />
+                  <span className="truncate">{campaignName}</span>
+                </Badge>
+              ) : lead.sourceType === 'incoming' ? (
+                <Badge 
+                  variant="outline" 
+                  className="text-[10px] px-1.5 py-0 h-4 bg-blue-500/10 text-blue-400 border-blue-500/25 flex items-center gap-1 font-medium"
+                >
+                  <PhoneIncoming className="w-2.5 h-2.5 shrink-0" />
+                  <span>Inbound</span>
+                </Badge>
+              ) : null}
+              {sheetInfo && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0 h-4 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 cursor-pointer flex items-center gap-1 shrink-0 font-medium transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(sheetInfo.url, "_blank", "noopener,noreferrer");
+                  }}
+                  title={`Open ${sheetInfo.spreadsheetName} in Google Sheets${sheetInfo.rowIndex ? ` (Row ${sheetInfo.rowIndex})` : ''}`}
+                >
+                  <FileSpreadsheet className="w-2.5 h-2.5 shrink-0 text-emerald-500" />
+                  <span className="truncate max-w-[120px]">{sheetInfo.spreadsheetName}</span>
+                  {sheetInfo.rowIndex && <span className="opacity-75 text-[9px]">#{sheetInfo.rowIndex}</span>}
+                  <ExternalLink className="w-2 h-2 shrink-0 opacity-70" />
+                </Badge>
+              )}
+            </div>
             {/* Only show phone separately if we have a name (otherwise phone is already the display name) */}
             {fullName && hasValidPhone && (
               <p className="text-xs text-muted-foreground font-mono">{lead.phone}</p>
             )}
           </div>
 
-          <ScoreIndicator score={lead.leadScore} />
+          <ScoreIndicator score={lead.leadScore ?? (lead.hasAppointment ? 95 : null)} />
 
-          <ActivityIndicators lead={lead} />
+          <ActivityIndicators lead={lead} sheetInfo={sheetInfo} />
 
           {lead.aiCategory ? (() => {
             const cat = AI_CATEGORIES.find(c => c.id === lead.aiCategory);
@@ -1812,6 +2101,71 @@ export default function CRMPage() {
     queryKey: ["/api/campaigns"],
   });
 
+  const campaignMap = useMemo(() => {
+    const map = new Map<string, string>();
+    campaigns.forEach(c => map.set(c.id, c.name));
+    return map;
+  }, [campaigns]);
+
+  const { data: syncConfigs = [] } = useQuery<GoogleSheetsSyncConfig[]>({
+    queryKey: ["/api/crm-sync/configs"],
+  });
+
+  const campaignSheetMap = useMemo(() => {
+    const map = new Map<string, GoogleSheetsSyncConfig>();
+    syncConfigs.forEach(cfg => {
+      if (cfg.campaignId) {
+        map.set(cfg.campaignId, cfg);
+      }
+    });
+    return map;
+  }, [syncConfigs]);
+
+  const sheetConfigMap = useMemo(() => {
+    const map = new Map<string, GoogleSheetsSyncConfig>();
+    syncConfigs.forEach(cfg => {
+      if (cfg.spreadsheetId) {
+        map.set(cfg.spreadsheetId, cfg);
+      }
+    });
+    return map;
+  }, [syncConfigs]);
+
+  const getLeadSheetInfo = (lead: Lead): LeadSheetInfo | null => {
+    let spreadsheetId = lead.googleSheetId;
+    let rowIndex = lead.googleSheetRowIndex;
+    let config: GoogleSheetsSyncConfig | undefined;
+
+    if (spreadsheetId) {
+      config = sheetConfigMap.get(spreadsheetId);
+    } else if (lead.campaignId && campaignSheetMap.has(lead.campaignId)) {
+      config = campaignSheetMap.get(lead.campaignId);
+      if (config) {
+        spreadsheetId = config.spreadsheetId;
+      }
+    }
+
+    if (!spreadsheetId) return null;
+
+    return {
+      spreadsheetId,
+      spreadsheetName: config?.spreadsheetName || "Google Sheet",
+      sheetTabName: config?.sheetTabName || undefined,
+      rowIndex: rowIndex || null,
+      url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+    };
+  };
+
+  // Automatically filter by campaign if passed in URL (?campaignId=... or ?sourceId=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const campaignParam = params.get("campaignId") || params.get("sourceId");
+    if (campaignParam) {
+      setSourceFilter("campaign");
+      setSelectedSourceId(campaignParam);
+    }
+  }, []);
+
   const { data: incomingConnectionsResponse } = useQuery<{ connections: IncomingConnection[] }>({
     queryKey: ["/api/incoming-connections"],
   });
@@ -2139,44 +2493,130 @@ export default function CRMPage() {
           />
         </div>
         
-        <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setSelectedSourceId("all"); }}>
-          <SelectTrigger className="w-40 bg-background" data-testid="source-filter">
-            <SelectValue placeholder={t("crmPage.allSources")} />
+        <Select 
+          value={
+            sourceFilter === "all" ? "all" :
+            sourceFilter === "incoming" ? "incoming" :
+            selectedSourceId !== "all" ? selectedSourceId : "all_campaigns"
+          } 
+          onValueChange={(val) => {
+            if (val === "all") {
+              setSourceFilter("all");
+              setSelectedSourceId("all");
+            } else if (val === "all_campaigns") {
+              setSourceFilter("campaign");
+              setSelectedSourceId("all");
+            } else if (val === "incoming") {
+              setSourceFilter("incoming");
+              setSelectedSourceId("all");
+            } else {
+              setSourceFilter("campaign");
+              setSelectedSourceId(val);
+            }
+          }}
+        >
+          <SelectTrigger className="w-56 bg-background" data-testid="campaign-source-filter">
+            <SelectValue placeholder="All Campaigns & Sources" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">{t("crmPage.allSources")}</SelectItem>
-            <SelectItem value="campaign">{t("crmPage.campaigns")}</SelectItem>
-            <SelectItem value="incoming">{t("crmPage.incoming")}</SelectItem>
+            <SelectItem value="all">
+              <div className="flex items-center gap-2">
+                <Zap className="w-3.5 h-3.5 text-primary" />
+                <span>All Campaigns & Sources</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="all_campaigns">
+              <div className="flex items-center gap-2">
+                <Megaphone className="w-3.5 h-3.5 text-blue-500" />
+                <span>All Campaigns ({campaigns.length})</span>
+              </div>
+            </SelectItem>
+            {campaigns.length > 0 && (
+              <>
+                <Separator className="my-1" />
+                <div className="px-2 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Filter by Campaign:
+                </div>
+                {campaigns.map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    <div className="flex items-center gap-2 max-w-[200px] truncate">
+                      <Megaphone className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="truncate">{c.name}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </>
+            )}
+            <Separator className="my-1" />
+            <SelectItem value="incoming">
+              <div className="flex items-center gap-2">
+                <PhoneIncoming className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Inbound Calls Only</span>
+              </div>
+            </SelectItem>
           </SelectContent>
         </Select>
 
-        {sourceFilter === "campaign" && campaigns.length > 0 && (
-          <Select value={selectedSourceId} onValueChange={setSelectedSourceId}>
-            <SelectTrigger className="w-52 bg-background" data-testid="campaign-filter">
-              <SelectValue placeholder={t("crmPage.allCampaigns")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("crmPage.allCampaigns")}</SelectItem>
-              {campaigns.map(c => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {sourceFilter === "incoming" && incomingConnections.length > 0 && (
-          <Select value={selectedSourceId} onValueChange={setSelectedSourceId}>
-            <SelectTrigger className="w-52 bg-background" data-testid="incoming-filter">
-              <SelectValue placeholder={t("crmPage.allConnections")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("crmPage.allConnections")}</SelectItem>
-              {incomingConnections.map(c => (
-                <SelectItem key={c.id} value={c.id}>Connection {c.id.slice(0, 8)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        {/* Quick Google Sheets Toolbar Action */}
+        {selectedSourceId !== "all" && campaignSheetMap.get(selectedSourceId) ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10 text-xs gap-1.5 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-medium"
+            onClick={() => {
+              const cfg = campaignSheetMap.get(selectedSourceId);
+              if (cfg) {
+                window.open(`https://docs.google.com/spreadsheets/d/${cfg.spreadsheetId}/edit`, '_blank', 'noopener,noreferrer');
+              }
+            }}
+            title="Open this campaign's connected Google Sheet in a new tab"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
+            <span className="hidden sm:inline">Open Campaign Sheet</span>
+            <ExternalLink className="w-3 h-3 opacity-70" />
+          </Button>
+        ) : syncConfigs.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 text-xs gap-1.5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                title="Open connected Google Sheets"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="hidden md:inline">Google Sheets ({syncConfigs.length})</span>
+                <ChevronDown className="w-3 h-3 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Connected Google Sheets
+              </div>
+              {syncConfigs.map((cfg) => {
+                const campName = cfg.campaignId ? campaignMap.get(cfg.campaignId) : null;
+                return (
+                  <DropdownMenuItem
+                    key={cfg.id}
+                    onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${cfg.spreadsheetId}/edit`, '_blank', 'noopener,noreferrer')}
+                    className="flex flex-col items-start gap-0.5 cursor-pointer py-2"
+                  >
+                    <div className="flex items-center gap-1.5 w-full font-medium text-xs">
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      <span className="truncate flex-1">{cfg.spreadsheetName || 'Untitled Sheet'}</span>
+                      <ExternalLink className="w-2.5 h-2.5 opacity-60 shrink-0" />
+                    </div>
+                    {campName && (
+                      <span className="text-[10px] text-muted-foreground pl-5 truncate max-w-full">
+                        Campaign: {campName}
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
 
         {allTags.length > 0 && (
           <Select value={tagFilter} onValueChange={setTagFilter}>
@@ -2598,6 +3038,8 @@ export default function CRMPage() {
                       onDragLeave={handleColumnDragLeave}
                       onDrop={(e) => handleColumnDrop(e, cat.id)}
                       onDragEnd={handleColumnDragEnd}
+                      campaignMap={campaignMap}
+                      getLeadSheetInfo={getLeadSheetInfo}
                     />
                   );
                 })}
@@ -2628,6 +3070,8 @@ export default function CRMPage() {
                       stageColor={leadStage?.color}
                       isSelected={selectedLeadIds.has(lead.id)}
                       onToggleSelect={toggleLeadSelection}
+                      campaignName={lead.campaignId ? campaignMap.get(lead.campaignId) : null}
+                      sheetInfo={getLeadSheetInfo(lead)}
                     />
                   );
                 })}
@@ -2706,6 +3150,8 @@ export default function CRMPage() {
         open={!!selectedLead} 
         onClose={() => setSelectedLead(null)}
         stageColor={selectedLead ? stages.find(s => s.id === selectedLead.stageId)?.color : undefined}
+        campaignName={selectedLead?.campaignId ? campaignMap.get(selectedLead.campaignId) : null}
+        sheetInfo={selectedLead ? getLeadSheetInfo(selectedLead) : null}
       />
 
       <Dialog open={colorSettingsOpen} onOpenChange={setColorSettingsOpen}>
