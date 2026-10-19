@@ -2613,6 +2613,36 @@ const insertCrmSyncLogSchema = createInsertSchema(crmSyncLogs).omit({
   id: true,
   createdAt: true
 });
+const leadSourceIntegrations = pgTable("lead_source_integrations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sourceType: text("source_type").notNull(),
+  // 'website_form' | 'meta_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'housing' | 'custom_webhook'
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+  agentId: varchar("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  webhookKey: text("webhook_key").notNull().unique(),
+  apiKey: text("api_key"),
+  autoCall: boolean("auto_call").notNull().default(true),
+  autoCallDelaySeconds: integer("auto_call_delay_seconds").notNull().default(15),
+  customGreeting: text("custom_greeting"),
+  portalConfig: jsonb("portal_config").$type(),
+  totalLeads: integer("total_leads").notNull().default(0),
+  totalCalls: integer("total_calls").notNull().default(0),
+  lastLeadAt: timestamp("last_lead_at"),
+  status: text("status").notNull().default("active"),
+  // 'active' | 'paused'
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+}, (table) => ({
+  leadSourceIntegrationsUserIdIdx: index("lead_source_integrations_user_id_idx").on(table.userId),
+  leadSourceIntegrationsWebhookKeyIdx: index("lead_source_integrations_webhook_key_idx").on(table.webhookKey)
+}));
+const insertLeadSourceIntegrationSchema = createInsertSchema(leadSourceIntegrations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
 export {
   AI_CATEGORY_COLORS,
   AI_CATEGORY_LABELS,
@@ -2700,6 +2730,7 @@ export {
   insertLeadActivitySchema,
   insertLeadNoteSchema,
   insertLeadSchema,
+  insertLeadSourceIntegrationSchema,
   insertLeadStageSchema,
   insertLegacyWebhookDeliverySchema,
   insertLegacyWebhookSchema,
@@ -2747,6 +2778,7 @@ export {
   knowledgeProcessingQueue,
   leadActivities,
   leadNotes,
+  leadSourceIntegrations,
   leadStages,
   leads,
   legacyWebhookDeliveries,

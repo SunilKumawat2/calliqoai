@@ -1662,6 +1662,11 @@ When using a tool:
   const { crmSyncRouter } = await import("./routes/crm-sync-routes");
   app.use("/api/crm-sync", routeContext.authenticateHybrid as unknown as import('express').RequestHandler, crmSyncRouter);
 
+  // Lead Source Integrations (Website Forms, Meta Ads, 99acres, Magicbricks, Housing)
+  const { leadSourceRouter } = await import("./routes/lead-source-routes");
+  app.use("/api/lead-sources", routeContext.authenticateHybrid as unknown as import('express').RequestHandler);
+  app.use("/api", leadSourceRouter);
+
   // Public Platform Languages route - for i18n dynamic loading (no auth required)
   // Must be registered BEFORE publicWidgetRoutes to ensure specific path matches first
   app.use("/api/public/platform-languages", platformLanguagesPublicRouter);
