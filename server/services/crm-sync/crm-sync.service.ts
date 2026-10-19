@@ -535,9 +535,12 @@ export class CrmSyncService {
         return false;
       }
 
+      // Deduplicate active configs by unique spreadsheetId so a sheet is NEVER appended more than once
+      const uniqueConfigs = Array.from(new Map(activeConfigs.map(c => [c.spreadsheetId, c])).values());
+
       let exportedAny = false;
 
-      for (const config of activeConfigs) {
+      for (const config of uniqueConfigs) {
         try {
           const mapping = (config.columnMapping || {}) as Record<string, string>;
           const custom = (lead.customFields || {}) as Record<string, any>;
