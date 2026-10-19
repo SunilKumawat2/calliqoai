@@ -30,6 +30,7 @@ import {
 import { eq, and, desc, sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { ElevenLabsPoolService } from '../elevenlabs-pool';
+import { CrmSyncService } from '../crm-sync/crm-sync.service';
 
 export interface NormalizedLead {
   firstName: string;
@@ -299,6 +300,13 @@ export class LeadSourceService {
       });
     } catch (logErr) {
       // non-critical
+    }
+
+    // 4b. Auto-export newly ingested lead to connected Google Sheets (Real-time Omnichannel Sync)
+    try {
+      await CrmSyncService.exportLeadToGoogleSheets(user.id, newLead.id);
+    } catch (sheetSyncErr: any) {
+      console.warn(`[LeadSource] Google Sheet export note:`, sheetSyncErr.message);
     }
 
     // 5. Automated AI Outbound Calling (Speed-to-Lead)

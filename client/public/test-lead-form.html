@@ -334,7 +334,9 @@
             <strong>Lead ID:</strong> <code>${data.leadId}</code><br/>
             <strong>Buyer Name:</strong> ${name} (${phone})<br/>
             <strong>Project:</strong> ${project} (${budget})<br/>
-            <strong>Speed-to-Lead Call Status:</strong> ${data.autoCallInitiated ? '⚡ Outbound AI Call Triggered!' : 'Queued / Ready in CRM Pipeline'}<br/>
+            <strong>CRM Pipeline:</strong> Ingested into Calliqo CRM<br/>
+            <strong>Google Sheets:</strong> ✅ Auto-synced to connected Google Spreadsheet<br/>
+            <strong>Speed-to-Lead Call:</strong> ${data.autoCallInitiated ? '⚡ Outbound AI Call Triggered!' : 'Queued / Ready in CRM Pipeline'}<br/>
             <a href="/app/crm" target="_blank" style="color: #34d399; font-weight: 700; text-decoration: underline; display: inline-block; margin-top: 8px;">
               View Lead in CRM Kanban Board →
             </a>

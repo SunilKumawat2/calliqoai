@@ -506,6 +506,133 @@ export class CrmSyncService {
   }
 
   /**
+   * Automatically export / append newly captured inbound lead into user's active Google Sheet(s)
+   */
+  static async exportLeadToGoogleSheets(userId: string, leadId: string): Promise<boolean> {
+    try {
+      const [lead] = await db
+        .select()
+        .from(leads)
+        .where(and(eq(leads.id, leadId), eq(leads.userId, userId)))
+        .limit(1);
+
+      if (!lead) return false;
+
+      // Find active sync configs
+      const activeConfigs = await db
+        .select()
+        .from(googleSheetsSyncConfigs)
+        .where(and(
+          eq(googleSheetsSyncConfigs.userId, userId),
+          eq(googleSheetsSyncConfigs.status, 'active')
+        ));
+
+      if (activeConfigs.length === 0) return false;
+
+      const token = await refreshAccessToken(userId);
+      if (!token) {
+        logger.warn(`[CRM Sync] No valid Google token for user ${userId} to export lead`, undefined, 'CrmSync');
+        return false;
+      }
+
+      let exportedAny = false;
+
+      for (const config of activeConfigs) {
+        try {
+          const mapping = (config.columnMapping || {}) as Record<string, string>;
+          const custom = (lead.customFields || {}) as Record<string, any>;
+          const fullName = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || lead.firstName || '';
+
+          // Determine column bounds
+          const allLetters = Object.values(mapping).filter(Boolean);
+          let maxColIdx = 10;
+          for (const l of allLetters) {
+            const idx = this.columnLetterToIndex(l);
+            if (idx > maxColIdx) maxColIdx = idx;
+          }
+
+          const rowValues: string[] = new Array(maxColIdx + 1).fill('');
+
+          if (mapping.firstName) {
+            rowValues[this.columnLetterToIndex(mapping.firstName)] = fullName;
+          }
+          if (mapping.lastName && lead.lastName) {
+            rowValues[this.columnLetterToIndex(mapping.lastName)] = lead.lastName;
+          }
+          if (mapping.phone) {
+            rowValues[this.columnLetterToIndex(mapping.phone)] = lead.phone || '';
+          }
+          if (mapping.email) {
+            rowValues[this.columnLetterToIndex(mapping.email)] = lead.email || '';
+          }
+          if (mapping.notes) {
+            rowValues[this.columnLetterToIndex(mapping.notes)] = custom.notes || custom.project || lead.aiSummary || '';
+          }
+          if (mapping.callStatus) {
+            rowValues[this.columnLetterToIndex(mapping.callStatus)] = 'New (Inbound)';
+          }
+
+          // If standard column positions for city (col D=3), project (col E=4), budget (col F=5) are unmapped/empty
+          if (custom.city && rowValues[3] === '') rowValues[3] = custom.city;
+          if (custom.project && rowValues[4] === '') rowValues[4] = custom.project;
+          if (custom.budget && rowValues[5] === '') rowValues[5] = custom.budget;
+
+          const range = encodeURIComponent(`${config.sheetTabName}!A1`);
+          const url = `${GOOGLE_SHEETS_API}/${encodeURIComponent(config.spreadsheetId)}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ values: [rowValues] }),
+          });
+
+          if (resp.ok) {
+            const data = await resp.json() as any;
+            const updatedRange = data.updates?.updatedRange || '';
+            const matchRow = updatedRange.match(/(\d+)$/);
+            const rowIndex = matchRow ? parseInt(matchRow[1], 10) : undefined;
+
+            if (rowIndex && !lead.googleSheetId) {
+              await db
+                .update(leads)
+                .set({
+                  googleSheetId: config.spreadsheetId,
+                  googleSheetRowIndex: rowIndex,
+                  updatedAt: new Date(),
+                })
+                .where(eq(leads.id, lead.id));
+            }
+
+            await db
+              .update(googleSheetsSyncConfigs)
+              .set({
+                totalImported: sql`total_imported + 1`,
+                lastSyncedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(googleSheetsSyncConfigs.id, config.id));
+
+            exportedAny = true;
+            logger.info(`✅ [CRM Sync] Auto-exported lead ${lead.phone} to Google Sheet "${config.spreadsheetName}" row ${rowIndex}`, undefined, 'CrmSync');
+          } else {
+            console.warn(`[CRM Sync] Export to Google Sheet ${config.spreadsheetId} failed:`, await resp.text());
+          }
+        } catch (itemErr: any) {
+          console.warn(`[CRM Sync] Export to sheet error:`, itemErr.message);
+        }
+      }
+
+      return exportedAny;
+    } catch (err: any) {
+      console.error('[CRM Sync] exportLeadToGoogleSheets error:', err.message);
+      return false;
+    }
+  }
+
+  /**
    * Check real-time Google Calendar availability (Client requirement #3)
    */
   static async checkCalendarAvailability(userId: string, dateStr: string, durationMinutes = 30): Promise<{
