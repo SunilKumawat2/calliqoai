@@ -22,6 +22,7 @@ import {
   agents, 
   users, 
   plivoPhoneNumbers,
+  plivoCredentials,
   crmSyncLogs,
   type LeadSourceIntegration,
   type InsertLeadSourceIntegration
@@ -420,28 +421,34 @@ export class LeadSourceService {
       const credential = await ElevenLabsPoolService.getCredentialForAgent(agent.id);
       const elevenLabsApiKey = credential?.apiKey || process.env.ELEVENLABS_API_KEY || 'sk_5a88ed1456bd2e0890567f3a55e80a5885949a5b988ef3b8';
 
+      const [plivoCred] = await db
+        .select()
+        .from(plivoCredentials)
+        .where(eq(plivoCredentials.isActive, true))
+        .limit(1);
+
+      if (!plivoCred) {
+        console.warn('[LeadSource] No active Plivo credentials found');
+        return null;
+      }
+
       return await PlivoElevenLabsOutboundService.makeCall({
         toNumber: lead.phone,
         fromNumber: plivoPhone.phoneNumber,
         agentId: agent.elevenLabsAgentId || 'agent_2201m20fdvdket7rdh5pttn091b8',
         elevenLabsApiKey,
+        plivoAuthId: plivoCred.authId,
+        plivoAuthToken: plivoCred.authToken,
+        userId: user.id,
+        dbAgentId: agent.id,
+        campaignId: integration.campaignId || undefined,
+        contactId: lead.id,
+        plivoPhoneNumberId: plivoPhone.id,
         agentConfig: {
           agentId: agent.elevenLabsAgentId || 'agent_2201m20fdvdket7rdh5pttn091b8',
           firstMessage,
-          systemPrompt: agent.systemPrompt || '',
           language: agent.language || 'en',
-          backgroundSound: agent.backgroundSound || undefined,
-        },
-        metadata: {
-          source: integration.sourceType,
-          integrationId: integration.id,
-          isLeadCall: true,
-          leadId: lead.id,
-          leadName: lead.firstName,
-          leadEmail: lead.email,
-          campaignId: integration.campaignId,
-          agentId: agent.id,
-          userId: user.id,
+          voiceId: agent.voiceId || undefined,
         },
       });
     } else {

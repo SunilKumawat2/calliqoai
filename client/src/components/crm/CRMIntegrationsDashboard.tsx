@@ -146,7 +146,7 @@ export function CRMIntegrationsDashboard() {
   });
 
   // User spreadsheets
-  const { data: sheetsList = [] } = useQuery<Array<{ id: string; name: string }>>({
+  const { data: sheetsList = [], isLoading: sheetsLoading } = useQuery<Array<{ id: string; name: string }>>({
     queryKey: ["/api/integrations/google/sheets"],
     enabled: statusData?.googleSheets?.connected === true && createDialogOpen,
   });
