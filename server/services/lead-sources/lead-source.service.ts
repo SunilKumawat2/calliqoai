@@ -313,23 +313,64 @@ export class LeadSourceService {
     let callInitiated = false;
     let callId: string | undefined;
 
-    if (integration.autoCall) {
+    // Check if autoCall is requested: either by integration config OR dynamically via form payload
+    const dynamicAutoCall = integration.autoCall ||
+                            leadData.rawPayload?.auto_call === true || 
+                            leadData.rawPayload?.autoCall === true || 
+                            leadData.rawPayload?.trigger_call === true ||
+                            Boolean(leadData.rawPayload?.agent_id || leadData.rawPayload?.agent_name);
+
+    if (dynamicAutoCall) {
       try {
         if (user.credits < 1) {
           console.warn(`[LeadSource] User ${user.email} has insufficient credits (${user.credits}) for auto-call`);
         } else {
-          // Resolve Agent (either from campaign or direct integration setting)
+          // Dynamic Agent Resolution:
           let agentToUse: any = null;
 
-          if (integration.agentId) {
+          // 1. Dynamic Override from Form Payload (agent_id, agent_name, campaign_id)
+          const reqAgentId = leadData.rawPayload?.agent_id || leadData.rawPayload?.agentId;
+          const reqAgentName = leadData.rawPayload?.agent_name || leadData.rawPayload?.agentName || leadData.rawPayload?.agent;
+          const reqCampaignId = leadData.rawPayload?.campaign_id || leadData.rawPayload?.campaignId;
+
+          if (reqAgentId) {
+            const [ag] = await db.select().from(agents).where(and(eq(agents.userId, user.id), eq(agents.id, reqAgentId))).limit(1);
+            if (ag) agentToUse = ag;
+          }
+
+          if (!agentToUse && reqAgentName) {
+            const cleanReq = String(reqAgentName).trim().toLowerCase();
+            const userAgents = await db.select().from(agents).where(eq(agents.userId, user.id));
+            agentToUse = userAgents.find(a => 
+              a.name.toLowerCase().includes(cleanReq) || 
+              cleanReq.includes(a.name.toLowerCase())
+            ) || null;
+          }
+
+          if (!agentToUse && reqCampaignId) {
+            const [camp] = await db.select().from(campaigns).where(eq(campaigns.id, reqCampaignId)).limit(1);
+            if (camp && camp.agentId) {
+              const [ag] = await db.select().from(agents).where(eq(agents.id, camp.agentId)).limit(1);
+              if (ag) agentToUse = ag;
+            }
+          }
+
+          // 2. Integration-Level Configuration
+          if (!agentToUse && integration.agentId) {
             const [ag] = await db.select().from(agents).where(eq(agents.id, integration.agentId)).limit(1);
             agentToUse = ag;
-          } else if (integration.campaignId) {
+          } else if (!agentToUse && integration.campaignId) {
             const [camp] = await db.select().from(campaigns).where(eq(campaigns.id, integration.campaignId)).limit(1);
             if (camp && camp.agentId) {
               const [ag] = await db.select().from(agents).where(eq(agents.id, camp.agentId)).limit(1);
               agentToUse = ag;
             }
+          }
+
+          // 3. Smart Default (Master Receptionist or user's active agent)
+          if (!agentToUse) {
+            const allAgents = await db.select().from(agents).where(eq(agents.userId, user.id)).orderBy(desc(agents.createdAt));
+            agentToUse = allAgents.find(a => /master/i.test(a.name)) || allAgents[0] || null;
           }
 
           if (agentToUse) {

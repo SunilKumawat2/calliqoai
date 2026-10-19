@@ -103,6 +103,7 @@ export function CRMIntegrationsDashboard() {
     budget: "2.0 - 3.5 Cr",
     city: "Gurugram",
     query: "Interested in 3BHK high-rise apartment. Please arrange a callback.",
+    agentName: "Master Receptionist IVR 11labs",
   });
   const [isSubmittingSim, setIsSubmittingSim] = useState(false);
 
@@ -216,6 +217,8 @@ export function CRMIntegrationsDashboard() {
           city: simulatorForm.city,
           query: simulatorForm.query,
           notes: simulatorForm.query,
+          agent_name: simulatorForm.agentName,
+          auto_call: true,
         }),
       });
 
@@ -2052,6 +2055,35 @@ export function CRMIntegrationsDashboard() {
                 rows={2}
                 className="text-xs"
               />
+            </div>
+
+            <div className="space-y-1.5 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+              <Label className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                <PhoneCall className="w-3.5 h-3.5" />
+                Select AI Calling Agent (Dynamic Routing)
+              </Label>
+              <Select
+                value={simulatorForm.agentName}
+                onValueChange={(val) => setSimulatorForm({ ...simulatorForm, agentName: val })}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Choose Calling Agent" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Master Receptionist IVR 11labs">
+                    Master Receptionist IVR (Female Triage / Virtual Receptionist)
+                  </SelectItem>
+                  <SelectItem value=" TRI-CITY HOMES ( Outgoing Agent )">
+                    TRI-CITY HOMES (Real Estate Hindi Specialist)
+                  </SelectItem>
+                  <SelectItem value="ABC Real State">
+                    ABC Real State (Property Consultant)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-[10px] text-muted-foreground block">
+                ⚡ The AI agent chosen here will call the buyer's phone dynamically. Nothing is hardcoded!
+              </span>
             </div>
 
             <DialogFooter className="pt-2">

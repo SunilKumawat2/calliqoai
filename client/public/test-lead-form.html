@@ -260,6 +260,18 @@
         <textarea id="leadQuery" rows="2" placeholder="Looking for ready-to-move unit with park facing balcony...">Interested in 3BHK high-rise apartment. Please arrange a site visit this Saturday.</textarea>
       </div>
 
+      <div class="form-group" style="background: rgba(30, 41, 59, 0.5); padding: 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.08);">
+        <label style="color: #60a5fa; font-weight: 700; margin-bottom: 6px;">🤖 Select Calling AI Agent (Dynamic Routing):</label>
+        <select id="leadAgent" style="border-color: rgba(96, 165, 250, 0.4);">
+          <option value="Master Receptionist IVR 11labs" selected>Master Receptionist IVR (Female Triage / Virtual Receptionist)</option>
+          <option value="TRI-CITY HOMES ( Outgoing Agent )">TRI-CITY HOMES (Real Estate Hindi Specialist)</option>
+          <option value="ABC Real State">ABC Real State (Property Consultant)</option>
+        </select>
+        <span style="font-size: 11px; color: #94a3b8; display: block; margin-top: 5px;">
+          ⚡ <strong>Dynamic Routing:</strong> Choose which AI agent initiates the callback. Nothing is hardcoded!
+        </span>
+      </div>
+
       <button type="submit" class="submit-btn" id="submitBtn">
         <span>🚀 Submit Enquiry & Trigger Speed-to-Lead AI Call</span>
       </button>
@@ -305,6 +317,7 @@
 
       try {
         const targetUrl = webhookInput.value.trim();
+        const agent = document.getElementById('leadAgent').value;
         const payload = {
           name,
           mobile: phone,
@@ -316,6 +329,8 @@
           budget,
           query,
           notes: query,
+          agent_name: agent,
+          auto_call: true,
         };
 
         const res = await fetch(targetUrl, {
@@ -329,11 +344,12 @@
         resultCard.style.display = 'block';
         if (res.ok && data.success) {
           resultCard.className = 'result-card';
-          resultTitle.innerHTML = '🎉 Lead Ingested into CRM Successfully!';
+          resultTitle.innerHTML = '🎉 Lead Ingested & AI Call Initiated!';
           resultDesc.innerHTML = `
             <strong>Lead ID:</strong> <code>${data.leadId}</code><br/>
             <strong>Buyer Name:</strong> ${name} (${phone})<br/>
             <strong>Project:</strong> ${project} (${budget})<br/>
+            <strong>Assigned AI Agent:</strong> 🤖 ${agent}<br/>
             <strong>CRM Pipeline:</strong> Ingested into Calliqo CRM<br/>
             <strong>Google Sheets:</strong> ✅ Auto-synced to connected Google Spreadsheet<br/>
             <strong>Speed-to-Lead Call:</strong> ${data.autoCallInitiated ? '⚡ Outbound AI Call Triggered!' : 'Queued / Ready in CRM Pipeline'}<br/>
