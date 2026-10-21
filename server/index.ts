@@ -41,6 +41,7 @@ import { preloadJwtExpiry } from "./middleware/auth";
 import { cleanupStaleMaintenanceFlag } from "./services/system-update-service";
 import { storage } from "./storage";
 import { initializeMigrationEngine } from "./engines/elevenlabs-migration";
+import { startGoogleCalendarAutoSyncWorker } from "./services/google-calendar/google-calendar-sync-worker";
 import { correlationIdMiddleware } from "./middleware/correlation-id";
 import { emailService } from "./services/email-service";
 import { initializeDirectories } from "./utils/init-directories";
@@ -660,6 +661,9 @@ app.use((req, res, next) => {
       // Start resource watchdog for auto-restart monitoring
       startWatchdog();
       
+      // Start Google Calendar auto-sync background worker (polls every 30s)
+      startGoogleCalendarAutoSyncWorker();
+
       // Start webhook retry service for failed payment webhooks
       webhookRetryService.start();
       

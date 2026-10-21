@@ -1,6 +1,6 @@
 import { db } from "../../db";
 import { googleCalendarCredentials, appointmentSettings, users, appointments, notifications } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { getGoogleCredentials } from "../google-sheets/google-sheets.service";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -370,9 +370,32 @@ export async function syncGoogleCalendarEvents(userId: string): Promise<{
     return { synced: false, imported: 0, updated: 0, total: 0, error: "Google Calendar is not connected. Please connect Google Calendar first." };
   }
 
-  // Look for events from 14 days ago to 90 days in the future
-  const timeMin = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-  const timeMax = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+  // 1. Purge any past appointments or birthday/holiday events mistakenly imported earlier
+  try {
+    await db.execute(sql`
+      DELETE FROM appointments 
+      WHERE user_id = ${userId}
+      AND (
+        google_calendar_event_id IS NOT NULL 
+        OR notes ILIKE '%birthday%'
+        OR contact_name ILIKE '%birthday%'
+        OR service_name ILIKE '%birthday%'
+      )
+      AND (
+        appointment_date < CURRENT_DATE
+        OR contact_name ILIKE '%birthday%'
+        OR notes ILIKE '%birthday%'
+        OR service_name ILIKE '%birthday%'
+      )
+    `);
+  } catch (_) {}
+
+  // 2. STRICTLY UPCOMING EVENTS ONLY: start from today 00:00:00 onwards
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const timeMin = today.toISOString();
+  const timeMax = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
+  const todayDateStr = today.toISOString().split("T")[0];
 
   const doFetch = (t: string) =>
     fetch(
@@ -405,9 +428,20 @@ export async function syncGoogleCalendarEvents(userId: string): Promise<{
     for (const item of items) {
       if (item.status === "cancelled") continue;
 
-      const eventId = item.id;
       const summary = (item.summary || "").trim();
       const description = (item.description || "").trim();
+      const summaryLower = summary.toLowerCase();
+
+      // Skip non-business personal events (birthdays, holidays, anniversaries, personal reminders)
+      if (
+        item.eventType === "birthday" ||
+        summaryLower.includes("birthday") ||
+        summaryLower.includes("anniversary") ||
+        summaryLower.includes("holiday") ||
+        summaryLower.includes("reminder")
+      ) {
+        continue;
+      }
 
       // Determine date and time
       const startDateTimeStr = item.start?.dateTime || item.start?.date || "";
@@ -423,6 +457,13 @@ export async function syncGoogleCalendarEvents(userId: string): Promise<{
       } else {
         appointmentDate = startDateTimeStr; // "YYYY-MM-DD"
       }
+
+      // STRICT CHECK: Skip any past dates
+      if (appointmentDate < todayDateStr) {
+        continue;
+      }
+
+      const eventId = item.id;
 
       // Extract client name
       let contactName = "";

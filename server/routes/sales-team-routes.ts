@@ -24,6 +24,8 @@ function getUserId(req: Request): string | null {
   return (req as any).user?.id || (req as any).userId || null;
 }
 
+const userLastSyncMap = new Map<string, number>();
+
 // ── 1. GET /api/sales-team (List All Sales Staff) ─────────────
 salesTeamRouter.get('/', async (req: Request, res: Response) => {
   const userId = getUserId(req);
@@ -136,6 +138,15 @@ salesTeamRouter.delete('/:id', async (req: Request, res: Response) => {
 salesTeamRouter.get('/site-visits/all', async (req: Request, res: Response) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  // Auto-sync Google Calendar in background (debounced every 20s)
+  const lastSync = userLastSyncMap.get(userId) || 0;
+  if (Date.now() - lastSync > 20000) {
+    userLastSyncMap.set(userId, Date.now());
+    import('../services/google-calendar/google-calendar.service')
+      .then(({ syncGoogleCalendarEvents }) => syncGoogleCalendarEvents(userId))
+      .catch(() => {});
+  }
 
   try {
     const visits = await db

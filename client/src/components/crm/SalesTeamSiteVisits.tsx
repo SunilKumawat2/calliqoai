@@ -497,10 +497,15 @@ export function SalesTeamSiteVisits() {
             size="sm"
             onClick={() => syncCalendarMutation.mutate()}
             disabled={syncCalendarMutation.isPending}
+            title="Google Calendar auto-syncs in background every 30s. Click to force check now."
             className="h-8 gap-1.5 text-xs border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium shadow-sm"
           >
+            <span className="relative flex h-2 w-2 mr-0.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
             <CalendarDays className={`w-3.5 h-3.5 text-indigo-600 ${syncCalendarMutation.isPending ? "animate-spin" : ""}`} />
-            {syncCalendarMutation.isPending ? "Syncing..." : "Sync Google Calendar"}
+            {syncCalendarMutation.isPending ? "Syncing..." : "Google Calendar (Auto-Syncing)"}
           </Button>
 
           <Button
