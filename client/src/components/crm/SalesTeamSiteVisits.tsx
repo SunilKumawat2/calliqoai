@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 export interface SalesStaff {
   id: string;
@@ -114,12 +115,7 @@ export function SalesTeamSiteVisits() {
         .split(",")
         .map((p) => p.trim())
         .filter(Boolean);
-      const res = await fetch("/api/sales-team", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, assignedProjects: projects }),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      const res = await apiRequest("POST", "/api/sales-team", { ...data, assignedProjects: projects });
       return res.json();
     },
     onSuccess: () => {
@@ -135,12 +131,7 @@ export function SalesTeamSiteVisits() {
 
   const updateStaffMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<SalesStaff> }) => {
-      const res = await fetch(`/api/sales-team/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      const res = await apiRequest("PUT", `/api/sales-team/${id}`, data);
       return res.json();
     },
     onSuccess: () => {
@@ -156,8 +147,7 @@ export function SalesTeamSiteVisits() {
 
   const deleteStaffMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/sales-team/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
+      const res = await apiRequest("DELETE", `/api/sales-team/${id}`);
       return res.json();
     },
     onSuccess: () => {
@@ -177,12 +167,7 @@ export function SalesTeamSiteVisits() {
       staffId: string;
       notes?: string;
     }) => {
-      const res = await fetch(`/api/sales-team/site-visits/${visitId}/assign`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staffId, notes }),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/assign`, { staffId, notes });
       return res.json();
     },
     onSuccess: (updatedAppointment) => {
@@ -222,12 +207,7 @@ export function SalesTeamSiteVisits() {
   // Manual Site Visit Creation Mutation
   const createVisitMutation = useMutation({
     mutationFn: async (data: typeof createVisitForm) => {
-      const res = await fetch("/api/sales-team/site-visits", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      const res = await apiRequest("POST", "/api/sales-team/site-visits", data);
       return res.json();
     },
     onSuccess: (newVisit) => {
@@ -264,12 +244,7 @@ export function SalesTeamSiteVisits() {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ visitId, status }: { visitId: string; status: string }) => {
-      const res = await fetch(`/api/sales-team/site-visits/${visitId}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/status`, { status });
       return res.json();
     },
     onSuccess: () => {
