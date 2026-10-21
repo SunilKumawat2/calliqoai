@@ -17,7 +17,7 @@
  */
 import { Request, Response } from 'express';
 import { db } from '../db';
-import { calls, campaigns, users, creditTransactions, contacts, globalSettings, phoneNumbers, incomingAgents, incomingConnections, agents, knowledgeBase, appointments, appointmentSettings, flows, sipCalls, sipPhoneNumbers, elevenLabsCredentials } from '../../shared/schema';
+import { calls, campaigns, users, creditTransactions, contacts, globalSettings, phoneNumbers, incomingAgents, incomingConnections, agents, knowledgeBase, appointments, appointmentSettings, flows, sipCalls, sipPhoneNumbers, elevenLabsCredentials, plivoCalls } from '../../shared/schema';
 import { nanoid } from 'nanoid';
 import { eq, and, or, inArray, isNull, sql } from 'drizzle-orm';
 import WebSocket from 'ws';
@@ -2333,7 +2333,7 @@ export async function handleElevenLabsWebhook(req: Request, res: Response) {
         analysis,
         metadata,
         status,
-        callDurationSecs: metadata?.call_duration_secs || callDuration,
+        callDurationSecs: metadata?.call_duration_secs || metadata?.duration_seconds || metadata?.phone_call?.duration_seconds || 0,
         customerPhone: customerPhone || undefined,
       });
 
@@ -2356,6 +2356,15 @@ export async function handleElevenLabsWebhook(req: Request, res: Response) {
         .where(eq(plivoCalls.id, plivoCallRecord.id));
 
       console.log(`✅ [ElevenLabs Webhook] Updated plivo_calls row ${plivoCallRecord.id} with analysis & AI summary`);
+
+      // Trigger CRM Lead Processor & Google Sheet writeback for Plivo-ElevenLabs
+      try {
+        const { CRMLeadProcessor } = await import('../engines/crm/lead-processor.service');
+        CRMLeadProcessor.processPlivoElevenLabsCall(plivoCallRecord.id).catch(err => {
+          console.warn(`[ElevenLabs Webhook] CRM lead processor notice: ${err?.message || err}`);
+        });
+      } catch (_) {}
+
       return res.sendStatus(200);
     }
     

@@ -99,6 +99,7 @@ export class PlivoCallService {
     agentId?: string;
     plivoPhoneNumberId?: string;
     flowId?: string; // Override flowId for test calls (uses agent.flowId if not provided)
+    metadata?: Record<string, any>;
     agentConfig: {
       voice: OpenAIVoice;
       model: OpenAIRealtimeModel;
@@ -195,6 +196,7 @@ export class PlivoCallService {
           firstMessage: params.agentConfig.firstMessage,
           tools: serializedTools,
           plivoCredentialId: credential.id,
+          ...(params.metadata || {}),
         },
       } as InsertPlivoCall)
       .returning();
@@ -899,6 +901,53 @@ export class PlivoCallService {
       })
       .where(eq(plivoCalls.id, callId))
       .returning();
+
+    if (updatedCall?.userId) {
+      const prospectPhone = (updatedCall.callDirection === 'outbound' || updatedCall.callDirection === 'outgoing')
+        ? updatedCall.toNumber
+        : updatedCall.fromNumber;
+      if (prospectPhone) {
+        // Also update lead's recordingUrl in DB
+        const leadId = (updatedCall.metadata as any)?.leadId;
+        if (leadId) {
+          try {
+            const { leads } = await import('@shared/schema');
+            await db
+              .update(leads)
+              .set({ recordingUrl, updatedAt: new Date() })
+              .where(eq(leads.id, leadId));
+          } catch (_) {}
+        } else {
+          const cleanPhone = prospectPhone.replace(/\D/g, '').slice(-10);
+          if (cleanPhone) {
+            try {
+              const { leads } = await import('@shared/schema');
+              const { sql, and } = await import('drizzle-orm');
+              await db
+                .update(leads)
+                .set({ recordingUrl, updatedAt: new Date() })
+                .where(and(
+                  eq(leads.userId, updatedCall.userId),
+                  sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${cleanPhone}`
+                ));
+            } catch (_) {}
+          }
+        }
+
+        // Trigger Google Sheets writeback for recording URL
+        try {
+          const { CrmSyncService } = await import('../../../services/crm-sync/crm-sync.service');
+          CrmSyncService.writebackCallOutcome({
+            userId: updatedCall.userId,
+            phone: prospectPhone,
+            leadId: leadId || undefined,
+            callStatus: updatedCall.status || 'Completed',
+            duration: updatedCall.duration || duration || undefined,
+            recordingUrl,
+          }).catch(err => logger.warn(`[PlivoCall] Google Sheets recording writeback note: ${err?.message}`, undefined, 'PlivoCall'));
+        } catch (_) {}
+      }
+    }
 
     return updatedCall;
   }

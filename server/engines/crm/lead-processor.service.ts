@@ -52,6 +52,7 @@ export interface CallData {
   lastName?: string | null;
   email?: string | null;
   company?: string | null;
+  recordingUrl?: string | null;
 }
 
 export interface LeadQualification {
@@ -88,16 +89,22 @@ export class CRMLeadProcessor {
       phone = String(metadata.customerPhone);
     } else if (metadata.callerPhone) {
       phone = String(metadata.callerPhone);
+    } else if (metadata.leadPhone) {
+      phone = String(metadata.leadPhone);
+    } else if (metadata.prospectPhone) {
+      phone = String(metadata.prospectPhone);
+    } else if (metadata.phone) {
+      phone = String(metadata.phone);
     }
     
     // If no metadata phone, resolve based on call direction
     if (!phone || !this.isValidPhone(phone)) {
       const direction = callData.callDirection?.toLowerCase();
       
-      if (direction === 'incoming') {
+      if (direction === 'incoming' || direction === 'inbound') {
         // For incoming calls, the customer called us - use fromNumber
         phone = callData.fromNumber || callData.phoneNumber || callData.toNumber || null;
-      } else if (direction === 'outgoing') {
+      } else if (direction === 'outgoing' || direction === 'outbound') {
         // For outgoing calls, we called the customer - use toNumber
         phone = callData.toNumber || callData.phoneNumber || callData.fromNumber || null;
       } else {
@@ -306,11 +313,15 @@ export class CRMLeadProcessor {
     }
 
     try {
-      // Qualify the call first
+      // Check if lead already exists for this call (by metadata.leadId or phone number)
+      const existingLead = await this.findExistingLead(callData);
+
+      // Qualify the call
       const qualification = await this.qualifyCall(callData);
       
-      if (!qualification.qualified) {
-        console.log(`${this.LOG_PREFIX} Call ${callData.id} does not qualify for CRM (no category matched)`);
+      // If call does not qualify and no existing lead exists, reject creating a new unassigned lead
+      if (!qualification.qualified && !existingLead) {
+        console.log(`${this.LOG_PREFIX} Call ${callData.id} does not qualify for CRM (no category matched) and no existing lead found`);
         return { leadId: null, qualification };
       }
 
@@ -324,29 +335,32 @@ export class CRMLeadProcessor {
         await this.ensureAppointmentCreated(callData, qualification);
       }
 
-      // Check if lead already exists for this call (by phone number)
-      const existingLead = await this.findExistingLead(callData);
+      // If existing lead exists (e.g. speed-to-lead form submission or existing contact), update it and write back to Google Sheets!
       if (existingLead) {
         // Update existing lead with new call data and qualification
         const updatedLead = await this.updateExistingLead(existingLead, callData, qualification);
         if (updatedLead) {
           const categoryChanged = existingLead.aiCategory !== updatedLead.aiCategory;
-          console.log(`${this.LOG_PREFIX} Updated existing lead ${updatedLead.id} - aiCategory: ${existingLead.aiCategory || 'none'} -> ${updatedLead.aiCategory || qualification.category}${categoryChanged ? ' (changed)' : ''}`);
+          console.log(`${this.LOG_PREFIX} Updated existing lead ${updatedLead.id} - aiCategory: ${existingLead.aiCategory || 'none'} -> ${updatedLead.aiCategory || qualification.category || 'none'}${categoryChanged ? ' (changed)' : ''}`);
 
           // Trigger Google Sheets writeback if lead is linked
           try {
             const { CrmSyncService } = await import('../../services/crm-sync/crm-sync.service');
-            CrmSyncService.writebackCallOutcome({
+            await CrmSyncService.writebackCallOutcome({
               userId: callData.userId,
               phone: updatedLead.phone,
-              callStatus: callData.status,
+              leadId: updatedLead.id,
+              callStatus: callData.status || 'Completed',
               duration: callData.duration || undefined,
-              aiSummary: callData.aiSummary || undefined,
-              leadScore: qualification.score,
-              aiCategory: qualification.category || undefined,
+              aiSummary: callData.aiSummary || existingLead.aiSummary || undefined,
+              leadScore: qualification.score || updatedLead.leadScore || 85,
+              aiCategory: qualification.category || updatedLead.aiCategory || undefined,
               appointmentDate: qualification.appointmentData?.date ? String(qualification.appointmentData.date) : undefined,
-            }).catch(wErr => console.error(`${this.LOG_PREFIX} Google Sheet writeback note:`, wErr?.message));
-          } catch (_) {}
+              recordingUrl: callData.recordingUrl || undefined,
+            });
+          } catch (wErr: any) {
+            console.error(`${this.LOG_PREFIX} Google Sheet writeback note:`, wErr?.message);
+          }
 
           return {
             leadId: updatedLead.id,
@@ -423,12 +437,14 @@ export class CRMLeadProcessor {
         CrmSyncService.writebackCallOutcome({
           userId: callData.userId,
           phone: lead.phone,
-          callStatus: callData.status,
+          leadId: lead.id,
+          callStatus: callData.status || 'Completed',
           duration: callData.duration || undefined,
           aiSummary: callData.aiSummary || undefined,
-          leadScore: qualification.score,
+          leadScore: qualification.score || 85,
           aiCategory: qualification.category || undefined,
           appointmentDate: qualification.appointmentData?.date ? String(qualification.appointmentData.date) : undefined,
+          recordingUrl: callData.recordingUrl || undefined,
         }).catch(wErr => console.error(`${this.LOG_PREFIX} Google Sheet writeback note:`, wErr?.message));
       } catch (_) {}
 
@@ -832,6 +848,23 @@ export class CRMLeadProcessor {
    * Respects campaign/incoming scope to prevent collapsing different campaigns' leads
    */
   private static async findExistingLead(callData: CallData): Promise<typeof leads.$inferSelect | null> {
+    // Top Priority: Direct lookup by metadata.leadId (speed-to-lead outbound calls pass leadId directly)
+    const directLeadId = (callData.metadata as any)?.leadId;
+    if (directLeadId) {
+      const [directLead] = await db
+        .select()
+        .from(leads)
+        .where(and(
+          eq(leads.userId, callData.userId),
+          eq(leads.id, String(directLeadId))
+        ))
+        .limit(1);
+      if (directLead) {
+        console.log(`${this.LOG_PREFIX} Matched existing lead ${directLead.id} directly via metadata.leadId`);
+        return directLead;
+      }
+    }
+
     const phoneNumber = this.resolveLeadPhone(callData);
     const hasValidPhone = phoneNumber && phoneNumber !== 'Unknown';
 
@@ -1153,6 +1186,9 @@ export class CRMLeadProcessor {
     if (callData.sentiment) {
       updates.sentiment = callData.sentiment;
     }
+    if (callData.recordingUrl) {
+      updates.recordingUrl = callData.recordingUrl;
+    }
 
     // Update source IDs if not already set
     if (!existingLead.campaignId && callData.campaignId) {
@@ -1238,13 +1274,16 @@ export class CRMLeadProcessor {
     const metadata = (call.metadata as Record<string, unknown>) || {};
     const aiInsights = metadata.aiInsights || this.parseAiSummaryAsInsights(call.aiSummary);
 
+    const isOutbound = call.callDirection === 'outbound' || call.callDirection === 'outgoing';
+    const targetPhone = isOutbound ? (call.toNumber || call.fromNumber || '') : (call.fromNumber || call.toNumber || '');
+
     const callData: CallData = {
       id: call.id,
       userId: call.userId,
-      phoneNumber: call.fromNumber || call.toNumber || '',
+      phoneNumber: targetPhone,
       fromNumber: call.fromNumber,
       toNumber: call.toNumber,
-      callDirection: (call.callDirection as 'incoming' | 'outgoing') || 'outgoing',
+      callDirection: isOutbound ? 'outgoing' : 'incoming',
       status: call.status,
       duration: call.duration,
       transcript: call.transcript,
@@ -1258,6 +1297,7 @@ export class CRMLeadProcessor {
       metadata,
       aiInsights: aiInsights as Record<string, unknown>,
       engine: 'plivo-elevenlabs',
+      recordingUrl: call.recordingUrl,
     };
 
     return this.processCall(callData);
@@ -1308,6 +1348,7 @@ export class CRMLeadProcessor {
       metadata: elevenLabsMetadata,
       aiInsights: elevenLabsAiInsights as Record<string, unknown>,  // ElevenLabs stores insights in metadata
       engine: 'elevenlabs-twilio',
+      recordingUrl: call.recordingUrl,
     };
 
     return this.processCall(callData);
@@ -1339,13 +1380,16 @@ export class CRMLeadProcessor {
     const plivoMetadata = call.metadata as Record<string, unknown> || {};
     const plivoAiInsights = plivoMetadata.aiInsights || this.parseAiSummaryAsInsights(call.aiSummary);
 
+    const isOutbound = call.callDirection === 'outbound' || call.callDirection === 'outgoing';
+    const targetPhone = isOutbound ? (call.toNumber || call.fromNumber || '') : (call.fromNumber || call.toNumber || '');
+
     const callData: CallData = {
       id: call.id,
       userId: call.userId,
-      phoneNumber: call.fromNumber || call.toNumber || '',
+      phoneNumber: targetPhone,
       fromNumber: call.fromNumber,
       toNumber: call.toNumber,
-      callDirection: call.callDirection as 'incoming' | 'outgoing',
+      callDirection: isOutbound ? 'outgoing' : 'incoming',
       status: call.status,
       duration: call.duration,
       transcript: call.transcript,
@@ -1359,6 +1403,7 @@ export class CRMLeadProcessor {
       metadata: plivoMetadata,
       aiInsights: plivoAiInsights as Record<string, unknown>,
       engine: 'plivo-openai',
+      recordingUrl: call.recordingUrl,
     };
 
     return this.processCall(callData);

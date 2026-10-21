@@ -246,12 +246,7 @@
         </div>
         <div class="form-group">
           <label>Budget Range</label>
-          <select id="leadBudget">
-            <option value="1.5 - 2 Cr">₹1.5 - 2.0 Crore</option>
-            <option value="2.0 - 3.5 Cr" selected>₹2.0 - 3.5 Crore</option>
-            <option value="3.5 - 5.0 Cr">₹3.5 - 5.0 Crore</option>
-            <option value="5.0 Cr+">₹5.0 Crore +</option>
-          </select>
+          <input type="text" id="leadBudget" placeholder="e.g. 2.0 - 3.5 Cr or 50 Lakhs" value="2.0 - 3.5 Cr" />
         </div>
       </div>
 
@@ -291,7 +286,7 @@
       const email = document.getElementById('leadEmail').value.trim();
       const city = document.getElementById('leadCity').value.trim();
       const project = document.getElementById('leadProject').value.trim();
-      const budget = document.getElementById('leadBudget').value;
+      const budget = document.getElementById('leadBudget').value.trim();
       const query = document.getElementById('leadQuery').value.trim();
 
       if (!phone) {

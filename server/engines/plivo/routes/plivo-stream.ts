@@ -19,7 +19,7 @@ import { OpenAIPoolService } from '../services/openai-pool.service';
 import { OpenAIAgentFactory } from '../services/openai-agent-factory';
 import { CallInsightsService } from '../../../services/call-insights.service';
 import { db } from '../../../db';
-import { plivoCalls, agents, users, flowExecutions } from '@shared/schema';
+import { plivoCalls, calls, agents, users, flowExecutions } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '../../../utils/logger';
 import type { OpenAIVoice, OpenAIRealtimeModel, AgentTool } from '../types';
@@ -172,10 +172,13 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
               }
             }
             if (!openaiApiKey) {
-              const defaultCred = await OpenAIPoolService.getAvailableCredential().catch(() => null);
+              const defaultCred = await OpenAIPoolService.getLeastLoadedCredential().catch(() => null);
               if (defaultCred?.apiKey) {
                 openaiApiKey = defaultCred.apiKey;
               }
+            }
+            if (!openaiApiKey && process.env.OPENAI_API_KEY) {
+              openaiApiKey = process.env.OPENAI_API_KEY;
             }
             
             logger.info(`Generating AI insights for call ${call.id}`, undefined, 'PlivoStream');
@@ -237,28 +240,39 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
 
               // Also ensure the CRM lead for this caller has aiSummary and score
               if (insights.aiSummary && call.userId) {
-                const targetPhone = (call.callDirection === 'inbound' ? call.fromNumber : call.toNumber) || call.toNumber || call.fromNumber;
-                if (targetPhone) {
-                  const cleanPhone = targetPhone.replace(/\D/g, '').slice(-10);
-                  if (cleanPhone) {
-                    try {
-                      const { leads } = await import('@shared/schema');
+                const leadId = (call.metadata as any)?.leadId;
+                try {
+                  const { leads } = await import('@shared/schema');
+                  if (leadId) {
+                    await db
+                      .update(leads)
+                      .set({
+                        aiSummary: insights.aiSummary,
+                        sentiment: insights.sentiment || undefined,
+                        leadScore: insights.classification === 'hot' || insights.classification === 'appointment_booked' ? 95 : 85,
+                        updatedAt: new Date(),
+                      })
+                      .where(eq(leads.id, leadId));
+                  } else {
+                    const targetPhone = (call.callDirection === 'outbound' || call.callDirection === 'outgoing') ? call.toNumber : (call.fromNumber || call.toNumber);
+                    const cleanPhone = targetPhone?.replace(/\D/g, '').slice(-10);
+                    if (cleanPhone) {
                       const { sql, and } = await import('drizzle-orm');
                       await db
                         .update(leads)
                         .set({
                           aiSummary: insights.aiSummary,
                           sentiment: insights.sentiment || undefined,
-                          ...(insights.classification === 'hot' || insights.classification === 'appointment_booked' ? { leadScore: 95 } : {}),
+                          leadScore: insights.classification === 'hot' || insights.classification === 'appointment_booked' ? 95 : 85,
                           updatedAt: new Date(),
                         })
                         .where(and(
                           eq(leads.userId, call.userId),
                           sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${cleanPhone}`
                         ));
-                    } catch (_) {}
+                    }
                   }
-                }
+                } catch (_) {}
               }
             }
           } catch (insightError: any) {
@@ -266,19 +280,6 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
           }
         }
 
-        // CRM Lead Qualification & Google Sheet Writeback
-        if (call.userId) {
-          try {
-            const { CRMLeadProcessor } = await import('../../crm/lead-processor.service');
-            const crmResult = await CRMLeadProcessor.processPlivoOpenAICall(call.id);
-            if (crmResult?.leadId) {
-              logger.info(`✅ [PlivoStream] CRM Lead ${crmResult.leadId} updated/created (${crmResult.qualification.category})`, undefined, 'PlivoStream');
-            }
-          } catch (crmErr: any) {
-            logger.warn(`Failed to process CRM lead on stream close: ${crmErr.message}`, undefined, 'PlivoStream');
-          }
-        }
-        
         // For incoming calls, set answeredAt if not already set (stream start = answered)
         if (call.callDirection === 'inbound' && !call.answeredAt) {
           await db
@@ -297,6 +298,19 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
             { source: 'stream_close' },
             result.duration
           );
+        }
+
+        // CRM Lead Qualification & Google Sheet Writeback (Runs AFTER call is marked completed and insights saved)
+        if (call.userId) {
+          try {
+            const { CRMLeadProcessor } = await import('../../crm/lead-processor.service');
+            const crmResult = await CRMLeadProcessor.processPlivoOpenAICall(call.id);
+            if (crmResult?.leadId) {
+              logger.info(`✅ [PlivoStream] CRM Lead ${crmResult.leadId} updated/created (${crmResult.qualification.category})`, undefined, 'PlivoStream');
+            }
+          } catch (crmErr: any) {
+            logger.warn(`Failed to process CRM lead on stream close: ${crmErr.message}`, undefined, 'PlivoStream');
+          }
         }
         
         // Update flow execution status if this call has an associated flow execution
@@ -335,8 +349,8 @@ function handlePlivoStreamConnection(ws: WebSocket, callUuid: string): void {
         
         // Note: OpenAI slot release is now handled in handleCallStatus
       }
-    } catch (error) {
-      logger.error(`Error ending session`, error, 'PlivoStream');
+    } catch (error: any) {
+      logger.error(`Error ending session: ${error?.stack || error?.message || error}`, undefined, 'PlivoStream');
     }
   });
 

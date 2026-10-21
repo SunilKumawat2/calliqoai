@@ -404,10 +404,12 @@ You MUST FIRST speak a brief polite transition announcement out loud (e.g. "เคเ
       });
     }
 
-    const voicemailRule = `\n6. VOICEMAIL & ANSWERING MACHINE DETECTION RULE (CRITICAL):
-If you hear an answering machine, iPhone Live Voicemail, carrier automated recording, or voicemail greeting (e.g. "leave a message after the tone", "after the beep", "at the tone", "person you are trying to reach is unavailable", "record your message", "forwarded to voicemail", "aapka dial kiya gaya number", "kripya beep ke baad sandesh"):
-You MUST NOT speak or leave any message.
-You MUST IMMEDIATELY invoke the end_call function with reason "voicemail_detected" to hang up the call instantly without saying anything. NEVER talk to an automated voicemail or answering machine!`;
+    const voicemailRule = `\n6. VOICEMAIL & ANSWERING MACHINE DETECTION RULE:
+Only invoke end_call with reason "voicemail_detected" if you hear an unmistakable, explicit carrier automated operator prompt asking to leave a message (e.g., "please leave your message after the tone", "forwarded to voicemail, please leave a message", "aapka dial kiya gaya number vyast hai, kripya baad mein call karein").
+CRITICAL HUMAN DISTINCTION:
+- Short human words or greetings ("hello", "haan", "kaun", "ji", "oh", "yes", "bolo", "hmm", background room sounds) are LIVE HUMANS answering their phone.
+- NEVER treat short human words, pauses, greetings, or casual utterances as voicemail or answering machines!
+- Always continue the conversation normally with any human caller.`;
 
     const enhancedInstructions = agentConfig.systemPrompt + functionCallingRequirements + transferRule + voicemailRule;
 
@@ -1103,7 +1105,28 @@ You MUST IMMEDIATELY invoke the end_call function with reason "voicemail_detecte
             logger.info('Ignoring end_call - session already disconnecting/transferring', undefined, 'AudioBridge');
             result = { ignored: true, reason: 'Session already disconnecting or transfer in progress' };
           } else {
-            const isVoicemail = actionResult.reason === 'voicemail_detected' || (params as any)?.reason === 'voicemail_detected';
+            let isVoicemail = actionResult.reason === 'voicemail_detected' || (params as any)?.reason === 'voicemail_detected';
+            
+            // Safety guard: If agent claims voicemail_detected but caller actually spoke a human utterance ("hello", "oh", "ji", etc.)
+            // that is NOT an automated carrier prompt, reject the false positive!
+            if (isVoicemail) {
+              const userTranscripts = session.transcriptParts.filter(p => p.role === 'user').map(p => p.text).join(' ');
+              if (userTranscripts && !this.isVoicemailOrAnsweringMachine(userTranscripts)) {
+                logger.warn(`[Voicemail Guard] Agent claimed voicemail_detected for ${session.callUuid}, but caller speech "${userTranscripts}" is a live human. Ignoring false positive voicemail hangup!`, undefined, 'AudioBridge');
+                isVoicemail = false;
+                result = { ignored: true, reason: 'False positive voicemail detection - live human caller detected' };
+                try {
+                  session.openaiWs.send(JSON.stringify({
+                    type: 'response.create',
+                    response: {
+                      instructions: 'The caller is a real human. Continue the conversation politely.'
+                    }
+                  }));
+                } catch (_) {}
+                return;
+              }
+            }
+
             logger.info(`End call requested for ${session.callUuid} (reason: ${actionResult.reason || 'normal'}). Initiating hangup...`, undefined, 'AudioBridge');
             
             // Mark session as isEnding to prevent sending further user audio

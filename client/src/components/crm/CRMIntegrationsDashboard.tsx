@@ -147,11 +147,12 @@ export function CRMIntegrationsDashboard() {
     email: "C",
     company: "",
     notes: "D",
-    callStatus: "E",
-    duration: "F",
-    aiSummary: "G",
-    leadScore: "H",
-    appointmentDate: "I",
+    callStatus: "G",
+    duration: "H",
+    aiSummary: "I",
+    leadScore: "J",
+    recordingUrl: "K",
+    appointmentDate: "L",
   });
 
   // Base URL for webhooks
@@ -1539,15 +1540,17 @@ export function CRMIntegrationsDashboard() {
       {/* MODAL 1: Connect New Lead Source Integration */}
       {/* ============================================================ */}
       <Dialog open={leadSourceDialogOpen} onOpenChange={setLeadSourceDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Connect Inbound Lead Source</DialogTitle>
-            <DialogDescription>
-              Create a dedicated webhook endpoint to ingest leads automatically into your CRM and trigger Speed-to-Lead AI voice calls.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-xl max-h-[90vh] flex flex-col p-0 overflow-hidden sm:rounded-xl">
+          <div className="p-6 pb-4 border-b border-border/50 shrink-0">
+            <DialogHeader>
+              <DialogTitle>Connect Inbound Lead Source</DialogTitle>
+              <DialogDescription>
+                Create a dedicated webhook endpoint to ingest leads automatically into your CRM and trigger Speed-to-Lead AI voice calls.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 p-6 overflow-y-auto flex-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Integration Name *</Label>
@@ -1709,16 +1712,18 @@ export function CRMIntegrationsDashboard() {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLeadSourceDialogOpen(false)}>Cancel</Button>
-            <Button 
-              className="bg-emerald-600 hover:bg-emerald-700 text-white" 
-              onClick={() => createLeadSourceMutation.mutate()}
-              disabled={!newLeadSource.name || createLeadSourceMutation.isPending}
-            >
-              {createLeadSourceMutation.isPending ? "Generating..." : "Create Webhook"}
-            </Button>
-          </DialogFooter>
+          <div className="p-4 px-6 border-t border-border/50 bg-muted/20 shrink-0">
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setLeadSourceDialogOpen(false)}>Cancel</Button>
+              <Button 
+                className="bg-emerald-600 hover:bg-emerald-700 text-white" 
+                onClick={() => createLeadSourceMutation.mutate()}
+                disabled={!newLeadSource.name || createLeadSourceMutation.isPending}
+              >
+                {createLeadSourceMutation.isPending ? "Generating..." : "Create Webhook"}
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1726,15 +1731,17 @@ export function CRMIntegrationsDashboard() {
       {/* MODAL 2: Configure Google Sheet Sync (100% Preserved) */}
       {/* ============================================================ */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Configure Google Sheet 2-Way Sync</DialogTitle>
-            <DialogDescription>
-              Select your spreadsheet and map the columns so Calliqo AI knows where to read leads and write call results.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden sm:rounded-xl">
+          <div className="p-6 pb-4 border-b border-border/50 shrink-0">
+            <DialogHeader>
+              <DialogTitle>Configure Google Sheet 2-Way Sync</DialogTitle>
+              <DialogDescription>
+                Select your spreadsheet and map the columns so Calliqo AI knows where to read leads and write call results.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 p-6 overflow-y-auto flex-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -1917,11 +1924,20 @@ export function CRMIntegrationsDashboard() {
                   />
                 </div>
                 <div>
+                  <Label className="text-[11px]">Call Recording URL</Label>
+                  <Input 
+                    value={mapping.recordingUrl || ''} 
+                    onChange={(e) => setMapping({ ...mapping, recordingUrl: e.target.value.toUpperCase() })} 
+                    placeholder="K" 
+                    className="h-8 uppercase"
+                  />
+                </div>
+                <div>
                   <Label className="text-[11px]">Appointment Date/Time</Label>
                   <Input 
                     value={mapping.appointmentDate} 
                     onChange={(e) => setMapping({ ...mapping, appointmentDate: e.target.value.toUpperCase() })} 
-                    placeholder="K" 
+                    placeholder="L" 
                     className="h-8 uppercase"
                   />
                 </div>
@@ -1929,16 +1945,18 @@ export function CRMIntegrationsDashboard() {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
-            <Button 
-              className="bg-emerald-600 hover:bg-emerald-700 text-white" 
-              onClick={() => saveConfigMutation.mutate()}
-              disabled={!selectedSheetId || !mapping.phone}
-            >
-              Save Configuration
-            </Button>
-          </DialogFooter>
+          <div className="p-4 px-6 border-t border-border/50 bg-muted/20 shrink-0">
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+              <Button 
+                className="bg-emerald-600 hover:bg-emerald-700 text-white" 
+                onClick={() => saveConfigMutation.mutate()}
+                disabled={!selectedSheetId || !mapping.phone}
+              >
+                Save Configuration
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1946,20 +1964,23 @@ export function CRMIntegrationsDashboard() {
       {/* MODAL 3: Inbound Lead Form Simulator (Interactive Test Form) */}
       {/* ============================================================ */}
       <Dialog open={simulatorDialogOpen} onOpenChange={setSimulatorDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600">
-                <Sparkles className="w-4 h-4" />
-              </span>
-              <DialogTitle>Live Lead Form Submission Simulator</DialogTitle>
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col p-0 overflow-hidden sm:rounded-xl">
+          <form onSubmit={handleSimulateSubmit} className="flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="p-6 pb-4 border-b border-border/50 shrink-0">
+              <DialogHeader>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600">
+                    <Sparkles className="w-4 h-4" />
+                  </span>
+                  <DialogTitle>Live Lead Form Submission Simulator</DialogTitle>
+                </div>
+                <DialogDescription>
+                  Fill out this enquiry form as a buyer on <strong>{simulatorSource?.name}</strong> ({simulatorSource?.sourceType.toUpperCase()}). Clicking Submit will push the lead to the webhook in real time!
+                </DialogDescription>
+              </DialogHeader>
             </div>
-            <DialogDescription>
-              Fill out this enquiry form as a buyer on <strong>{simulatorSource?.name}</strong> ({simulatorSource?.sourceType.toUpperCase()}). Clicking Submit will push the lead to the webhook in real time!
-            </DialogDescription>
-          </DialogHeader>
 
-          <form onSubmit={handleSimulateSubmit} className="space-y-4 py-2 text-xs">
+            <div className="space-y-4 p-6 overflow-y-auto flex-1 text-xs">
             <div className="p-2.5 bg-muted/40 rounded-lg text-muted-foreground flex justify-between items-center text-[11px]">
               <span>Testing Webhook:</span>
               <code className="font-mono text-foreground font-semibold">
@@ -2090,19 +2111,23 @@ export function CRMIntegrationsDashboard() {
               </div>
             </div>
 
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setSimulatorDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                type="submit" 
-                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
-                disabled={isSubmittingSim || !simulatorForm.phone}
-              >
-                {isSubmittingSim ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                {isSubmittingSim ? "Submitting to Webhook..." : "Submit Form as Buyer 🚀"}
-              </Button>
-            </DialogFooter>
+            </div>
+
+            <div className="p-4 px-6 border-t border-border/50 bg-muted/20 shrink-0">
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setSimulatorDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                  disabled={isSubmittingSim || !simulatorForm.phone}
+                >
+                  {isSubmittingSim ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {isSubmittingSim ? "Submitting to Webhook..." : "Submit Form as Buyer 🚀"}
+                </Button>
+              </DialogFooter>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
@@ -2111,21 +2136,23 @@ export function CRMIntegrationsDashboard() {
       {/* MODAL 4: Configure / Edit Existing Lead Source Integration */}
       {/* ============================================================ */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
-                <Sliders className="w-4 h-4" />
-              </span>
-              <DialogTitle>Configure Lead Source Integration</DialogTitle>
-            </div>
-            <DialogDescription>
-              Dynamically assign which AI Agent calls incoming leads and which Google Spreadsheet receives the data.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-xl max-h-[90vh] flex flex-col p-0 overflow-hidden sm:rounded-xl">
+          <div className="p-6 pb-4 border-b border-border/50 shrink-0">
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                  <Sliders className="w-4 h-4" />
+                </span>
+                <DialogTitle>Configure Lead Source Integration</DialogTitle>
+              </div>
+              <DialogDescription>
+                Dynamically assign which AI Agent calls incoming leads and which Google Spreadsheet receives the data.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
           {editingSource && (
-            <div className="space-y-4 py-2">
+            <div className="space-y-4 p-6 overflow-y-auto flex-1">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label>Integration Name *</Label>
@@ -2270,16 +2297,18 @@ export function CRMIntegrationsDashboard() {
             </div>
           )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-            <Button 
-              className="bg-emerald-600 hover:bg-emerald-700 text-white" 
-              onClick={() => updateLeadSourceMutation.mutate()}
-              disabled={updateLeadSourceMutation.isPending || !editingSource?.name}
-            >
-              {updateLeadSourceMutation.isPending ? "Saving..." : "Save Configuration"}
-            </Button>
-          </DialogFooter>
+          <div className="p-4 px-6 border-t border-border/50 bg-muted/20 shrink-0">
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+              <Button 
+                className="bg-emerald-600 hover:bg-emerald-700 text-white" 
+                onClick={() => updateLeadSourceMutation.mutate()}
+                disabled={updateLeadSourceMutation.isPending || !editingSource?.name}
+              >
+                {updateLeadSourceMutation.isPending ? "Saving..." : "Save Configuration"}
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

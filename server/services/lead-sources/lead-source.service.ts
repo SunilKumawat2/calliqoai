@@ -24,6 +24,7 @@ import {
   plivoPhoneNumbers,
   plivoCredentials,
   crmSyncLogs,
+  contacts,
   type LeadSourceIntegration,
   type InsertLeadSourceIntegration
 } from '@shared/schema';
@@ -215,8 +216,10 @@ export class LeadSourceService {
       b.customer_name || b.lead_name || b.client_name || b.Name || '';
 
     const rawEmail = b.email || b.emailAddress || b.email_address || b.Email || '';
-    const rawNotes = b.message || b.notes || b.requirement || b.query || b.comments || b.Message || '';
-    const rawProject = b.project || b.property || b.service || b.subject || '';
+    const rawNotes = b.message || b.notes || b.query || b.comments || b.Message || '';
+    const rawProject = b.project || b.project_name || b.projectName || b.property || b.service || b.subject || b.requirement || '';
+    const rawCity = b.city || b.City || b.location || b.Location || b.locality || '';
+    const rawBudget = b.budget || b.Budget || b.price || b.Price || b.budget_range || b.budgetRange || '';
 
     const nameParts = String(rawName).trim().split(/\s+/);
     return {
@@ -224,7 +227,9 @@ export class LeadSourceService {
       lastName: nameParts.slice(1).join(' ') || undefined,
       phone: this.normalizePhoneNumber(rawPhone),
       email: rawEmail ? String(rawEmail).trim() : undefined,
+      city: rawCity ? String(rawCity).trim() : undefined,
       project: rawProject ? String(rawProject).trim() : undefined,
+      budget: rawBudget ? String(rawBudget).trim() : undefined,
       notes: rawNotes ? String(rawNotes).trim() : undefined,
       rawPayload: b,
     };
@@ -265,10 +270,10 @@ export class LeadSourceService {
         source,
         integrationId: integration.id,
         integrationName: integration.name,
-        project: leadData.project || null,
-        budget: leadData.budget || null,
-        city: leadData.city || null,
-        notes: leadData.notes || null,
+        project: leadData.project || leadData.rawPayload?.project || leadData.rawPayload?.project_name || null,
+        budget: leadData.budget || leadData.rawPayload?.budget || leadData.rawPayload?.price || null,
+        city: leadData.city || leadData.rawPayload?.city || leadData.rawPayload?.location || null,
+        notes: leadData.notes || leadData.rawPayload?.notes || leadData.rawPayload?.query || null,
         rawPayload: leadData.rawPayload,
       },
       aiSummary: leadData.project 
@@ -465,6 +470,27 @@ export class LeadSourceService {
       }
     }
 
+    // Resolve or insert contact record if campaignId exists (plivo_calls.contact_id FK references contacts.id)
+    let resolvedContactId: string | undefined = undefined;
+    if (integration.campaignId) {
+      try {
+        const [createdContact] = await db.insert(contacts).values({
+          campaignId: integration.campaignId,
+          firstName: lead.firstName || 'Lead',
+          lastName: lead.lastName || null,
+          phone: lead.phone,
+          email: lead.email || null,
+          status: 'pending',
+          customFields: { leadId: lead.id, source: 'lead_source' }
+        }).returning({ id: contacts.id });
+        if (createdContact) {
+          resolvedContactId = createdContact.id;
+        }
+      } catch (cErr: any) {
+        console.warn('[LeadSource] Could not insert campaign contact (proceeding without contactId):', cErr.message);
+      }
+    }
+
     if (isElevenLabs) {
       const { PlivoElevenLabsOutboundService } = await import('../../engines/plivo-elevenlabs/services/outbound-call.service');
       const credential = await ElevenLabsPoolService.getCredentialForAgent(agent.id);
@@ -491,8 +517,13 @@ export class LeadSourceService {
         userId: user.id,
         dbAgentId: agent.id,
         campaignId: integration.campaignId || undefined,
-        contactId: lead.id,
+        contactId: resolvedContactId,
         plivoPhoneNumberId: plivoPhone.id,
+        metadata: {
+          leadId: lead.id,
+          leadName: lead.firstName,
+          source: 'lead_source',
+        },
         agentConfig: {
           agentId: agent.elevenLabsAgentId || 'agent_2201m20fdvdket7rdh5pttn091b8',
           firstMessage,
@@ -509,9 +540,14 @@ export class LeadSourceService {
         toNumber: lead.phone,
         userId: user.id,
         campaignId: integration.campaignId || undefined,
-        contactId: lead.id,
+        contactId: resolvedContactId,
         agentId: agent.id,
         plivoPhoneNumberId: plivoPhone.id,
+        metadata: {
+          leadId: lead.id,
+          leadName: lead.firstName,
+          source: 'lead_source',
+        },
         agentConfig: {
           voice: (agent.voice || 'alloy') as any,
           model: (agent.model || 'gpt-4o-realtime-preview') as any,

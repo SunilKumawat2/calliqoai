@@ -248,27 +248,20 @@ export class ElevenLabsBridgeService {
         const configOverride: any = {};
         const agentOverride: any = {};
 
-        if (agentConfig?.firstMessage) {
-          agentOverride.first_message = agentConfig.firstMessage;
-          logger.info(`Setting ElevenLabs first_message override: "${agentConfig.firstMessage.substring(0, 60)}..."`, undefined, 'PlivoElevenLabsBridge');
-        }
-
-        if (agentConfig?.systemPrompt) {
-          agentOverride.prompt = { prompt: agentConfig.systemPrompt };
-          logger.info(`Setting ElevenLabs prompt override`, undefined, 'PlivoElevenLabsBridge');
-        }
-
-        const transferPhone = session.transferPhoneNumber || agentConfig?.transferPhoneNumber;
-        if (transferPhone) {
-          const transferPromptRule = `\n\n[CALL TRANSFER RULE]: If the customer asks to speak to a human, real person, manager, executive, agent, or says "transfer kar do", "human se baat karao", "executive se connect karo", "senior se baat karni hai":
-Politely tell the caller: "जी बिल्कुल, मैं आपकी कॉल हमारे एग्जीक्यूटिव को ट्रांसफर कर रहा हूँ, कृपया लाइन पर बने रहें।" (or in English: "Please hold while I transfer your call to an executive.")`;
-          if (agentOverride.prompt?.prompt) {
-            agentOverride.prompt.prompt += transferPromptRule;
+        // NOTE: ElevenLabs agents already have their first_message, prompt, and language configured on ElevenLabs.
+        // Sending first_message, prompt, or language in conversation_config_override causes ElevenLabs to reject the
+        // WebSocket connection with "Override for field 'first_message' is not allowed by config" unless specifically whitelisted.
+        // Per-call customizations (name, property, city, budget) are cleanly handled via dynamic_variables below.
+        if (agentConfig?.allowOverrides) {
+          if (agentConfig?.firstMessage) {
+            agentOverride.first_message = agentConfig.firstMessage;
           }
-        }
-
-        if (agentConfig?.language) {
-          agentOverride.language = agentConfig.language;
+          if (agentConfig?.systemPrompt) {
+            agentOverride.prompt = { prompt: agentConfig.systemPrompt };
+          }
+          if (agentConfig?.language) {
+            agentOverride.language = agentConfig.language;
+          }
         }
 
         const conversationOverride: any = {};

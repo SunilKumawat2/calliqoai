@@ -37,6 +37,7 @@ export interface OutboundCallParams {
   campaignId?: string;
   contactId?: string;
   plivoPhoneNumberId?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface OutboundCallResult {
@@ -90,7 +91,7 @@ export class PlivoElevenLabsOutboundService {
         status: 'initiated',
         callDirection: 'outbound',
         startedAt: new Date(),
-        metadata: { engine: 'plivo-elevenlabs', internalId: callUuid },
+        metadata: { engine: 'plivo-elevenlabs', internalId: callUuid, ...(params.metadata || {}) },
       };
       const [row] = await db.insert(plivoCalls).values(insertValues).returning({ id: plivoCalls.id });
       callRecordId = row?.id;

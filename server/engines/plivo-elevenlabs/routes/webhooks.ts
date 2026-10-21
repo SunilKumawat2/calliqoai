@@ -147,7 +147,8 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
               .select()
               .from(plivoCalls)
               .where(or(
-                eq(plivoCalls.callUuid, internalId),
+                eq(plivoCalls.id, internalId),
+                eq(plivoCalls.plivoCallUuid, internalId),
                 sql`${plivoCalls.metadata}->>'internalId' = ${internalId}`
               ))
               .limit(1);
@@ -349,7 +350,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
       logger.info(`[Plivo-ElevenLabs Recording] Callback received for ${callUuid}: ${recordingUrl}`, undefined, 'PlivoElevenLabs');
 
       if (callUuid && recordingUrl) {
-        await db.update(plivoCalls)
+        const [updatedCall] = await db.update(plivoCalls)
           .set({
             recordingUrl: recordingUrl,
             recordingId: recordingId || null,
@@ -359,7 +360,53 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
             eq(plivoCalls.plivoCallUuid, callUuid),
             eq(plivoCalls.id, callUuid),
             sql`${plivoCalls.metadata}->>'internalId' = ${callUuid}`
-          ));
+          ))
+          .returning();
+
+        if (updatedCall?.userId) {
+          const prospectPhone = (updatedCall.callDirection === 'outbound' || updatedCall.callDirection === 'outgoing')
+            ? updatedCall.toNumber
+            : updatedCall.fromNumber;
+          if (prospectPhone) {
+            const leadId = (updatedCall.metadata as any)?.leadId;
+            if (leadId) {
+              try {
+                const { leads } = await import('@shared/schema');
+                await db
+                  .update(leads)
+                  .set({ recordingUrl, updatedAt: new Date() })
+                  .where(eq(leads.id, leadId));
+              } catch (_) {}
+            } else {
+              const cleanPhone = prospectPhone.replace(/\D/g, '').slice(-10);
+              if (cleanPhone) {
+                try {
+                  const { leads } = await import('@shared/schema');
+                  const { sql, and } = await import('drizzle-orm');
+                  await db
+                    .update(leads)
+                    .set({ recordingUrl, updatedAt: new Date() })
+                    .where(and(
+                      eq(leads.userId, updatedCall.userId),
+                      sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${cleanPhone}`
+                    ));
+                } catch (_) {}
+              }
+            }
+
+            try {
+              const { CrmSyncService } = await import('../../../services/crm-sync/crm-sync.service');
+              CrmSyncService.writebackCallOutcome({
+                userId: updatedCall.userId,
+                phone: prospectPhone,
+                leadId: leadId || undefined,
+                callStatus: updatedCall.status || 'Completed',
+                duration: updatedCall.duration || duration || undefined,
+                recordingUrl,
+              }).catch(err => logger.warn(`[PlivoElevenLabs] Google Sheets recording writeback note: ${err?.message}`, undefined, 'PlivoElevenLabs'));
+            } catch (_) {}
+          }
+        }
       }
 
       res.status(200).json({ success: true });

@@ -387,27 +387,49 @@ export class CrmSyncService {
     aiSummary?: string;
     leadScore?: number;
     aiCategory?: string;
+    leadId?: string;
     appointmentDate?: string;
     recordingUrl?: string;
   }): Promise<boolean> {
     try {
       const normalizedPhone = this.normalizePhoneNumber(callOutcome.phone);
 
-      // Find lead with googleSheetId & googleSheetRowIndex (prioritize rows that have googleSheetId)
-      const last10 = normalizedPhone.replace(/\D/g, '').slice(-10);
-      const [lead] = await db
-        .select()
-        .from(leads)
-        .where(and(
-          eq(leads.userId, callOutcome.userId),
-          or(
-            eq(leads.phone, normalizedPhone),
-            sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
-          ),
-          sql`${leads.googleSheetId} IS NOT NULL`
-        ))
-        .orderBy(sql`${leads.updatedAt} DESC`)
-        .limit(1);
+      let lead: any = null;
+
+      // 1. Direct leadId lookup (highest precision - guarantees updating the exact lead row!)
+      if (callOutcome.leadId) {
+        const [foundLead] = await db
+          .select()
+          .from(leads)
+          .where(and(
+            eq(leads.id, callOutcome.leadId),
+            eq(leads.userId, callOutcome.userId)
+          ))
+          .limit(1);
+        if (foundLead && foundLead.googleSheetId && foundLead.googleSheetRowIndex) {
+          lead = foundLead;
+        }
+      }
+
+      // 2. Fallback: Phone number matching, ordered by newest googleSheetRowIndex DESC, createdAt DESC!
+      if (!lead) {
+        const last10 = normalizedPhone.replace(/\D/g, '').slice(-10);
+        const [foundLead] = await db
+          .select()
+          .from(leads)
+          .where(and(
+            eq(leads.userId, callOutcome.userId),
+            or(
+              eq(leads.phone, normalizedPhone),
+              sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
+            ),
+            sql`${leads.googleSheetId} IS NOT NULL`,
+            sql`${leads.googleSheetRowIndex} IS NOT NULL`
+          ))
+          .orderBy(sql`${leads.googleSheetRowIndex} DESC`, sql`${leads.createdAt} DESC`)
+          .limit(1);
+        lead = foundLead;
+      }
 
       if (!lead || !lead.googleSheetId || !lead.googleSheetRowIndex) {
         logger.info(`ℹ️ [CRM Sync] No synced Google Sheet row found for phone ${normalizedPhone}, skipping writeback`, undefined, 'CrmSync');
@@ -468,9 +490,10 @@ export class CrmSyncService {
         });
       }
 
-      if (mapping.recordingUrl && callOutcome.recordingUrl) {
+      const recordingCol = mapping.recordingUrl || (mapping as any).recording || (mapping as any).recording_url || (mapping.leadScore === 'J' ? 'K' : (mapping.duration === 'H' ? 'K' : undefined));
+      if (recordingCol && callOutcome.recordingUrl) {
         updates.push({
-          range: `${config.sheetTabName}!${mapping.recordingUrl}${row}`,
+          range: `${config.sheetTabName}!${recordingCol}${row}`,
           values: [[callOutcome.recordingUrl]]
         });
       }
@@ -578,17 +601,34 @@ export class CrmSyncService {
           if (mapping.email) {
             rowValues[this.columnLetterToIndex(mapping.email)] = lead.email || '';
           }
+          const raw = (custom.rawPayload || {}) as Record<string, any>;
+          const cityVal = custom.city || raw.city || raw.City || raw.location || raw.Location || '';
+          const projectVal = custom.project || raw.project || raw.project_name || raw.projectName || raw.property || '';
+          const budgetVal = custom.budget || raw.budget || raw.Budget || raw.price || raw.Price || raw.budget_range || raw.budgetRange || '';
+          const notesVal = custom.notes || raw.notes || raw.query || raw.message || raw.requirement || '';
+
           if (mapping.notes) {
-            rowValues[this.columnLetterToIndex(mapping.notes)] = custom.notes || custom.project || lead.aiSummary || '';
+            rowValues[this.columnLetterToIndex(mapping.notes)] = projectVal || notesVal || lead.aiSummary || '';
           }
           if (mapping.callStatus) {
             rowValues[this.columnLetterToIndex(mapping.callStatus)] = 'New (Inbound)';
           }
 
-          // If standard column positions for city (col D=3), project (col E=4), budget (col F=5) are unmapped/empty
-          if (custom.city && rowValues[3] === '') rowValues[3] = custom.city;
-          if (custom.project && rowValues[4] === '') rowValues[4] = custom.project;
-          if (custom.budget && rowValues[5] === '') rowValues[5] = custom.budget;
+          // Dynamic column mapping for city and budget if defined
+          if (mapping.city && cityVal) {
+            rowValues[this.columnLetterToIndex(mapping.city)] = cityVal;
+          }
+          if (mapping.budget && budgetVal) {
+            rowValues[this.columnLetterToIndex(mapping.budget)] = budgetVal;
+          }
+
+          // Standard default column positions if unmapped:
+          // Col D (index 3) = City
+          if (cityVal && (rowValues[3] === '' || !rowValues[3])) rowValues[3] = cityVal;
+          // Col E (index 4) = Requirement / Project
+          if (projectVal && (rowValues[4] === '' || !rowValues[4])) rowValues[4] = projectVal;
+          // Col F (index 5) = Budget
+          if (budgetVal && (rowValues[5] === '' || !rowValues[5])) rowValues[5] = budgetVal;
 
           const range = encodeURIComponent(`${config.sheetTabName}!A1`);
           const url = `${GOOGLE_SHEETS_API}/${encodeURIComponent(config.spreadsheetId)}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;

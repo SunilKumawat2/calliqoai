@@ -115,8 +115,23 @@ export class CallInsightsService {
         return new OpenAI({ apiKey: poolCred.apiKey });
       }
     } catch (poolErr) {
-      // Fall through to env
+      // Fall through to env or DB
     }
+
+    // Direct DB lookup fallback
+    try {
+      const { db } = await import('../db');
+      const { openaiCredentials } = await import('@shared/schema');
+      const { eq, and } = await import('drizzle-orm');
+      const [dbCred] = await db
+        .select({ apiKey: openaiCredentials.apiKey })
+        .from(openaiCredentials)
+        .where(eq(openaiCredentials.isActive, true))
+        .limit(1);
+      if (dbCred?.apiKey) {
+        return new OpenAI({ apiKey: dbCred.apiKey });
+      }
+    } catch (_) {}
 
     // Otherwise use the cached client with env var
     const envApiKey = process.env.OPENAI_API_KEY;
@@ -124,7 +139,7 @@ export class CallInsightsService {
       return new OpenAI({ apiKey: envApiKey });
     }
     
-    throw new Error('No OpenAI API key available in Pool or Environment');
+    throw new Error('No OpenAI API key available in Pool, DB, or Environment');
   }
 
   static async analyzeTranscript(
