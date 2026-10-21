@@ -1,6 +1,6 @@
 import { db } from "../../db";
-import { googleCalendarCredentials, appointmentSettings, users } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { googleCalendarCredentials, appointmentSettings, users, appointments, notifications } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import { getGoogleCredentials } from "../google-sheets/google-sheets.service";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -353,4 +353,205 @@ export async function checkFreeBusySlots(
     return null;
   }
 }
+
+/**
+ * Sync / Import events from Google Calendar into Calliqo CRM appointments
+ * Creates new events as UNASSIGNED so the admin can manually appoint a staff member.
+ */
+export async function syncGoogleCalendarEvents(userId: string): Promise<{
+  synced: boolean;
+  imported: number;
+  updated: number;
+  total: number;
+  error?: string;
+}> {
+  let token = await refreshCalendarToken(userId);
+  if (!token) {
+    return { synced: false, imported: 0, updated: 0, total: 0, error: "Google Calendar is not connected. Please connect Google Calendar first." };
+  }
+
+  // Look for events from 14 days ago to 90 days in the future
+  const timeMin = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const timeMax = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  const doFetch = (t: string) =>
+    fetch(
+      `${GOOGLE_CALENDAR_API}/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&maxResults=250`,
+      {
+        headers: { Authorization: `Bearer ${t}` },
+      }
+    );
+
+  try {
+    let resp = await doFetch(token);
+    if (resp.status === 401) {
+      const fresh = await refreshCalendarToken(userId, true);
+      if (!fresh) return { synced: false, imported: 0, updated: 0, total: 0, error: "Google authentication failed. Please reconnect Google Calendar." };
+      resp = await doFetch(fresh);
+    }
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error("[GoogleCalendar] Fetch events failed:", errText);
+      return { synced: false, imported: 0, updated: 0, total: 0, error: errText };
+    }
+
+    const data = (await resp.json()) as { items?: any[] };
+    const items = data.items || [];
+
+    let imported = 0;
+    let updated = 0;
+
+    for (const item of items) {
+      if (item.status === "cancelled") continue;
+
+      const eventId = item.id;
+      const summary = (item.summary || "").trim();
+      const description = (item.description || "").trim();
+
+      // Determine date and time
+      const startDateTimeStr = item.start?.dateTime || item.start?.date || "";
+      if (!startDateTimeStr) continue;
+
+      let appointmentDate = "";
+      let appointmentTime = "11:00";
+
+      if (startDateTimeStr.includes("T")) {
+        const [dPart, tPart] = startDateTimeStr.split("T");
+        appointmentDate = dPart;
+        appointmentTime = tPart.substring(0, 5); // "HH:mm"
+      } else {
+        appointmentDate = startDateTimeStr; // "YYYY-MM-DD"
+      }
+
+      // Extract client name
+      let contactName = "";
+      const prefixMatch = summary.match(/(?:Site Visit|Appointment|Consultation|Booking|Confirmed|Pending)[:\s—\-]+(.+?)(?:\s*—|\s*-\s*|$)/i);
+      if (prefixMatch && prefixMatch[1]) {
+        contactName = prefixMatch[1].trim();
+      }
+
+      // Check attendees
+      const attendees = item.attendees || [];
+      const nonSelfAttendee = attendees.find((a: any) => !a.self);
+      let contactEmail = nonSelfAttendee?.email || null;
+
+      if (!contactName && nonSelfAttendee?.displayName) {
+        contactName = nonSelfAttendee.displayName.trim();
+      }
+
+      // If email in description
+      if (!contactEmail && description) {
+        const emailMatch = description.match(/(?:email|mail)[:\s]*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+        if (emailMatch && emailMatch[1]) {
+          contactEmail = emailMatch[1].trim();
+        }
+      }
+
+      // Extract client phone from description or summary
+      let contactPhone = "";
+      const textToSearch = `${description} ${summary}`;
+      const phoneMatch = textToSearch.match(/(?:phone|mobile|tel|contact|whatsapp)[:\s]*([+0-9\s\-()]{10,20})/i) ||
+                         textToSearch.match(/(\+?91[\s\-]?[6-9][0-9]{9}|\+?[1-9][0-9]{9,13})/);
+      if (phoneMatch && phoneMatch[1]) {
+        contactPhone = phoneMatch[1].replace(/[\s\-()]/g, "").trim();
+      }
+
+      if (!contactName) {
+        contactName = summary || (contactEmail ? contactEmail.split("@")[0] : "Google Calendar Client");
+      }
+      if (!contactPhone) {
+        contactPhone = "Google Calendar";
+      }
+
+      // Service / Project name
+      let serviceName = "Property Site Visit";
+      if (summary.includes("—") || summary.includes("-")) {
+        const parts = summary.split(/[—\-]/);
+        if (parts.length > 1) {
+          serviceName = parts[parts.length - 1].trim();
+        }
+      } else if (summary.toLowerCase().includes("bhk") || summary.toLowerCase().includes("visit") || summary.toLowerCase().includes("heights")) {
+        serviceName = summary;
+      }
+
+      const notes = description || summary;
+
+      // Check if existing appointment in DB
+      const [existing] = await db
+        .select()
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.userId, userId),
+            eq(appointments.googleCalendarEventId, eventId)
+          )
+        )
+        .limit(1);
+
+      if (existing) {
+        if (
+          existing.appointmentDate !== appointmentDate ||
+          existing.appointmentTime !== appointmentTime ||
+          existing.notes !== notes
+        ) {
+          await db
+            .update(appointments)
+            .set({
+              appointmentDate,
+              appointmentTime,
+              notes,
+              contactEmail: contactEmail || existing.contactEmail,
+              updatedAt: new Date(),
+            })
+            .where(eq(appointments.id, existing.id));
+          updated++;
+        }
+      } else {
+        // New appointment from Google Calendar! Insert as UNASSIGNED so admin can manually assign!
+        const aptId = `apt_gcal_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        await db.insert(appointments).values({
+          id: aptId,
+          userId,
+          contactName,
+          contactPhone,
+          contactEmail,
+          appointmentDate,
+          appointmentTime,
+          duration: 30,
+          serviceName,
+          notes,
+          status: "scheduled",
+          googleCalendarEventId: eventId,
+          assignedStaffId: null, // UNASSIGNED - Awaiting manual assignment by admin
+          assignedStaffName: null,
+          assignedStaffPhone: null,
+        });
+
+        // Add Bell & CRM notification
+        try {
+          const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+          await db.insert(notifications).values({
+            id: notifId,
+            userId,
+            type: "site_visit",
+            title: `📅 Google Calendar Site Visit: ${contactName}`,
+            message: `${contactName} (${contactPhone}) scheduled for ${serviceName} on ${appointmentDate} at ${appointmentTime}. Action required: Appoint a sales executive!`,
+            link: "/app/crm",
+            isRead: false,
+          });
+        } catch (_) {}
+
+        imported++;
+      }
+    }
+
+    console.log(`📅 [GoogleCalendar] Sync complete for user ${userId}: ${imported} imported, ${updated} updated out of ${items.length} events`);
+    return { synced: true, imported, updated, total: items.length };
+  } catch (err: any) {
+    console.error("[GoogleCalendar] Sync error:", err.message);
+    return { synced: false, imported: 0, updated: 0, total: 0, error: err.message };
+  }
+}
+
 

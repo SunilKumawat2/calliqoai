@@ -725,36 +725,22 @@ export class CrmSyncService {
     const duration = data.durationMinutes || 30;
 
     let googleEventId: string | null = null;
-    let assignedStaffId: string | null = null;
+    let assignedStaffId: string | null = (data as any).staffId || null;
     let assignedStaffName: string | null = null;
     let assignedStaffPhone: string | null = null;
-    let matchedStaff: any = null;
 
-    // Smart Sales Staff Auto-Assignment
-    try {
-      const activeStaff = await db
-        .select()
-        .from(salesTeamMembers)
-        .where(and(eq(salesTeamMembers.userId, userId), eq(salesTeamMembers.isActive, true)))
-        .orderBy(salesTeamMembers.totalVisitsCount); // lowest visits first for round-robin balance
+    // If an explicit staffId is provided, look up the staff member
+    if (assignedStaffId && assignedStaffId !== 'unassigned') {
+      try {
+        const [staff] = await db
+          .select()
+          .from(salesTeamMembers)
+          .where(and(eq(salesTeamMembers.userId, userId), eq(salesTeamMembers.isActive, true), eq(salesTeamMembers.id, assignedStaffId)))
+          .limit(1);
 
-      if (activeStaff.length > 0) {
-        const searchContext = `${data.serviceName || ''} ${data.notes || ''}`.toLowerCase();
-        let matched = activeStaff.find(s => {
-          if (s.city && searchContext.includes(s.city.toLowerCase())) return true;
-          if (Array.isArray(s.assignedProjects)) {
-            return s.assignedProjects.some(p => searchContext.includes(p.toLowerCase()));
-          }
-          return false;
-        });
-
-        if (!matched) matched = activeStaff[0];
-
-        if (matched) {
-          matchedStaff = matched;
-          assignedStaffId = matched.id;
-          assignedStaffName = matched.name;
-          assignedStaffPhone = matched.phone;
+        if (staff) {
+          assignedStaffName = staff.name;
+          assignedStaffPhone = staff.phone;
 
           await db
             .update(salesTeamMembers)
@@ -762,11 +748,14 @@ export class CrmSyncService {
               totalVisitsCount: sql`${salesTeamMembers.totalVisitsCount} + 1`,
               updatedAt: new Date(),
             })
-            .where(eq(salesTeamMembers.id, matched.id));
+            .where(eq(salesTeamMembers.id, staff.id));
         }
+      } catch (staffErr: any) {
+        logger.warn(`[CrmSync] Staff assignment note: ${staffErr?.message}`, undefined, 'CrmSync');
       }
-    } catch (staffErr: any) {
-      logger.warn(`[CrmSync] Staff auto-assignment note: ${staffErr?.message}`, undefined, 'CrmSync');
+    } else {
+      // Keep unassigned so the admin manually assigns from Calliqo CRM admin panel
+      assignedStaffId = null;
     }
 
     const enhancedNotes = [
@@ -809,6 +798,20 @@ export class CrmSyncService {
       assignedStaffName,
       assignedStaffPhone,
     });
+
+    // Create system notification for bell icon & CRM
+    try {
+      const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      await db.insert(notifications).values({
+        id: notifId,
+        userId,
+        type: 'site_visit',
+        title: `📅 Site Visit: ${data.contactName.trim()}`,
+        message: `${data.contactName.trim()} (${data.contactPhone}) scheduled for ${data.serviceName || 'Property Site Visit'} on ${data.appointmentDate} at ${data.appointmentTime}. Action required: Appoint a sales executive!`,
+        link: '/app/crm',
+        isRead: false,
+      });
+    } catch (nErr: any) {}
 
     // Update lead record if exists
     const normPhone = this.normalizePhoneNumber(data.contactPhone);

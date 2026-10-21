@@ -431,3 +431,45 @@ salesTeamRouter.get('/notifications/stats', async (req: Request, res: Response) 
     res.status(500).json({ error: error.message });
   }
 });
+
+// ── 10. POST /api/sales-team/sync-calendar ─────────────────────
+salesTeamRouter.post('/sync-calendar', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { syncGoogleCalendarEvents } = await import('../services/google-calendar/google-calendar.service');
+    const result = await syncGoogleCalendarEvents(userId);
+    res.json(result);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error syncing Google Calendar: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 11. PUT /api/sales-team/site-visits/:id/unassign ───────────
+salesTeamRouter.put('/site-visits/:id/unassign', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { id } = req.params;
+    const [updated] = await db
+      .update(appointments)
+      .set({
+        assignedStaffId: null,
+        assignedStaffName: null,
+        assignedStaffPhone: null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(appointments.id, id), eq(appointments.userId, userId)))
+      .returning();
+
+    if (!updated) return res.status(404).json({ error: 'Appointment not found' });
+    res.json(updated);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error unassigning visit: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+

@@ -234,3 +234,15 @@ googleCalendarRouter.delete("/disconnect", async (req: Request, res: Response) =
   await disconnectGoogleCalendar(userId);
   res.json({ success: true });
 });
+
+googleCalendarRouter.post("/sync-events", async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id || (req as any).userId;
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const { syncGoogleCalendarEvents } = await import("./google-calendar.service");
+  const result = await syncGoogleCalendarEvents(userId);
+  res.json(result);
+});
+

@@ -268,6 +268,56 @@ export function SalesTeamSiteVisits() {
     },
   });
 
+  // Google Calendar Sync Mutation
+  const syncCalendarMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/sales-team/sync-calendar");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      if (data.synced) {
+        toast({
+          title: "📅 Google Calendar Synced",
+          description: `Checked ${data.total} calendar events. Imported ${data.imported} new visits, updated ${data.updated}.`,
+        });
+      } else {
+        toast({
+          title: "Calendar Sync",
+          description: data.error || "Could not sync Google Calendar",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Sync Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Unassign Staff Mutation
+  const unassignVisitMutation = useMutation({
+    mutationFn: async (visitId: string) => {
+      const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/unassign`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      toast({
+        title: "Visit Unassigned",
+        description: "Sent back to 'Needs Staff Appointment' queue.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to Unassign", description: err.message, variant: "destructive" });
+    },
+  });
+
   const resetStaffForm = () => {
     setEditingStaff(null);
     setStaffForm({
@@ -440,6 +490,17 @@ export function SalesTeamSiteVisits() {
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Refresh
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncCalendarMutation.mutate()}
+            disabled={syncCalendarMutation.isPending}
+            className="h-8 gap-1.5 text-xs border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium shadow-sm"
+          >
+            <CalendarDays className={`w-3.5 h-3.5 text-indigo-600 ${syncCalendarMutation.isPending ? "animate-spin" : ""}`} />
+            {syncCalendarMutation.isPending ? "Syncing..." : "Sync Google Calendar"}
           </Button>
 
           <Button
@@ -679,6 +740,12 @@ export function SalesTeamSiteVisits() {
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
                             {visit.serviceName || "Property Site Visit"}
                           </Badge>
+                          {visit.googleCalendarEventId && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal border-blue-500/40 text-blue-600 dark:text-blue-400 gap-1">
+                              <CalendarDays className="w-2.5 h-2.5" />
+                              Google Calendar
+                            </Badge>
+                          )}
                           {isUnassigned && (
                             <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] px-1.5 py-0 font-semibold gap-1">
                               <AlertCircle className="w-2.5 h-2.5 text-amber-500" />
@@ -733,9 +800,22 @@ export function SalesTeamSiteVisits() {
                                 size="sm"
                                 onClick={() => openAppointModal(visit)}
                                 title="Change Consultant"
-                                className="h-5 px-1 text-[10px] text-blue-600 hover:text-blue-700 ml-1 hover:bg-blue-500/15"
+                                className="h-5 px-1.5 text-[10px] text-blue-600 hover:text-blue-700 hover:bg-blue-500/15"
                               >
                                 Change
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm(`Unassign staff for ${visit.contactName}? This will move the visit to 'Needs Staff Appointment'.`)) {
+                                    unassignVisitMutation.mutate(visit.id);
+                                  }
+                                }}
+                                title="Unassign Consultant"
+                                className="h-5 px-1.5 text-[10px] text-amber-600 hover:text-amber-700 hover:bg-amber-500/15"
+                              >
+                                Unassign
                               </Button>
                             </div>
                           )}
@@ -964,7 +1044,38 @@ export function SalesTeamSiteVisits() {
               {/* Staff Selection */}
               <div>
                 <Label className="text-[11px] font-semibold">Select Consultant to Appoint *</Label>
-                <div className="mt-1.5 space-y-2 max-h-48 overflow-y-auto pr-1">
+                <div className="mt-1.5 space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {/* Option to Leave Unassigned */}
+                  <div
+                    onClick={() => setAppointForm({ ...appointForm, staffId: "unassigned" })}
+                    className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
+                      appointForm.staffId === "unassigned"
+                        ? "border-amber-600 bg-amber-500/10 ring-1 ring-amber-500/40"
+                        : "border-border hover:border-amber-500/30"
+                    }`}
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-foreground text-xs">⚠️ Leave Unassigned</span>
+                        <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-none text-[9px] px-1 py-0 font-medium">
+                          Needs Staff Queue
+                        </Badge>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Keep in Needs Staff queue so an executive can be assigned manually later.
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 pl-2">
+                      {appointForm.staffId === "unassigned" ? (
+                        <div className="h-4 w-4 rounded-full bg-amber-600 text-white flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5" />
+                        </div>
+                      ) : (
+                        <div className="h-4 w-4 rounded-full border border-muted-foreground/40" />
+                      )}
+                    </div>
+                  </div>
                   {staffList
                     .filter((s) => s.isActive)
                     .map((staff) => {
