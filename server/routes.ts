@@ -1662,6 +1662,10 @@ When using a tool:
   const { crmSyncRouter } = await import("./routes/crm-sync-routes");
   app.use("/api/crm-sync", routeContext.authenticateHybrid as unknown as import('express').RequestHandler, crmSyncRouter);
 
+  // Sales Team & Site Visit Assignment routes
+  const { salesTeamRouter } = await import("./routes/sales-team-routes");
+  app.use("/api/sales-team", routeContext.authenticateHybrid as unknown as import('express').RequestHandler, salesTeamRouter);
+
   // Lead Source Integrations (Website Forms, Meta Ads, 99acres, Magicbricks, Housing)
   const { leadSourceRouter } = await import("./routes/lead-source-routes");
   app.use("/api/lead-sources", routeContext.authenticateHybrid as unknown as import('express').RequestHandler);

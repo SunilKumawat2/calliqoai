@@ -1513,10 +1513,40 @@ export const appointments = pgTable("appointments", {
   status: varchar("status", { length: 50 }).default("scheduled").notNull(),
   statusReason: varchar("status_reason", { length: 500 }),
   googleCalendarEventId: varchar("google_calendar_event_id", { length: 255 }),
+  assignedStaffId: varchar("assigned_staff_id"),
+  assignedStaffName: varchar("assigned_staff_name", { length: 255 }),
+  assignedStaffPhone: varchar("assigned_staff_phone", { length: 50 }),
   metadata: jsonb("metadata").$type<Record<string, any>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Sales Team Members (Staff for Site Visits & Field Sales)
+export const salesTeamMembers = pgTable("sales_team_members", {
+  id: varchar("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 50 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  role: varchar("role", { length: 100 }).default("Sales Executive").notNull(),
+  city: varchar("city", { length: 100 }),
+  assignedProjects: jsonb("assigned_projects").$type<string[]>().default([]),
+  isActive: boolean("is_active").default(true).notNull(),
+  totalVisitsCount: integer("total_visits_count").default(0).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSalesTeamMemberSchema = createInsertSchema(salesTeamMembers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const createSalesTeamMemberSchema = insertSalesTeamMemberSchema.omit({ userId: true });
+export type InsertSalesTeamMember = z.infer<typeof insertSalesTeamMemberSchema>;
+export type CreateSalesTeamMember = z.infer<typeof createSalesTeamMemberSchema>;
+export type SalesTeamMember = typeof salesTeamMembers.$inferSelect;
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({
   id: true,

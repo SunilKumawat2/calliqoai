@@ -20,6 +20,7 @@ import {
   googleSheetsSyncConfigs, 
   crmSyncLogs, 
   appointments,
+  salesTeamMembers,
   notifications,
   users,
   type InsertGoogleSheetsSyncConfig,
@@ -723,6 +724,53 @@ export class CrmSyncService {
     const duration = data.durationMinutes || 30;
 
     let googleEventId: string | null = null;
+    let assignedStaffId: string | null = null;
+    let assignedStaffName: string | null = null;
+    let assignedStaffPhone: string | null = null;
+
+    // Smart Sales Staff Auto-Assignment
+    try {
+      const activeStaff = await db
+        .select()
+        .from(salesTeamMembers)
+        .where(and(eq(salesTeamMembers.userId, userId), eq(salesTeamMembers.isActive, true)))
+        .orderBy(salesTeamMembers.totalVisitsCount); // lowest visits first for round-robin balance
+
+      if (activeStaff.length > 0) {
+        const searchContext = `${data.serviceName || ''} ${data.notes || ''}`.toLowerCase();
+        let matched = activeStaff.find(s => {
+          if (s.city && searchContext.includes(s.city.toLowerCase())) return true;
+          if (Array.isArray(s.assignedProjects)) {
+            return s.assignedProjects.some(p => searchContext.includes(p.toLowerCase()));
+          }
+          return false;
+        });
+
+        if (!matched) matched = activeStaff[0];
+
+        if (matched) {
+          assignedStaffId = matched.id;
+          assignedStaffName = matched.name;
+          assignedStaffPhone = matched.phone;
+
+          await db
+            .update(salesTeamMembers)
+            .set({
+              totalVisitsCount: sql`${salesTeamMembers.totalVisitsCount} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(eq(salesTeamMembers.id, matched.id));
+        }
+      }
+    } catch (staffErr: any) {
+      logger.warn(`[CrmSync] Staff auto-assignment note: ${staffErr?.message}`, undefined, 'CrmSync');
+    }
+
+    const enhancedNotes = [
+      data.notes || 'Booked via Calliqo AI',
+      assignedStaffName ? `Assigned Property Consultant: ${assignedStaffName} (${assignedStaffPhone})` : null
+    ].filter(Boolean).join('\n');
+
     try {
       googleEventId = await createCalendarEvent(userId, {
         id: aptId,
@@ -733,14 +781,14 @@ export class CrmSyncService {
         appointmentTime: data.appointmentTime,
         duration,
         serviceName: data.serviceName || 'Consultation / Site Visit',
-        notes: data.notes || 'Booked via Calliqo AI',
+        notes: enhancedNotes,
         status: 'scheduled',
       });
     } catch (gErr: any) {
       logger.warn(`Google Calendar event creation note: ${gErr.message}`, undefined, 'CrmSync');
     }
 
-    // Insert into Calliqo appointments table
+    // Insert into Calliqo appointments table with assigned staff
     await db.insert(appointments).values({
       id: aptId,
       userId,
@@ -751,9 +799,12 @@ export class CrmSyncService {
       appointmentTime: data.appointmentTime,
       duration,
       serviceName: data.serviceName || 'Consultation / Site Visit',
-      notes: data.notes || 'Booked via Calliqo AI',
+      notes: enhancedNotes,
       status: 'scheduled',
       googleCalendarEventId: googleEventId,
+      assignedStaffId,
+      assignedStaffName,
+      assignedStaffPhone,
     });
 
     // Update lead record if exists

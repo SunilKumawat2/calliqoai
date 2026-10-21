@@ -22,7 +22,7 @@ import {
   TrendingUp, TrendingDown, Minus, Clock, Flame, UserX, PhoneMissed,
   ClipboardCheck, UserCheck, ArrowDownUp, PhoneCall, Zap, Palette, Check,
   History, Tag, Trash2, BarChart3, Square, CheckSquare, X, Megaphone, PhoneIncoming,
-  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet, ExternalLink, CalendarDays
+  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet, ExternalLink, CalendarDays, Bell
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -30,6 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CRMIntegrationsDashboard } from "@/components/crm/CRMIntegrationsDashboard";
+import { SalesTeamSiteVisits } from "@/components/crm/SalesTeamSiteVisits";
 import { motion, AnimatePresence } from "framer-motion";
 
 
@@ -1657,7 +1658,7 @@ export default function CRMPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const queryClientRef = useQueryClient();
-  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations">("kanban");
+  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team">("kanban");
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedSourceId, setSelectedSourceId] = useState<string>("all");
@@ -1684,6 +1685,20 @@ export default function CRMPage() {
   // Column drag-and-drop state
   const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = useState<string | null>(null);
+
+  // Sales Team & Site Visit notifications
+  const [salesBannerDismissed, setSalesBannerDismissed] = useState(false);
+  const { data: salesStats } = useQuery<{
+    totalVisits: number;
+    unassignedCount: number;
+    todayVisitsCount: number;
+    latestUnassigned: any;
+  }>({
+    queryKey: ["/api/sales-team/notifications/stats"],
+    refetchInterval: 15000,
+  });
+  const unassignedVisitsCount = salesStats?.unassignedCount || 0;
+  const latestUnassignedVisit = salesStats?.latestUnassigned;
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery<CRMAnalytics>({
     queryKey: ["/api/crm/analytics"],
@@ -2721,9 +2736,67 @@ export default function CRMPage() {
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>Integrations & Sync</span>
             </Button>
+            <Button
+              variant={viewMode === "sales_team" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => {
+                setViewMode("sales_team");
+                setSalesBannerDismissed(true);
+              }}
+              data-testid="view-sales-team"
+              title="Sales Team & Site Visit Assignment"
+              className={`h-8 text-xs gap-1.5 px-3 font-medium transition-colors ${
+                viewMode === "sales_team" 
+                  ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold border border-blue-500/30" 
+                  : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Sales Team & Visits</span>
+              {unassignedVisitsCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-bold animate-pulse">
+                  {unassignedVisitsCount} New
+                </span>
+              )}
+            </Button>
           </div>
         </div>
       </div>
+
+      {/* ── TOP NOTIFICATION ALERT BANNER FOR UNASSIGNED SITE VISITS ── */}
+      {unassignedVisitsCount > 0 && viewMode !== "sales_team" && !salesBannerDismissed && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border-b border-amber-500/30 px-6 py-2.5 flex items-center justify-between text-xs animate-in slide-in-from-top duration-300">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+            <Bell className="w-4 h-4 text-amber-500 shrink-0" />
+            <span className="font-bold text-foreground">
+              🚨 New Site Visit Alert:
+            </span>
+            <span className="text-muted-foreground">
+              <strong>{unassignedVisitsCount} site visit{unassignedVisitsCount > 1 ? 's' : ''}</strong> need sales consultant assignment!
+              {latestUnassignedVisit && (
+                <span> (Latest: <strong className="text-foreground">{latestUnassignedVisit.contactName}</strong> for {latestUnassignedVisit.serviceName || 'Site Visit'} on {latestUnassignedVisit.appointmentDate} at {latestUnassignedVisit.appointmentTime})</span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              onClick={() => setViewMode("sales_team")}
+              className="h-7 text-xs px-2.5 bg-amber-600 hover:bg-amber-700 text-white gap-1 font-medium shadow-sm"
+            >
+              <UserCheck className="w-3.5 h-3.5" /> Appoint Staff Now
+            </Button>
+            <button
+              onClick={() => setSalesBannerDismissed(true)}
+              className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted"
+              title="Dismiss for now"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {selectedLeadIds.size > 0 && (
         <div className="flex items-center gap-3 px-6 py-2 border-b bg-primary/5">
@@ -2859,7 +2932,13 @@ export default function CRMPage() {
       </Dialog>
 
       <div className="flex-1 overflow-hidden">
-        {viewMode === "integrations" ? (
+        {viewMode === "sales_team" ? (
+          <ScrollArea className="h-full">
+            <div className="p-6">
+              <SalesTeamSiteVisits />
+            </div>
+          </ScrollArea>
+        ) : viewMode === "integrations" ? (
           <ScrollArea className="h-full">
             <div className="p-6">
               <CRMIntegrationsDashboard />
