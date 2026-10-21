@@ -12,7 +12,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { db } from '../db';
-import { salesTeamMembers, appointments, leads } from '@shared/schema';
+import { salesTeamMembers, appointments, leads, notifications } from '@shared/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { logger } from '../utils/logger';
 
@@ -309,6 +309,20 @@ salesTeamRouter.post('/site-visits', async (req: Request, res: Response) => {
         assignedStaffPhone: staffPhone,
       })
       .returning();
+
+    // Create system notification for bell icon & CRM
+    try {
+      const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      await db.insert(notifications).values({
+        id: notifId,
+        userId,
+        type: 'site_visit',
+        title: `📅 Site Visit: ${contactName.trim()}`,
+        message: `${contactName.trim()} scheduled for ${serviceName || 'Property Site Visit'} on ${appointmentDate} at ${appointmentTime}. Assigned: ${staffName || 'Awaiting Staff'}.`,
+        link: '/app/crm',
+        isRead: false,
+      });
+    } catch (nErr: any) {}
 
     res.status(201).json(created);
   } catch (error: any) {

@@ -16,7 +16,7 @@
  */
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Bell, Check, Trash2, AlertCircle, Sparkles, Clock, CheckCircle, XCircle, Pause, Phone, PhoneOff, PhoneCall, Zap, ChevronDown, ChevronUp } from "lucide-react";
+import { Bell, Check, Trash2, AlertCircle, Sparkles, Clock, CheckCircle, XCircle, Pause, Phone, PhoneOff, PhoneCall, Zap, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -129,6 +129,7 @@ export function NotificationBell() {
       phone_billing_failed: PhoneOff,
       phone_released: PhoneCall,
       welcome: Zap,
+      site_visit: CalendarDays,
       system: Bell,
     };
     const IconComponent = iconMap[type] || Bell;

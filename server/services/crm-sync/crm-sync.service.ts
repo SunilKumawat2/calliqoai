@@ -828,6 +828,22 @@ export class CrmSyncService {
         .where(eq(leads.id, lead.id));
     }
 
+    // Create system notification for bell icon & CRM alerts
+    try {
+      const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      await db.insert(notifications).values({
+        id: notifId,
+        userId,
+        type: 'site_visit',
+        title: `🚨 New Site Visit: ${data.contactName}`,
+        message: `${data.contactName} (${data.contactPhone}) booked a site visit for ${data.serviceName || 'Property'} on ${data.appointmentDate} at ${data.appointmentTime}. Assigned: ${assignedStaffName || 'Awaiting Staff Appointment'}.`,
+        link: '/app/crm',
+        isRead: false,
+      });
+    } catch (nErr: any) {
+      logger.warn(`Failed to insert site visit notification: ${nErr?.message}`, undefined, 'CrmSync');
+    }
+
     // Log the event
     await db.insert(crmSyncLogs).values({
       userId,
