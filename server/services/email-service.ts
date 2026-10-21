@@ -968,6 +968,17 @@ export class EmailService {
     return cleaned;
   }
 
+  private isPlaceholderValue(val?: string | null): boolean {
+    if (!val) return true;
+    const lower = val.toLowerCase().trim();
+    return (
+      lower.includes('your-email') ||
+      lower.includes('your-app-password') ||
+      lower.includes('example.com') ||
+      lower.includes('placeholder')
+    );
+  }
+
   private initialize(): void {
     const host = process.env.SMTP_HOST;
     const port = process.env.SMTP_PORT;
@@ -975,7 +986,7 @@ export class EmailService {
     const pass = process.env.SMTP_PASS;
     const from = process.env.SMTP_FROM || user;
 
-    if (host && port && user && pass) {
+    if (host && port && user && pass && !this.isPlaceholderValue(user) && !this.isPlaceholderValue(pass)) {
       try {
         const portNum = parseInt(port, 10);
         this.transporter = nodemailer.createTransport({
@@ -998,20 +1009,20 @@ export class EmailService {
         });
         this.smtpConfigured = true;
         this.fromAddress = from || '';
-        logger.info('Email service initialized with SMTP configuration', undefined, SOURCE);
+        logger.info('Email service initialized with SMTP configuration from env', undefined, SOURCE);
       } catch (error) {
         logger.error('Failed to initialize SMTP transporter', error, SOURCE);
         this.smtpConfigured = false;
       }
     } else {
-      logger.warn('SMTP not configured via env vars - will try database settings', undefined, SOURCE);
+      logger.info('SMTP not configured via env vars (or dummy values) - will use database settings', undefined, SOURCE);
       this.smtpConfigured = false;
     }
   }
 
   /**
    * Reinitialize SMTP transporter with settings from database
-   * Called when admin updates SMTP settings in Communications page
+   * Called when admin updates SMTP settings in Communications page or on startup
    */
   async reinitializeFromDatabase(): Promise<boolean> {
     try {
@@ -1021,6 +1032,7 @@ export class EmailService {
       const passSetting = await storage.getGlobalSetting('smtp_password');
       const fromEmailSetting = await storage.getGlobalSetting('smtp_from_email');
       const fromNameSetting = await storage.getGlobalSetting('smtp_from_name');
+      const secureSetting = await storage.getGlobalSetting('smtp_secure');
 
       // Clean database values to remove extra quotes
       const host = this.cleanDbValue(hostSetting?.value as string);
@@ -1029,14 +1041,15 @@ export class EmailService {
       const pass = this.cleanDbValue(passSetting?.value as string);
       const fromEmail = this.cleanDbValue(fromEmailSetting?.value as string);
       const fromName = this.cleanDbValue(fromNameSetting?.value as string);
+      const isSecure = secureSetting?.value === true || secureSetting?.value === 'true';
 
-      if (host && port && user && pass) {
+      if (host && port && user && pass && !this.isPlaceholderValue(user) && !this.isPlaceholderValue(pass)) {
         const portNum = typeof port === 'string' ? parseInt(port, 10) : port;
         
         this.transporter = nodemailer.createTransport({
           host,
           port: portNum,
-          secure: portNum === 465,
+          secure: portNum === 465 || isSecure,
           requireTLS: portNum === 587,
           pool: true,
           maxConnections: 5,
@@ -1056,7 +1069,8 @@ export class EmailService {
         // Extract raw email in case fromEmail is formatted like "Name" <email>
         this.fromAddress = this.extractRawEmail(fromEmail) || user || '';
         this.fromName = fromName || '';
-        logger.info('Email service reinitialized from database settings', { fromAddress: this.fromAddress, fromName: this.fromName }, SOURCE);
+        logger.info('Email service reinitialized from database settings', { host, port: portNum, fromAddress: this.fromAddress, fromName: this.fromName }, SOURCE);
+        console.log(`📧 [EmailService] Configured from DB: ${user} via ${host}:${portNum}`);
         return true;
       }
       return false;
@@ -1160,13 +1174,18 @@ export class EmailService {
     attachments?: EmailAttachment[],
     options?: { replyTo?: string; text?: string }
   ): Promise<{ success: boolean; error?: string; messageId?: string }> {
+    // If SMTP is not enabled or transporter not initialized, attempt to reinitialize from database first
+    if (!this.isEnabled()) {
+      await this.reinitializeFromDatabase();
+    }
+
     // Check if SMTP is enabled
     if (!this.isEnabled()) {
       const reason = !this.smtpConfigured 
-        ? 'SMTP not configured (missing SMTP_HOST, SMTP_PORT, SMTP_USER, or SMTP_PASS)' 
+        ? 'SMTP not configured (check Admin > Communications / SMTP Settings or .env)' 
         : 'Email transporter not initialized';
       logger.warn(`[EMAIL DISABLED] Cannot send to: ${to} - ${reason}`, { subject }, SOURCE);
-      console.log(`⚠️ [Email] SMTP not enabled - email to ${to} not sent. Subject: "${subject}"`);
+      console.log(`⚠️ [Email] SMTP not enabled - email to ${to} not sent. Reason: ${reason}`);
       return { success: false, error: reason };
     }
 

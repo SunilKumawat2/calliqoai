@@ -226,6 +226,7 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
 
     // ── Email Notification to Assigned Staff ──
     if (isAssigning && staffRecord?.email && sendEmailToStaff !== false) {
+      console.log(`📧 [SalesTeam] Dispatching staff assignment email to: ${staffRecord.email}`);
       sendStaffAssignmentEmail({
         staffEmail: staffRecord.email,
         staffName: staffRecord.name,
@@ -237,12 +238,18 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
         appointmentTime: String(updatedAppointment.appointmentTime),
         notes: updatedAppointment.notes,
         adminInstructions: notes,
-      }).catch(err => logger.warn(`[SalesTeam] Staff email error: ${err.message}`, undefined, 'SalesTeam'));
+      }).then(ok => {
+        console.log(`📧 [SalesTeam] Staff email result for ${staffRecord.email}: ${ok ? 'SUCCESS' : 'FAILED'}`);
+      }).catch(err => {
+        console.error(`❌ [SalesTeam] Staff email error: ${err.message}`);
+        logger.warn(`[SalesTeam] Staff email error: ${err.message}`, undefined, 'SalesTeam');
+      });
     }
 
     // ── Email Notification to Customer / Client ──
     const targetClientEmail = clientEmail?.trim() || updatedAppointment.contactEmail;
     if (targetClientEmail && sendEmailToClient !== false) {
+      console.log(`📧 [SalesTeam] Dispatching client confirmation email to: ${targetClientEmail}`);
       sendClientConfirmationEmail({
         clientEmail: targetClientEmail,
         clientName: updatedAppointment.contactName,
@@ -252,7 +259,12 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
         staffName: isAssigning ? staffName : null,
         staffPhone: isAssigning ? staffPhone : null,
         staffRole: isAssigning && staffRecord ? staffRecord.role : 'Property Consultant',
-      }).catch(err => logger.warn(`[SalesTeam] Client email error: ${err.message}`, undefined, 'SalesTeam'));
+      }).then(ok => {
+        console.log(`📧 [SalesTeam] Client email result for ${targetClientEmail}: ${ok ? 'SUCCESS' : 'FAILED'}`);
+      }).catch(err => {
+        console.error(`❌ [SalesTeam] Client email error: ${err.message}`);
+        logger.warn(`[SalesTeam] Client email error: ${err.message}`, undefined, 'SalesTeam');
+      });
     }
 
     res.json(updatedAppointment);

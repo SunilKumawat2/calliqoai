@@ -664,6 +664,13 @@ app.use((req, res, next) => {
       // Start Google Calendar auto-sync background worker (polls every 30s)
       startGoogleCalendarAutoSyncWorker();
 
+      // Initialize Email Service from Database
+      emailService.reinitializeFromDatabase().then((ok) => {
+        if (ok) console.log('✅ [EmailService] SMTP transporter ready from database');
+      }).catch((err: any) => {
+        console.warn('⚠️ [EmailService] Failed to load SMTP settings from DB:', err.message);
+      });
+
       // Start webhook retry service for failed payment webhooks
       webhookRetryService.start();
       
