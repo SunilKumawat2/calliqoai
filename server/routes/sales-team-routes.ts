@@ -15,6 +15,7 @@ import { db } from '../db';
 import { salesTeamMembers, appointments, leads, notifications } from '@shared/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { logger } from '../utils/logger';
+import { sendStaffAssignmentEmail, sendClientConfirmationEmail } from '../services/sales-team-email';
 
 export const salesTeamRouter = Router();
 
@@ -157,8 +158,9 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
 
   try {
     const { id } = req.params;
-    const { staffId, notes } = req.body;
+    const { staffId, notes, sendEmailToStaff, sendEmailToClient, clientEmail } = req.body;
 
+    let staffRecord: any = null;
     let staffName: string | null = null;
     let staffPhone: string | null = null;
     const isAssigning = staffId && staffId !== 'unassigned';
@@ -171,6 +173,7 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
         .limit(1);
 
       if (staff) {
+        staffRecord = staff;
         staffName = staff.name;
         staffPhone = staff.phone;
 
@@ -196,6 +199,10 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
       updatePayload.notes = notes.trim();
     }
 
+    if (clientEmail && clientEmail.trim()) {
+      updatePayload.contactEmail = clientEmail.trim();
+    }
+
     const [updatedAppointment] = await db
       .update(appointments)
       .set(updatePayload)
@@ -204,6 +211,37 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
 
     if (!updatedAppointment) {
       return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    // ── Email Notification to Assigned Staff ──
+    if (isAssigning && staffRecord?.email && sendEmailToStaff !== false) {
+      sendStaffAssignmentEmail({
+        staffEmail: staffRecord.email,
+        staffName: staffRecord.name,
+        clientName: updatedAppointment.contactName,
+        clientPhone: updatedAppointment.contactPhone,
+        clientEmail: updatedAppointment.contactEmail,
+        serviceName: updatedAppointment.serviceName || 'Property Site Visit',
+        appointmentDate: String(updatedAppointment.appointmentDate),
+        appointmentTime: String(updatedAppointment.appointmentTime),
+        notes: updatedAppointment.notes,
+        adminInstructions: notes,
+      }).catch(err => logger.warn(`[SalesTeam] Staff email error: ${err.message}`, undefined, 'SalesTeam'));
+    }
+
+    // ── Email Notification to Customer / Client ──
+    const targetClientEmail = clientEmail?.trim() || updatedAppointment.contactEmail;
+    if (targetClientEmail && sendEmailToClient !== false) {
+      sendClientConfirmationEmail({
+        clientEmail: targetClientEmail,
+        clientName: updatedAppointment.contactName,
+        serviceName: updatedAppointment.serviceName || 'Property Site Visit',
+        appointmentDate: String(updatedAppointment.appointmentDate),
+        appointmentTime: String(updatedAppointment.appointmentTime),
+        staffName: isAssigning ? staffName : null,
+        staffPhone: isAssigning ? staffPhone : null,
+        staffRole: isAssigning && staffRecord ? staffRecord.role : 'Property Consultant',
+      }).catch(err => logger.warn(`[SalesTeam] Client email error: ${err.message}`, undefined, 'SalesTeam'));
     }
 
     res.json(updatedAppointment);
@@ -323,6 +361,37 @@ salesTeamRouter.post('/site-visits', async (req: Request, res: Response) => {
         isRead: false,
       });
     } catch (nErr: any) {}
+
+    // Send emails for manual creation if staff or client email present
+    if (isAssigning && staffPhone) {
+      db.select().from(salesTeamMembers).where(and(eq(salesTeamMembers.id, staffId), eq(salesTeamMembers.userId, userId))).limit(1).then(([st]) => {
+        if (st && st.email) {
+          sendStaffAssignmentEmail({
+            staffEmail: st.email,
+            staffName: st.name,
+            clientName: created.contactName,
+            clientPhone: created.contactPhone,
+            clientEmail: created.contactEmail,
+            serviceName: created.serviceName || 'Property Site Visit',
+            appointmentDate: String(created.appointmentDate),
+            appointmentTime: String(created.appointmentTime),
+            notes: created.notes,
+          }).catch(e => logger.warn(`Staff email error: ${e.message}`, undefined, 'SalesTeam'));
+        }
+      });
+    }
+
+    if (created.contactEmail) {
+      sendClientConfirmationEmail({
+        clientEmail: created.contactEmail,
+        clientName: created.contactName,
+        serviceName: created.serviceName || 'Property Site Visit',
+        appointmentDate: String(created.appointmentDate),
+        appointmentTime: String(created.appointmentTime),
+        staffName: isAssigning ? staffName : null,
+        staffPhone: isAssigning ? staffPhone : null,
+      }).catch(e => logger.warn(`Client email error: ${e.message}`, undefined, 'SalesTeam'));
+    }
 
     res.status(201).json(created);
   } catch (error: any) {

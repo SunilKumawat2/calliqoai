@@ -30,6 +30,7 @@ import { eq, and, or, sql, desc } from 'drizzle-orm';
 import { refreshAccessToken } from '../google-sheets/google-sheets.service';
 import { checkFreeBusySlots, createCalendarEvent } from '../google-calendar/google-calendar.service';
 import { logger } from '../../utils/logger';
+import { sendStaffAssignmentEmail, sendClientConfirmationEmail } from '../sales-team-email';
 
 const GOOGLE_SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 
@@ -727,6 +728,7 @@ export class CrmSyncService {
     let assignedStaffId: string | null = null;
     let assignedStaffName: string | null = null;
     let assignedStaffPhone: string | null = null;
+    let matchedStaff: any = null;
 
     // Smart Sales Staff Auto-Assignment
     try {
@@ -749,6 +751,7 @@ export class CrmSyncService {
         if (!matched) matched = activeStaff[0];
 
         if (matched) {
+          matchedStaff = matched;
           assignedStaffId = matched.id;
           assignedStaffName = matched.name;
           assignedStaffPhone = matched.phone;
@@ -842,6 +845,35 @@ export class CrmSyncService {
       });
     } catch (nErr: any) {
       logger.warn(`Failed to insert site visit notification: ${nErr?.message}`, undefined, 'CrmSync');
+    }
+
+    // ── Send Email to Assigned Sales Executive ──
+    if (matchedStaff?.email) {
+      sendStaffAssignmentEmail({
+        staffEmail: matchedStaff.email,
+        staffName: matchedStaff.name,
+        clientName: data.contactName,
+        clientPhone: data.contactPhone,
+        clientEmail: data.contactEmail || null,
+        serviceName: data.serviceName || 'Property Site Visit',
+        appointmentDate: data.appointmentDate,
+        appointmentTime: data.appointmentTime,
+        notes: data.notes,
+      }).catch(err => logger.warn(`[CrmSync] Staff email error: ${err.message}`, undefined, 'CrmSync'));
+    }
+
+    // ── Send Confirmation Email to Client / Customer ──
+    if (data.contactEmail) {
+      sendClientConfirmationEmail({
+        clientEmail: data.contactEmail,
+        clientName: data.contactName,
+        serviceName: data.serviceName || 'Property Site Visit',
+        appointmentDate: data.appointmentDate,
+        appointmentTime: data.appointmentTime,
+        staffName: assignedStaffName,
+        staffPhone: assignedStaffPhone,
+        staffRole: matchedStaff ? matchedStaff.role : 'Property Consultant',
+      }).catch(err => logger.warn(`[CrmSync] Client email error: ${err.message}`, undefined, 'CrmSync'));
     }
 
     // Log the event

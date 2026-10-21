@@ -80,6 +80,9 @@ export function SalesTeamSiteVisits() {
   const [appointForm, setAppointForm] = useState({
     staffId: "",
     notes: "",
+    clientEmail: "",
+    sendEmailToStaff: true,
+    sendEmailToClient: true,
     notifyStaffWhatsApp: true,
     notifyClientWhatsApp: true,
   });
@@ -162,12 +165,24 @@ export function SalesTeamSiteVisits() {
       visitId,
       staffId,
       notes,
+      clientEmail,
+      sendEmailToStaff,
+      sendEmailToClient,
     }: {
       visitId: string;
       staffId: string;
       notes?: string;
+      clientEmail?: string;
+      sendEmailToStaff?: boolean;
+      sendEmailToClient?: boolean;
     }) => {
-      const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/assign`, { staffId, notes });
+      const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/assign`, {
+        staffId,
+        notes,
+        clientEmail,
+        sendEmailToStaff,
+        sendEmailToClient,
+      });
       return res.json();
     },
     onSuccess: (updatedAppointment) => {
@@ -285,6 +300,9 @@ export function SalesTeamSiteVisits() {
     setAppointForm({
       staffId: visit.assignedStaffId || (staffList.find((s) => s.isActive)?.id || ""),
       notes: visit.notes || "",
+      clientEmail: visit.contactEmail || "",
+      sendEmailToStaff: true,
+      sendEmailToClient: true,
       notifyStaffWhatsApp: true,
       notifyClientWhatsApp: true,
     });
@@ -1004,6 +1022,25 @@ export function SalesTeamSiteVisits() {
                 </div>
               </div>
 
+              {/* Customer Email Input */}
+              <div>
+                <Label className="text-[11px] font-semibold flex items-center justify-between">
+                  <span>Customer Email Address (For Confirmation Email)</span>
+                  {selectedVisitForAppoint.contactEmail && (
+                    <Badge variant="outline" className="text-[9px] font-normal text-emerald-600 border-emerald-500/30">
+                      Auto-detected
+                    </Badge>
+                  )}
+                </Label>
+                <Input
+                  type="email"
+                  placeholder="customer@example.com"
+                  value={appointForm.clientEmail}
+                  onChange={(e) => setAppointForm({ ...appointForm, clientEmail: e.target.value })}
+                  className="h-8 mt-1 text-xs"
+                />
+              </div>
+
               {/* Special Instructions / Notes */}
               <div>
                 <Label className="text-[11px] font-semibold">Instructions for Sales Executive (Optional)</Label>
@@ -1014,6 +1051,55 @@ export function SalesTeamSiteVisits() {
                   className="text-xs h-16 resize-none mt-1"
                 />
               </div>
+
+              {/* Automated Email Notifications */}
+              {(() => {
+                const selectedStaffObj = staffList.find((s) => s.id === appointForm.staffId);
+                return (
+                  <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 space-y-2">
+                    <span className="text-[11px] font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-blue-600" />
+                      Automated Email Dispatches (Live SMTP)
+                    </span>
+
+                    <div className="flex items-center space-x-2 pt-0.5">
+                      <Checkbox
+                        id="sendEmailToStaff"
+                        checked={appointForm.sendEmailToStaff}
+                        onCheckedChange={(checked) =>
+                          setAppointForm({ ...appointForm, sendEmailToStaff: Boolean(checked) })
+                        }
+                      />
+                      <label htmlFor="sendEmailToStaff" className="text-[11px] text-foreground cursor-pointer font-medium">
+                        Send briefing email to Executive{" "}
+                        {selectedStaffObj?.email ? (
+                          <span className="text-blue-600 dark:text-blue-400 font-semibold">({selectedStaffObj.email})</span>
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400 font-normal">(No email in profile)</span>
+                        )}
+                      </label>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="sendEmailToClient"
+                        checked={appointForm.sendEmailToClient}
+                        onCheckedChange={(checked) =>
+                          setAppointForm({ ...appointForm, sendEmailToClient: Boolean(checked) })
+                        }
+                      />
+                      <label htmlFor="sendEmailToClient" className="text-[11px] text-foreground cursor-pointer font-medium">
+                        Send confirmation email to Customer{" "}
+                        {appointForm.clientEmail?.trim() ? (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">({appointForm.clientEmail.trim()})</span>
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400 font-normal">(Enter email above)</span>
+                        )}
+                      </label>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Instant WhatsApp Alerts Checkboxes */}
               <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 space-y-2">
@@ -1064,6 +1150,9 @@ export function SalesTeamSiteVisits() {
                     visitId: selectedVisitForAppoint.id,
                     staffId: appointForm.staffId,
                     notes: appointForm.notes,
+                    clientEmail: appointForm.clientEmail,
+                    sendEmailToStaff: appointForm.sendEmailToStaff,
+                    sendEmailToClient: appointForm.sendEmailToClient,
                   });
                 }
               }}
