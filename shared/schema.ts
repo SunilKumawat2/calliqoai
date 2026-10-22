@@ -3353,4 +3353,36 @@ export const insertLeadSourceIntegrationSchema = createInsertSchema(leadSourceIn
 export type InsertLeadSourceIntegration = z.infer<typeof insertLeadSourceIntegrationSchema>;
 export type LeadSourceIntegration = typeof leadSourceIntegrations.$inferSelect;
 
+// ============================================================
+// Company / Tenant Custom SMTP Settings
+// Allows each company to connect their own email domain & SMTP credentials
+// ============================================================
+export const userSmtpSettings = pgTable("user_smtp_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull().default("custom"), // 'gmail' | 'custom' | 'outlook' | 'sendgrid'
+  host: text("host").notNull(),
+  port: integer("port").notNull().default(587),
+  secure: boolean("secure").notNull().default(false),
+  username: text("username").notNull(),
+  password: text("password").notNull(),
+  fromEmail: text("from_email").notNull(),
+  fromName: text("from_name").notNull(),
+  replyTo: text("reply_to"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastTestedAt: timestamp("last_tested_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userSmtpSettingsUserIdIdx: index("user_smtp_settings_user_id_idx").on(table.userId),
+}));
+
+export const insertUserSmtpSettingSchema = createInsertSchema(userSmtpSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertUserSmtpSetting = z.infer<typeof insertUserSmtpSettingSchema>;
+export type UserSmtpSetting = typeof userSmtpSettings.$inferSelect;
+
 

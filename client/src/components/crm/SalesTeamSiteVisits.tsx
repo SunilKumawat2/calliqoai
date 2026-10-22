@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { CompanyEmailSettingsDialog } from "./CompanyEmailSettingsDialog";
 
 export interface SalesStaff {
   id: string;
@@ -109,6 +110,19 @@ export function SalesTeamSiteVisits() {
   const { data: visitsList = [], isLoading: visitsLoading, refetch: refetchVisits } = useQuery<SiteVisit[]>({
     queryKey: ["/api/sales-team/site-visits/all"],
     refetchInterval: 15000, // auto refetch every 15s to catch new incoming visits live
+  });
+
+  // Company Custom SMTP Settings
+  const [emailSettingsOpen, setEmailSettingsOpen] = useState(false);
+  const { data: smtpData, refetch: refetchSmtp } = useQuery<{
+    configured: boolean;
+    settings: {
+      fromEmail: string;
+      fromName: string;
+      provider: string;
+    } | null;
+  }>({
+    queryKey: ["/api/crm/smtp-settings"],
   });
 
   // Mutations
@@ -506,6 +520,28 @@ export function SalesTeamSiteVisits() {
             </span>
             <CalendarDays className={`w-3.5 h-3.5 text-indigo-600 ${syncCalendarMutation.isPending ? "animate-spin" : ""}`} />
             {syncCalendarMutation.isPending ? "Syncing..." : "Google Calendar (Auto-Syncing)"}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEmailSettingsOpen(true)}
+            title={smtpData?.configured ? `Connected: ${smtpData.settings?.fromEmail}` : "Setup your company's own email gateway for site visits and briefings"}
+            className={`h-8 gap-1.5 text-xs font-medium shadow-xs ${
+              smtpData?.configured
+                ? "border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40"
+                : "border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+            }`}
+          >
+            <Mail className={`w-3.5 h-3.5 ${smtpData?.configured ? "text-purple-600" : "text-blue-600"}`} />
+            {smtpData?.configured ? (
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                Company Email ({smtpData.settings?.fromEmail?.split("@")[0] || "Custom"})
+              </span>
+            ) : (
+              "Setup Company Email"
+            )}
           </Button>
 
           <Button

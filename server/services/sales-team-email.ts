@@ -13,6 +13,7 @@ import { emailService } from './email-service';
 import { logger } from '../utils/logger';
 
 export interface StaffAssignmentEmailParams {
+  userId?: string | null;
   staffEmail: string;
   staffName: string;
   clientName: string;
@@ -26,6 +27,7 @@ export interface StaffAssignmentEmailParams {
 }
 
 export interface ClientConfirmationEmailParams {
+  userId?: string | null;
   clientEmail: string;
   clientName: string;
   serviceName: string;
@@ -229,7 +231,9 @@ export async function sendStaffAssignmentEmail(params: StaffAssignmentEmailParam
   try {
     const html = buildStaffAssignmentEmailHtml(params);
     const subject = `🏢 New Site Visit Assigned: ${params.clientName} - ${params.serviceName}`;
-    const result = await emailService.sendEmail(params.staffEmail, subject, html);
+    const result = await emailService.sendEmail(params.staffEmail, subject, html, undefined, {
+      userId: params.userId || undefined,
+    });
     if (result.success) {
       logger.info(`[SalesTeamEmail] Sent staff briefing to ${params.staffEmail}`, undefined, 'SalesTeamEmail');
       return true;
@@ -254,7 +258,9 @@ export async function sendClientConfirmationEmail(params: ClientConfirmationEmai
   try {
     const html = buildClientConfirmationEmailHtml(params);
     const subject = `✅ Property Site Visit Confirmed: ${params.serviceName}`;
-    const result = await emailService.sendEmail(params.clientEmail, subject, html);
+    const result = await emailService.sendEmail(params.clientEmail, subject, html, undefined, {
+      userId: params.userId || undefined,
+    });
     if (result.success) {
       logger.info(`[SalesTeamEmail] Sent client confirmation to ${params.clientEmail}`, undefined, 'SalesTeamEmail');
       return true;

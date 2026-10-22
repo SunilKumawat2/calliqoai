@@ -1666,6 +1666,10 @@ When using a tool:
   const { salesTeamRouter } = await import("./routes/sales-team-routes");
   app.use("/api/sales-team", routeContext.authenticateHybrid as unknown as import('express').RequestHandler, salesTeamRouter);
 
+  // Company / Tenant Custom SMTP Settings routes
+  const { crmSmtpRouter } = await import("./routes/crm-smtp-routes");
+  app.use("/api/crm", routeContext.authenticateHybrid as unknown as import('express').RequestHandler, crmSmtpRouter);
+
   // Lead Source Integrations (Website Forms, Meta Ads, 99acres, Magicbricks, Housing)
   const { leadSourceRouter } = await import("./routes/lead-source-routes");
   app.use("/api/lead-sources", routeContext.authenticateHybrid as unknown as import('express').RequestHandler);

@@ -19,8 +19,9 @@ import {
   ExternalLink, Plus, Trash2, ArrowRight, ShieldCheck, Clock, 
   Layers, Database, Zap, Sparkles, Building2, Globe, Megaphone,
   Copy, Check, Send, Code2, PhoneCall, PhoneForwarded, Play,
-  Sliders, Settings2
+  Sliders, Settings2, Mail
 } from "lucide-react";
+import { CompanyEmailSettingsDialog } from "./CompanyEmailSettingsDialog";
 
 interface SheetSyncConfig {
   id: string;
@@ -179,6 +180,19 @@ export function CRMIntegrationsDashboard() {
   // Lead Source Integrations
   const { data: leadSources = [], isLoading: leadSourcesLoading, refetch: refetchLeadSources } = useQuery<LeadSourceIntegration[]>({
     queryKey: ["/api/lead-sources"],
+  });
+
+  // Company Custom SMTP Settings
+  const [emailSettingsOpen, setEmailSettingsOpen] = useState(false);
+  const { data: smtpData, refetch: refetchSmtp } = useQuery<{
+    configured: boolean;
+    settings: {
+      fromEmail: string;
+      fromName: string;
+      provider: string;
+    } | null;
+  }>({
+    queryKey: ["/api/crm/smtp-settings"],
   });
 
   // Agents list for dynamic voice routing
@@ -694,8 +708,8 @@ export function CRMIntegrationsDashboard() {
   // Reusable Google Workspace (Sheets & Calendar) Cards and Active Mappings Section
   const renderGoogleWorkspaceSection = () => (
     <div className="space-y-6">
-      {/* 2 Main Integration Cards: Google Sheets & Google Calendar */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* 3 Main Integration Cards: Google Sheets, Google Calendar & Company Email Gateway */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         
         {/* Google Sheets Card */}
         <Card className="border border-border/60 hover:shadow-md transition-all">
@@ -828,6 +842,63 @@ export function CRMIntegrationsDashboard() {
                   <ExternalLink className="w-4 h-4" /> Connect with Google Calendar
                 </Button>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 3. Company Email & SMTP Gateway Card */}
+        <Card className="border border-border/60 hover:shadow-md transition-all">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-semibold">Company Email & SMTP</CardTitle>
+                  <CardDescription className="text-xs">Custom domain email & Gmail integration</CardDescription>
+                </div>
+              </div>
+              {smtpData?.configured ? (
+                <Badge className="bg-purple-500/15 text-purple-600 hover:bg-purple-500/20 border-purple-500/30 gap-1.5 py-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Connected
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-muted-foreground gap-1.5 py-1">
+                  <AlertCircle className="w-3.5 h-3.5" /> System Default
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Connect your company's own email server (Gmail, Mailbux, Zoho, Outlook, SendGrid) so property site visit confirmations and staff briefings are sent from your brand.
+            </p>
+
+            <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Sender Email:</span>
+                <span className="font-medium text-foreground truncate max-w-[170px]" title={smtpData?.settings?.fromEmail || "Platform Default"}>
+                  {smtpData?.settings?.fromEmail || "Platform Default"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Sender Name:</span>
+                <span className="font-medium text-foreground truncate max-w-[170px]" title={smtpData?.settings?.fromName || "Calliqo AI"}>
+                  {smtpData?.settings?.fromName || "Calliqo AI"}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <Button 
+                size="sm" 
+                className="bg-purple-600 hover:bg-purple-700 text-white gap-2 w-full font-medium"
+                onClick={() => setEmailSettingsOpen(true)}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                {smtpData?.configured ? "Configure / Test Gateway" : "Connect Company Email"}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -2311,6 +2382,15 @@ export function CRMIntegrationsDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Company Custom Email & SMTP Configuration Dialog */}
+      <CompanyEmailSettingsDialog
+        open={emailSettingsOpen}
+        onOpenChange={(open) => {
+          setEmailSettingsOpen(open);
+          if (!open) refetchSmtp();
+        }}
+      />
     </div>
   );
 }

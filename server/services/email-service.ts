@@ -21,6 +21,9 @@ import type { Transporter } from 'nodemailer';
 import { storage } from '../storage';
 import { logger } from '../utils/logger';
 import type { EmailTemplate } from '@shared/schema';
+import { db } from '../db';
+import { userSmtpSettings } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
 
 const SOURCE = 'EmailService';
 const DEFAULT_COMPANY_NAME = '';
@@ -926,8 +929,72 @@ export class EmailService {
   private fromAddress: string = '';
   private fromName: string = '';
 
+  // Cache for company/user-specific transporters: Map<userId, config>
+  private userTransporters = new Map<string, { transporter: Transporter; fromEmail: string; fromName: string; replyTo?: string }>();
+
   constructor() {
     this.initialize();
+  }
+
+  /**
+   * Clear cached company transporter when settings change
+   */
+  clearUserTransporter(userId: string): void {
+    this.userTransporters.delete(userId);
+  }
+
+  /**
+   * Retrieve company / user-specific SMTP transporter if configured in user_smtp_settings
+   */
+  async getUserTransporter(userId: string): Promise<{ transporter: Transporter; fromEmail: string; fromName: string; replyTo?: string } | null> {
+    if (!userId) return null;
+    if (this.userTransporters.has(userId)) {
+      return this.userTransporters.get(userId)!;
+    }
+
+    try {
+      const [settings] = await db
+        .select()
+        .from(userSmtpSettings)
+        .where(and(eq(userSmtpSettings.userId, userId), eq(userSmtpSettings.isActive, true)))
+        .limit(1);
+
+      if (!settings || !settings.host || !settings.username || !settings.password) {
+        return null;
+      }
+
+      const portNum = Number(settings.port) || 587;
+      const transporter = nodemailer.createTransport({
+        host: settings.host,
+        port: portNum,
+        secure: settings.secure || portNum === 465,
+        requireTLS: portNum === 587,
+        auth: {
+          user: settings.username,
+          pass: settings.password,
+        },
+        tls: {
+          rejectUnauthorized: false,
+        },
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 15000,
+      });
+
+      const config = {
+        transporter,
+        fromEmail: this.extractRawEmail(settings.fromEmail) || settings.username,
+        fromName: settings.fromName || 'Company Admin',
+        replyTo: settings.replyTo || undefined,
+      };
+
+      this.userTransporters.set(userId, config);
+      logger.info(`Loaded custom company SMTP for user ${userId}`, { host: settings.host, fromEmail: config.fromEmail }, SOURCE);
+      return config;
+    } catch (err: any) {
+      logger.error(`[EmailService] Failed to load company SMTP for user ${userId}: ${err.message}`, err, SOURCE);
+      return null;
+    }
   }
 
   /**
@@ -1172,31 +1239,53 @@ export class EmailService {
     subject: string,
     html: string,
     attachments?: EmailAttachment[],
-    options?: { replyTo?: string; text?: string }
+    options?: { replyTo?: string; text?: string; userId?: string }
   ): Promise<{ success: boolean; error?: string; messageId?: string }> {
     // If SMTP is not enabled or transporter not initialized, attempt to reinitialize from database first
     if (!this.isEnabled()) {
       await this.reinitializeFromDatabase();
     }
 
-    // Check if SMTP is enabled
-    if (!this.isEnabled()) {
+    const branding = await getBrandingSettings();
+    
+    // Default system from address
+    const rawFromAddress = this.extractRawEmail(this.fromAddress) || this.fromAddress;
+    let fromAddress = rawFromAddress || branding.fromEmail || process.env.SMTP_USER || '';
+    let rawDisplayName = this.fromName || branding.fromName || branding.appName;
+    let displayName = sanitizeDisplayName(rawDisplayName);
+    let activeTransporter: Transporter | null = this.transporter;
+    let activeReplyTo = options?.replyTo;
+
+    // ── Check if Company / Tenant has custom SMTP configured ──
+    if (options?.userId) {
+      try {
+        const userConfig = await this.getUserTransporter(options.userId);
+        if (userConfig && userConfig.transporter) {
+          activeTransporter = userConfig.transporter;
+          fromAddress = userConfig.fromEmail;
+          displayName = sanitizeDisplayName(userConfig.fromName || displayName);
+          if (userConfig.replyTo) {
+            activeReplyTo = userConfig.replyTo;
+          }
+          console.log(`🏢 [Email] Using Company Custom SMTP for user ${options.userId} (${fromAddress})`);
+        }
+      } catch (err: any) {
+        console.warn(`⚠️ [Email] Could not load company SMTP, falling back to system: ${err.message}`);
+      }
+    }
+
+    // Check if we have an active transporter
+    if (!activeTransporter) {
       const reason = !this.smtpConfigured 
-        ? 'SMTP not configured (check Admin > Communications / SMTP Settings or .env)' 
+        ? 'SMTP not configured (check Admin or CRM Company Email Settings)' 
         : 'Email transporter not initialized';
       logger.warn(`[EMAIL DISABLED] Cannot send to: ${to} - ${reason}`, { subject }, SOURCE);
       console.log(`⚠️ [Email] SMTP not enabled - email to ${to} not sent. Reason: ${reason}`);
       return { success: false, error: reason };
     }
 
-    const branding = await getBrandingSettings();
-    
-    // Ensure we have a valid from address with proper email format validation
-    // Extract raw email in case fromAddress is still in formatted form
-    const rawFromAddress = this.extractRawEmail(this.fromAddress) || this.fromAddress;
-    const fromAddress = rawFromAddress || branding.fromEmail || process.env.SMTP_USER || '';
     if (!fromAddress) {
-      const error = 'No from address configured (SMTP_FROM or SMTP_USER required)';
+      const error = 'No from address configured';
       logger.error(`[EMAIL ERROR] ${error}`, undefined, SOURCE);
       console.log(`❌ [Email] ${error}`);
       return { success: false, error };
@@ -1211,18 +1300,7 @@ export class EmailService {
       return { success: false, error };
     }
 
-    // Use configured fromName if available, otherwise fall back to branding appName.
-    // Sanitise the display name so it is RFC 5322-safe (no pipe, angle brackets,
-    // non-ASCII etc.) which prevents header parsing failures on strict corporate
-    // mail gateways (Outlook / Exchange / Microsoft 365).
-    const rawDisplayName = this.fromName || branding.fromName || branding.appName;
-    const displayName = sanitizeDisplayName(rawDisplayName);
-
     // Always provide a plain-text alternative alongside the HTML body.
-    // Emails that arrive with ONLY an HTML part (no text/plain) are flagged
-    // by corporate spam filters and silently dropped — especially on Microsoft
-    // 365 / Exchange environments.  Generate it automatically so every email
-    // type benefits without each caller needing to pass it explicitly.
     const textBody = options?.text || htmlToText(html);
 
     try {
@@ -1239,11 +1317,11 @@ export class EmailService {
       };
       
       // Add optional replyTo if provided
-      if (options?.replyTo) {
-        mailOptions.replyTo = options.replyTo;
+      if (activeReplyTo) {
+        mailOptions.replyTo = activeReplyTo;
       }
 
-      console.log(`📧 [Email] Sending to: ${to}, Subject: "${subject}", From: ${fromAddress}${options?.replyTo ? `, Reply-To: ${options.replyTo}` : ''}`);
+      console.log(`📧 [Email] Sending to: ${to}, Subject: "${subject}", From: ${fromAddress}${activeReplyTo ? `, Reply-To: ${activeReplyTo}` : ''}`);
       
       const retryableCodes = new Set(['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ESOCKET', 'EAI_AGAIN']);
       const maxRetries = 2;
@@ -1256,7 +1334,7 @@ export class EmailService {
             console.log(`🔄 [Email] Retry ${attempt}/${maxRetries} to ${to} after ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
           }
-          const info = await this.transporter!.sendMail(mailOptions);
+          const info = await activeTransporter.sendMail(mailOptions);
           logger.info(`Email sent successfully to: ${to}`, { messageId: info.messageId, attempts: attempt + 1 }, SOURCE);
           console.log(`✅ [Email] Sent successfully to: ${to}, MessageId: ${info.messageId}${attempt > 0 ? ` (after ${attempt} retries)` : ''}`);
           return { success: true, messageId: info.messageId };

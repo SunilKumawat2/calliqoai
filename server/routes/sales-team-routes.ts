@@ -228,6 +228,7 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
     if (isAssigning && staffRecord?.email && sendEmailToStaff !== false) {
       console.log(`📧 [SalesTeam] Dispatching staff assignment email to: ${staffRecord.email}`);
       sendStaffAssignmentEmail({
+        userId,
         staffEmail: staffRecord.email,
         staffName: staffRecord.name,
         clientName: updatedAppointment.contactName,
@@ -251,6 +252,7 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
     if (targetClientEmail && sendEmailToClient !== false) {
       console.log(`📧 [SalesTeam] Dispatching client confirmation email to: ${targetClientEmail}`);
       sendClientConfirmationEmail({
+        userId,
         clientEmail: targetClientEmail,
         clientName: updatedAppointment.contactName,
         serviceName: updatedAppointment.serviceName || 'Property Site Visit',
@@ -390,6 +392,7 @@ salesTeamRouter.post('/site-visits', async (req: Request, res: Response) => {
       db.select().from(salesTeamMembers).where(and(eq(salesTeamMembers.id, staffId), eq(salesTeamMembers.userId, userId))).limit(1).then(([st]) => {
         if (st && st.email) {
           sendStaffAssignmentEmail({
+            userId,
             staffEmail: st.email,
             staffName: st.name,
             clientName: created.contactName,
@@ -406,6 +409,7 @@ salesTeamRouter.post('/site-visits', async (req: Request, res: Response) => {
 
     if (created.contactEmail) {
       sendClientConfirmationEmail({
+        userId,
         clientEmail: created.contactEmail,
         clientName: created.contactName,
         serviceName: created.serviceName || 'Property Site Visit',
