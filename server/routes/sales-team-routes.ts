@@ -16,6 +16,7 @@ import { salesTeamMembers, appointments, leads, notifications } from '@shared/sc
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { logger } from '../utils/logger';
 import { sendStaffAssignmentEmail, sendClientConfirmationEmail } from '../services/sales-team-email';
+import { updateCalendarEvent, createCalendarEvent } from '../services/google-calendar/google-calendar.service';
 
 export const salesTeamRouter = Router();
 
@@ -269,6 +270,31 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
       });
     }
 
+    // ── Two-Way Sync to Google Calendar (Update Consultant & Details) ──
+    if (updatedAppointment.googleCalendarEventId) {
+      updateCalendarEvent(userId, updatedAppointment.googleCalendarEventId, {
+        id: updatedAppointment.id,
+        contactName: updatedAppointment.contactName,
+        contactPhone: updatedAppointment.contactPhone,
+        contactEmail: updatedAppointment.contactEmail,
+        appointmentDate: String(updatedAppointment.appointmentDate),
+        appointmentTime: String(updatedAppointment.appointmentTime),
+        duration: updatedAppointment.duration || 30,
+        serviceName: updatedAppointment.serviceName,
+        notes: updatedAppointment.notes,
+        status: updatedAppointment.status,
+        statusReason: updatedAppointment.statusReason,
+        assignedStaffName: updatedAppointment.assignedStaffName,
+        assignedStaffPhone: updatedAppointment.assignedStaffPhone,
+      }).then(synced => {
+        if (synced) {
+          console.log(`📅 [SalesTeam] Synced consultant assignment to Google Calendar event: ${updatedAppointment.googleCalendarEventId}`);
+        }
+      }).catch(err => {
+        logger.warn(`[SalesTeam] Google Calendar staff sync error: ${err.message}`, undefined, 'SalesTeam');
+      });
+    }
+
     res.json(updatedAppointment);
   } catch (error: any) {
     logger.error(`[SalesTeam] Error assigning staff: ${error.message}`, error, 'SalesTeam');
@@ -297,6 +323,31 @@ salesTeamRouter.put('/site-visits/:id/status', async (req: Request, res: Respons
 
     if (!updatedAppointment) {
       return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    // ── Two-Way Sync to Google Calendar (Update Status & Outcome) ──
+    if (updatedAppointment.googleCalendarEventId) {
+      updateCalendarEvent(userId, updatedAppointment.googleCalendarEventId, {
+        id: updatedAppointment.id,
+        contactName: updatedAppointment.contactName,
+        contactPhone: updatedAppointment.contactPhone,
+        contactEmail: updatedAppointment.contactEmail,
+        appointmentDate: String(updatedAppointment.appointmentDate),
+        appointmentTime: String(updatedAppointment.appointmentTime),
+        duration: updatedAppointment.duration || 30,
+        serviceName: updatedAppointment.serviceName,
+        notes: updatedAppointment.notes,
+        status: updatedAppointment.status,
+        statusReason: updatedAppointment.statusReason,
+        assignedStaffName: updatedAppointment.assignedStaffName,
+        assignedStaffPhone: updatedAppointment.assignedStaffPhone,
+      }).then(synced => {
+        if (synced) {
+          console.log(`📅 [SalesTeam] Two-way synced status '${status}' to Google Calendar event: ${updatedAppointment.googleCalendarEventId}`);
+        }
+      }).catch(err => {
+        logger.warn(`[SalesTeam] Google Calendar status sync error: ${err.message}`, undefined, 'SalesTeam');
+      });
     }
 
     res.json(updatedAppointment);
@@ -419,6 +470,29 @@ salesTeamRouter.post('/site-visits', async (req: Request, res: Response) => {
         staffPhone: isAssigning ? staffPhone : null,
       }).catch(e => logger.warn(`Client email error: ${e.message}`, undefined, 'SalesTeam'));
     }
+
+    // ── Two-Way Sync: Push manual site visit to Google Calendar ──
+    createCalendarEvent(userId, {
+      id: created.id,
+      contactName: created.contactName,
+      contactPhone: created.contactPhone,
+      contactEmail: created.contactEmail,
+      appointmentDate: String(created.appointmentDate),
+      appointmentTime: String(created.appointmentTime),
+      duration: created.duration || 30,
+      serviceName: created.serviceName,
+      notes: created.notes,
+      status: created.status,
+      assignedStaffName: staffName,
+      assignedStaffPhone: staffPhone,
+    }).then(async (gEventId) => {
+      if (gEventId) {
+        await db.update(appointments).set({ googleCalendarEventId: gEventId }).where(eq(appointments.id, created.id));
+        console.log(`📅 [SalesTeam] Manually appointed visit pushed to Google Calendar: ${gEventId}`);
+      }
+    }).catch(err => {
+      logger.warn(`[SalesTeam] Google Calendar event create error: ${err.message}`, undefined, 'SalesTeam');
+    });
 
     res.status(201).json(created);
   } catch (error: any) {

@@ -20,6 +20,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { CompanyEmailSettingsDialog } from "./CompanyEmailSettingsDialog";
+import { EmailNotificationManager } from "./EmailNotificationManager";
 
 export interface SalesStaff {
   id: string;
@@ -58,7 +59,7 @@ export function SalesTeamSiteVisits() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [activeSubTab, setActiveSubTab] = useState<"visits" | "team">("visits");
+  const [activeSubTab, setActiveSubTab] = useState<"visits" | "team" | "email">("visits");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -278,7 +279,7 @@ export function SalesTeamSiteVisits() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
-      toast({ title: "Status Updated", description: "Visit outcome status updated." });
+      toast({ title: "✅ Status Updated", description: "Visit outcome updated & live synced with Google Calendar." });
     },
   });
 
@@ -525,7 +526,7 @@ export function SalesTeamSiteVisits() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setEmailSettingsOpen(true)}
+            onClick={() => setActiveSubTab("email")}
             title={smtpData?.configured ? `Connected: ${smtpData.settings?.fromEmail}` : "Setup your company's own email gateway for site visits and briefings"}
             className={`h-8 gap-1.5 text-xs font-medium shadow-xs ${
               smtpData?.configured
@@ -670,6 +671,25 @@ export function SalesTeamSiteVisits() {
         >
           <Users className="w-4 h-4" />
           Sales Executives & Field Team ({staffList.length})
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab("email")}
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold border-b-2 transition-all ${
+            activeSubTab === "email"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Mail className="w-4 h-4" />
+          Email Notifications &amp; Templates (SMTP)
+          {smtpData?.configured ? (
+            <span className="w-2 h-2 rounded-full bg-emerald-500 ml-1" title="Connected" />
+          ) : (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-bold ml-1">
+              Setup
+            </span>
+          )}
         </button>
       </div>
 
@@ -1038,6 +1058,11 @@ export function SalesTeamSiteVisits() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── TAB 3: EMAIL NOTIFICATIONS & DYNAMIC TEMPLATES (SMTP) ── */}
+      {activeSubTab === "email" && (
+        <EmailNotificationManager />
       )}
 
       {/* ── APPOINT CONSULTANT DIALOG MODAL ── */}
@@ -1589,6 +1614,12 @@ export function SalesTeamSiteVisits() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Company Email & SMTP Settings Modal */}
+      <CompanyEmailSettingsDialog
+        open={emailSettingsOpen}
+        onOpenChange={setEmailSettingsOpen}
+      />
     </div>
   );
 }

@@ -11,11 +11,12 @@
 
 import { Router, type Request, type Response } from 'express';
 import { db } from '../db';
-import { userSmtpSettings } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { userSmtpSettings, userEmailTemplates } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
 import nodemailer from 'nodemailer';
 import { emailService } from '../services/email-service';
 import { logger } from '../utils/logger';
+import { DEFAULT_EMAIL_TEMPLATES, interpolateVariables } from '../services/sales-team-email';
 
 export const crmSmtpRouter = Router();
 
@@ -303,5 +304,198 @@ crmSmtpRouter.delete('/smtp-settings', async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error(`[CRMSmtp] Error deleting SMTP settings for user ${userId}: ${error.message}`, error, 'CRMSmtp');
     res.status(500).json({ error: 'Failed to delete company email settings' });
+  }
+});
+
+// ── 5. GET /api/crm/email-templates (Fetch all customizable templates) ──
+crmSmtpRouter.get('/email-templates', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const customList = await db
+      .select()
+      .from(userEmailTemplates)
+      .where(eq(userEmailTemplates.userId, userId));
+
+    const customMap = new Map<string, typeof customList[0]>();
+    for (const item of customList) {
+      customMap.set(item.name, item);
+    }
+
+    const templates = Object.entries(DEFAULT_EMAIL_TEMPLATES).map(([key, def]) => {
+      const custom = customMap.get(key);
+      return {
+        key,
+        name: def.name,
+        description: def.description,
+        recipientType: def.recipientType,
+        variables: def.variables,
+        defaultSubject: def.subject,
+        defaultHtmlBody: def.htmlBody,
+        subject: custom ? custom.subject : def.subject,
+        htmlBody: custom ? custom.htmlBody : def.htmlBody,
+        isActive: custom ? custom.isActive : true,
+        isCustomized: Boolean(custom),
+        updatedAt: custom ? custom.updatedAt : null,
+      };
+    });
+
+    res.json({ success: true, templates });
+  } catch (error: any) {
+    logger.error(`[CRMSmtp] Error fetching email templates for user ${userId}: ${error.message}`, error, 'CRMSmtp');
+    res.status(500).json({ error: 'Failed to fetch email templates' });
+  }
+});
+
+// ── 6. PUT /api/crm/email-templates/:key (Save / Customize Template) ──
+crmSmtpRouter.put('/email-templates/:key', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { key } = req.params;
+  const def = (DEFAULT_EMAIL_TEMPLATES as any)[key];
+  if (!def) {
+    return res.status(404).json({ error: `Unknown email template key: ${key}` });
+  }
+
+  const { subject, htmlBody, isActive } = req.body;
+  if (!subject?.trim()) {
+    return res.status(400).json({ error: 'Subject is required' });
+  }
+  if (!htmlBody?.trim()) {
+    return res.status(400).json({ error: 'Email HTML / content body is required' });
+  }
+
+  try {
+    const [existing] = await db
+      .select()
+      .from(userEmailTemplates)
+      .where(and(eq(userEmailTemplates.userId, userId), eq(userEmailTemplates.name, key)))
+      .limit(1);
+
+    if (existing) {
+      await db
+        .update(userEmailTemplates)
+        .set({
+          subject: subject.trim(),
+          htmlBody: htmlBody.trim(),
+          variables: def.variables,
+          isActive: isActive !== false,
+          updatedAt: new Date(),
+        })
+        .where(eq(userEmailTemplates.id, existing.id));
+    } else {
+      await db.insert(userEmailTemplates).values({
+        userId,
+        name: key,
+        subject: subject.trim(),
+        htmlBody: htmlBody.trim(),
+        variables: def.variables,
+        isActive: isActive !== false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    console.log(`✅ [CRMSmtp] Saved custom template '${key}' for user ${userId}`);
+    res.json({
+      success: true,
+      message: `${def.name} template saved successfully!`,
+    });
+  } catch (error: any) {
+    logger.error(`[CRMSmtp] Error saving template ${key} for user ${userId}: ${error.message}`, error, 'CRMSmtp');
+    res.status(500).json({ error: error.message || 'Failed to save email template' });
+  }
+});
+
+// ── 7. POST /api/crm/email-templates/:key/reset (Reset to Default) ──
+crmSmtpRouter.post('/email-templates/:key/reset', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { key } = req.params;
+  const def = (DEFAULT_EMAIL_TEMPLATES as any)[key];
+  if (!def) {
+    return res.status(404).json({ error: `Unknown email template key: ${key}` });
+  }
+
+  try {
+    await db
+      .delete(userEmailTemplates)
+      .where(and(eq(userEmailTemplates.userId, userId), eq(userEmailTemplates.name, key)));
+
+    console.log(`🔄 [CRMSmtp] Reset template '${key}' to default for user ${userId}`);
+    res.json({
+      success: true,
+      message: `${def.name} reset to factory default template.`,
+      defaultSubject: def.subject,
+      defaultHtmlBody: def.htmlBody,
+    });
+  } catch (error: any) {
+    logger.error(`[CRMSmtp] Error resetting template ${key} for user ${userId}: ${error.message}`, error, 'CRMSmtp');
+    res.status(500).json({ error: 'Failed to reset email template' });
+  }
+});
+
+// ── 8. POST /api/crm/email-templates/:key/test (Send Test Preview) ──
+crmSmtpRouter.post('/email-templates/:key/test', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { key } = req.params;
+  const def = (DEFAULT_EMAIL_TEMPLATES as any)[key];
+  if (!def) {
+    return res.status(404).json({ error: `Unknown email template key: ${key}` });
+  }
+
+  const { testEmail, subject, htmlBody } = req.body;
+  if (!testEmail || !testEmail.includes('@')) {
+    return res.status(400).json({ error: 'Valid test recipient email is required' });
+  }
+
+  const rawSubject = subject || def.subject;
+  const rawHtml = htmlBody || def.htmlBody;
+
+  const sampleVars = {
+    staff_name: 'Rahul Verma',
+    client_name: 'Rohan Sharma',
+    client_phone: '+91 98765 43210',
+    client_email: testEmail,
+    project_name: 'DLF Cyber Heights Luxury Residences',
+    service_name: 'DLF Cyber Heights (3BHK Luxury)',
+    visit_date: 'Saturday, Oct 24, 2026',
+    visit_time: '11:30 AM',
+    assigned_consultant_name: 'Rahul Verma',
+    assigned_consultant_phone: '+91 98765 43210',
+    assigned_consultant_role: 'Senior Property Consultant',
+    notes: 'Looking for 3BHK high floor, East facing, budget 2.5 - 3.2 Cr. Family visit planned.',
+    admin_instructions: 'Customer requested parking space demo and clubhouse tour. Keep physical floor brochures ready.',
+    company_name: 'ABC Real Estate (Calliqo AI)',
+  };
+
+  const finalSubject = `[TEST PREVIEW] ` + interpolateVariables(rawSubject, sampleVars);
+  const finalHtml = interpolateVariables(rawHtml, sampleVars);
+
+  try {
+    const result = await emailService.sendEmail(testEmail, finalSubject, finalHtml, undefined, {
+      userId,
+    });
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error || 'Failed to send test email. Please verify SMTP connection settings.',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Test email sent successfully to ${testEmail}! Check your inbox.`,
+      messageId: result.messageId,
+    });
+  } catch (error: any) {
+    logger.error(`[CRMSmtp] Error sending test template ${key} for user ${userId}: ${error.message}`, error, 'CRMSmtp');
+    res.status(500).json({ error: error.message || 'Failed to dispatch test preview' });
   }
 });

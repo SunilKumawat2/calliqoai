@@ -17,6 +17,9 @@ export interface CalendarAppointment {
   serviceName: string | null;
   notes: string | null;
   status: string;
+  assignedStaffName?: string | null;
+  assignedStaffPhone?: string | null;
+  statusReason?: string | null;
 }
 
 export async function refreshCalendarToken(userId: string, force = false): Promise<string | null> {
@@ -73,7 +76,7 @@ export async function refreshCalendarToken(userId: string, force = false): Promi
 
 function buildEventBody(apt: CalendarAppointment, timezone: string) {
   const dateStr = apt.appointmentDate;
-  const timeStr = apt.appointmentTime.substring(0, 5);
+  const timeStr = (apt.appointmentTime || "11:00").substring(0, 5);
   const startDateTime = `${dateStr}T${timeStr}:00`;
 
   // Parse time and date locally (without shifting timezone)
@@ -87,7 +90,8 @@ function buildEventBody(apt: CalendarAppointment, timezone: string) {
   const startMinutes = parseInt(minutesStr, 10);
   
   const startDate = new Date(startYear, startMonth, startDay, startHours, startMinutes);
-  const endDate = new Date(startDate.getTime() + apt.duration * 60 * 1000);
+  const durationMinutes = Number(apt.duration) || 30;
+  const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
   
   // Format endDate back to local YYYY-MM-DDTHH:mm:ss format
   const endYear = endDate.getFullYear();
@@ -98,31 +102,86 @@ function buildEventBody(apt: CalendarAppointment, timezone: string) {
   
   const endDateTime = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}:00`;
 
-  const descParts: string[] = [
-    `Phone: ${apt.contactPhone}`,
-  ];
-  if (apt.contactEmail) descParts.push(`Email: ${apt.contactEmail}`);
-  if (apt.serviceName) descParts.push(`Service: ${apt.serviceName}`);
-  descParts.push(`Duration: ${apt.duration} minutes`);
-  if (apt.notes) descParts.push(`Notes: ${apt.notes}`);
-  descParts.push(`\nBooked by AI agent via Diploy`);
+  // Human-readable status badges and colors for Google Calendar
+  const rawStatus = (apt.status || 'scheduled').toLowerCase();
+  let statusBadge = '[SCHEDULED 📅]';
+  let statusDisplay = 'Scheduled';
+  let colorId: string | undefined = undefined;
 
-  if (apt.status === "completed") {
-    const completedAt = new Date().toLocaleString("en-US", {
-      month: "short", day: "numeric", year: "numeric",
-      hour: "numeric", minute: "2-digit", hour12: true,
-    });
-    descParts.push(`\nCompleted at: ${completedAt}`);
+  switch (rawStatus) {
+    case 'visited':
+    case 'completed_visited':
+    case 'completed':
+      statusBadge = '[VISITED ✅]';
+      statusDisplay = 'Visited / Completed';
+      colorId = '10'; // Green (Basil)
+      break;
+    case 'deal_won':
+    case 'won':
+      statusBadge = '[DEAL WON 🏆]';
+      statusDisplay = 'Deal Won / Sale Closed';
+      colorId = '2'; // Sage Green
+      break;
+    case 'interested':
+    case 'interested_followup':
+      statusBadge = '[INTERESTED ⭐]';
+      statusDisplay = 'Interested / Hot Followup';
+      colorId = '5'; // Banana / Yellow
+      break;
+    case 'cancelled':
+      statusBadge = '[CANCELLED ❌]';
+      statusDisplay = 'Cancelled';
+      colorId = '11'; // Tomato Red
+      break;
+    case 'no_show':
+      statusBadge = '[NO SHOW ⚠️]';
+      statusDisplay = 'Customer Did Not Show Up';
+      colorId = '8'; // Graphite
+      break;
+    default:
+      statusBadge = '[SCHEDULED 📅]';
+      statusDisplay = 'Scheduled';
+      colorId = '9'; // Blueberry
+      break;
   }
 
-  const statusLabel = apt.status.charAt(0).toUpperCase() + apt.status.slice(1);
+  const descParts: string[] = [
+    `📌 Status: ${statusDisplay}`,
+    `👤 Customer: ${apt.contactName}`,
+    `📞 Phone: ${apt.contactPhone}`,
+  ];
+  if (apt.contactEmail) descParts.push(`📧 Email: ${apt.contactEmail}`);
+  if (apt.serviceName) descParts.push(`🏢 Property / Project: ${apt.serviceName}`);
+  
+  if (apt.assignedStaffName) {
+    descParts.push(`👔 Assigned Executive: ${apt.assignedStaffName}${apt.assignedStaffPhone ? ` (${apt.assignedStaffPhone})` : ''}`);
+  } else {
+    descParts.push(`👔 Assigned Executive: Awaiting Assignment`);
+  }
 
-  return {
-    summary: `${statusLabel}: ${apt.contactName}${apt.serviceName ? ` — ${apt.serviceName}` : ""}`,
-    description: descParts.join("\n"),
+  descParts.push(`⏱ Duration: ${durationMinutes} minutes`);
+  if (apt.notes) descParts.push(`📝 Notes: ${apt.notes}`);
+  if (apt.statusReason) descParts.push(`💬 Status Reason: ${apt.statusReason}`);
+  
+  const updatedTimestamp = new Date().toLocaleString('en-IN', {
+    timeZone: timezone || 'Asia/Kolkata',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+  descParts.push(`\n⚡ Synced live from Calliqo AI CRM (${updatedTimestamp})`);
+
+  const eventPayload: any = {
+    summary: `${statusBadge} ${apt.contactName}${apt.serviceName ? ` — ${apt.serviceName}` : ''}`,
+    description: descParts.join('\n'),
     start: { dateTime: startDateTime, timeZone: timezone },
     end: { dateTime: endDateTime, timeZone: timezone },
   };
+
+  if (colorId) {
+    eventPayload.colorId = colorId;
+  }
+
+  return eventPayload;
 }
 
 export async function createCalendarEvent(userId: string, apt: CalendarAppointment): Promise<string | null> {
@@ -465,11 +524,19 @@ export async function syncGoogleCalendarEvents(userId: string): Promise<{
 
       const eventId = item.id;
 
+      // Strip any bracketed status badge (e.g. "[VISITED ✅]", "[SCHEDULED 📅]", "[DEAL WON 🏆]")
+      const cleanSummary = summary.replace(/^\[[^\]]+\]\s*/, '').trim();
+
       // Extract client name
       let contactName = "";
-      const prefixMatch = summary.match(/(?:Site Visit|Appointment|Consultation|Booking|Confirmed|Pending)[:\s—\-]+(.+?)(?:\s*—|\s*-\s*|$)/i);
+      const prefixMatch = cleanSummary.match(/(?:Site Visit|Appointment|Consultation|Booking|Confirmed|Pending|Visited|Scheduled)[:\s—\-]+(.+?)(?:\s*—|\s*-\s*|$)/i);
       if (prefixMatch && prefixMatch[1]) {
         contactName = prefixMatch[1].trim();
+      } else if (cleanSummary.includes("—") || cleanSummary.includes("-")) {
+        const parts = cleanSummary.split(/[—\-]/);
+        if (parts.length > 0 && parts[0].trim()) {
+          contactName = parts[0].trim();
+        }
       }
 
       // Check attendees
@@ -499,7 +566,7 @@ export async function syncGoogleCalendarEvents(userId: string): Promise<{
       }
 
       if (!contactName) {
-        contactName = summary || (contactEmail ? contactEmail.split("@")[0] : "Google Calendar Client");
+        contactName = cleanSummary || (contactEmail ? contactEmail.split("@")[0] : "Google Calendar Client");
       }
       if (!contactPhone) {
         contactPhone = "Google Calendar";
@@ -507,13 +574,13 @@ export async function syncGoogleCalendarEvents(userId: string): Promise<{
 
       // Service / Project name
       let serviceName = "Property Site Visit";
-      if (summary.includes("—") || summary.includes("-")) {
-        const parts = summary.split(/[—\-]/);
+      if (cleanSummary.includes("—") || cleanSummary.includes("-")) {
+        const parts = cleanSummary.split(/[—\-]/);
         if (parts.length > 1) {
           serviceName = parts[parts.length - 1].trim();
         }
-      } else if (summary.toLowerCase().includes("bhk") || summary.toLowerCase().includes("visit") || summary.toLowerCase().includes("heights")) {
-        serviceName = summary;
+      } else if (cleanSummary.toLowerCase().includes("bhk") || cleanSummary.toLowerCase().includes("visit") || cleanSummary.toLowerCase().includes("heights")) {
+        serviceName = cleanSummary;
       }
 
       const notes = description || summary;

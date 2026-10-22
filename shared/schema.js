@@ -1217,10 +1217,34 @@ const appointments = pgTable("appointments", {
   status: varchar("status", { length: 50 }).default("scheduled").notNull(),
   statusReason: varchar("status_reason", { length: 500 }),
   googleCalendarEventId: varchar("google_calendar_event_id", { length: 255 }),
+  assignedStaffId: varchar("assigned_staff_id"),
+  assignedStaffName: varchar("assigned_staff_name", { length: 255 }),
+  assignedStaffPhone: varchar("assigned_staff_phone", { length: 50 }),
   metadata: jsonb("metadata").$type(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull()
 });
+const salesTeamMembers = pgTable("sales_team_members", {
+  id: varchar("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 50 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  role: varchar("role", { length: 100 }).default("Sales Executive").notNull(),
+  city: varchar("city", { length: 100 }),
+  assignedProjects: jsonb("assigned_projects").$type().default([]),
+  isActive: boolean("is_active").default(true).notNull(),
+  totalVisitsCount: integer("total_visits_count").default(0).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+const insertSalesTeamMemberSchema = createInsertSchema(salesTeamMembers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+const createSalesTeamMemberSchema = insertSalesTeamMemberSchema.omit({ userId: true });
 const insertAppointmentSchema = createInsertSchema(appointments).omit({
   id: true,
   createdAt: true,
@@ -2621,6 +2645,7 @@ const leadSourceIntegrations = pgTable("lead_source_integrations", {
   // 'website_form' | 'meta_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'housing' | 'custom_webhook'
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
   agentId: varchar("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  spreadsheetId: text("spreadsheet_id"),
   webhookKey: text("webhook_key").notNull().unique(),
   apiKey: text("api_key"),
   autoCall: boolean("auto_call").notNull().default(true),
@@ -2639,6 +2664,51 @@ const leadSourceIntegrations = pgTable("lead_source_integrations", {
   leadSourceIntegrationsWebhookKeyIdx: index("lead_source_integrations_webhook_key_idx").on(table.webhookKey)
 }));
 const insertLeadSourceIntegrationSchema = createInsertSchema(leadSourceIntegrations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+const userSmtpSettings = pgTable("user_smtp_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull().default("custom"),
+  // 'gmail' | 'custom' | 'outlook' | 'sendgrid'
+  host: text("host").notNull(),
+  port: integer("port").notNull().default(587),
+  secure: boolean("secure").notNull().default(false),
+  username: text("username").notNull(),
+  password: text("password").notNull(),
+  fromEmail: text("from_email").notNull(),
+  fromName: text("from_name").notNull(),
+  replyTo: text("reply_to"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastTestedAt: timestamp("last_tested_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+}, (table) => ({
+  userSmtpSettingsUserIdIdx: index("user_smtp_settings_user_id_idx").on(table.userId)
+}));
+const insertUserSmtpSettingSchema = createInsertSchema(userSmtpSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+const userEmailTemplates = pgTable("user_email_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  subject: varchar("subject", { length: 500 }).notNull(),
+  htmlBody: text("html_body").notNull(),
+  variables: text("variables").array(),
+  isActive: boolean("is_active").notNull().default(true),
+  designJson: jsonb("design_json"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+}, (table) => ({
+  userEmailTemplatesUserIdIdx: index("user_email_templates_user_id_idx").on(table.userId),
+  userEmailTemplatesNameIdx: index("user_email_templates_name_idx").on(table.name)
+}));
+const insertUserEmailTemplateSchema = createInsertSchema(userEmailTemplates).omit({
   id: true,
   createdAt: true,
   updatedAt: true
@@ -2668,6 +2738,7 @@ export {
   createAppointmentSettingsSchema,
   createFlowSchema,
   createFormSchema,
+  createSalesTeamMemberSchema,
   createWebhookSchema,
   creditPackages,
   creditTransactions,
@@ -2750,6 +2821,7 @@ export {
   insertPlivoPhonePricingSchema,
   insertPromptTemplateSchema,
   insertRefundSchema,
+  insertSalesTeamMemberSchema,
   insertScheduledFollowUpSchema,
   insertSeoSettingsSchema,
   insertSipCallSchema,
@@ -2762,10 +2834,12 @@ export {
   insertTwilioOpenaiCallSchema,
   insertUsageRecordSchema,
   insertUserAddressSchema,
+  insertUserEmailTemplateSchema,
   insertUserFeedbackSchema,
   insertUserKnowledgeStorageLimitSchema,
   insertUserKycDocumentSchema,
   insertUserSchema,
+  insertUserSmtpSettingSchema,
   insertUserSubscriptionSchema,
   insertVoiceSchema,
   insertWebhookLogSchema,
@@ -2801,6 +2875,7 @@ export {
   promptTemplates,
   refreshTokens,
   refunds,
+  salesTeamMembers,
   scheduledFollowUps,
   seoSettings,
   sipCalls,
@@ -2813,9 +2888,11 @@ export {
   twilioOpenaiCalls,
   usageRecords,
   userAddresses,
+  userEmailTemplates,
   userFeedback,
   userKnowledgeStorageLimits,
   userKycDocuments,
+  userSmtpSettings,
   userSubscriptions,
   users,
   voices,

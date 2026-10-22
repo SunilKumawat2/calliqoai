@@ -143,6 +143,10 @@ export function CompanyEmailSettingsDialog({ open, onOpenChange }: CompanyEmailS
       setSecure(preset.secure);
       if (presetKey === "sendgrid") {
         setUsername("apikey");
+      } else {
+        if (username === "apikey" || !username) {
+          setUsername(fromEmail || "");
+        }
       }
     }
   };
@@ -334,10 +338,10 @@ export function CompanyEmailSettingsDialog({ open, onOpenChange }: CompanyEmailS
                     value={fromEmail}
                     onChange={(e) => {
                       setFromEmail(e.target.value);
-                      if (!username || username.includes("@")) {
+                      if (!username || username.includes("@") || username === "apikey") {
                         setUsername(e.target.value);
                       }
-                      if (!testEmail) setTestEmail(e.target.value);
+                      if (!testEmail || testEmail.includes("@")) setTestEmail(e.target.value);
                     }}
                     className="h-9 text-xs"
                   />

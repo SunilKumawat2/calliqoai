@@ -3385,4 +3385,32 @@ export const insertUserSmtpSettingSchema = createInsertSchema(userSmtpSettings).
 export type InsertUserSmtpSetting = z.infer<typeof insertUserSmtpSettingSchema>;
 export type UserSmtpSetting = typeof userSmtpSettings.$inferSelect;
 
+// ============================================================
+// Company / Tenant Custom Email Templates
+// Allows each company to customize dynamic email templates
+// ============================================================
+export const userEmailTemplates = pgTable("user_email_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  subject: varchar("subject", { length: 500 }).notNull(),
+  htmlBody: text("html_body").notNull(),
+  variables: text("variables").array(),
+  isActive: boolean("is_active").notNull().default(true),
+  designJson: jsonb("design_json"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userEmailTemplatesUserIdIdx: index("user_email_templates_user_id_idx").on(table.userId),
+  userEmailTemplatesNameIdx: index("user_email_templates_name_idx").on(table.name),
+}));
+
+export const insertUserEmailTemplateSchema = createInsertSchema(userEmailTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertUserEmailTemplate = z.infer<typeof insertUserEmailTemplateSchema>;
+export type UserEmailTemplate = typeof userEmailTemplates.$inferSelect;
+
 
