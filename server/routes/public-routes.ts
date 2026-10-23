@@ -18,7 +18,7 @@
 
 import { Router, Request, Response } from 'express';
 import { RouteContext, AuthRequest } from './common';
-import { sql, eq, and, desc } from 'drizzle-orm';
+import { sql, eq, and, desc, or } from 'drizzle-orm';
 import { users, calls, campaigns, twilioCountries, agents, phoneNumbers, plivoPhoneNumbers } from '@shared/schema';
 import { ElevenLabsPoolService } from '../services/elevenlabs-pool';
 import bcrypt from 'bcrypt';
@@ -1783,6 +1783,10 @@ ${allUrls.map(u => {
    * GET /api/public/demo-call-status - Poll status of an active demo call to check if user answered
    */
   router.get("/api/public/demo-call-status", async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     const uuid = req.query.uuid as string;
     const callId = req.query.callId as string;
     const provider = req.query.provider as string;
@@ -1793,16 +1797,12 @@ ${allUrls.map(u => {
       let isEnded = false;
       let rawStatus: string | null = null;
 
-      // 1. Check Plivo Calls DB Record (Plivo+OpenAI and Plivo+ElevenLabs)
-      if (uuid || callId || provider === 'plivo' || provider === 'plivo_openai' || provider === 'plivo_elevenlabs') {
+      // 1. Check Plivo Calls (Plivo+OpenAI and Plivo+ElevenLabs)
+      if (provider?.startsWith('plivo') || provider === 'plivo') {
         const { plivoCalls } = await import('@shared/schema');
-        const { eq, or, sql } = await import('drizzle-orm');
         const conditions = [];
         if (callId) conditions.push(eq(plivoCalls.id, callId));
-        if (uuid) {
-          conditions.push(eq(plivoCalls.plivoCallUuid, uuid));
-          conditions.push(sql`${plivoCalls.metadata}->>'internalId' = ${uuid}`);
-        }
+        if (uuid) conditions.push(eq(plivoCalls.plivoCallUuid, uuid));
 
         let callPlivoUuid = uuid;
         if (conditions.length > 0) {
@@ -1827,29 +1827,30 @@ ${allUrls.map(u => {
         }
 
         // Check active WebSocket session (Plivo-OpenAI or Plivo-ElevenLabs)
-        const { AudioBridgeService } = await import('../engines/plivo/services/audio-bridge.service');
-        const { ElevenLabsBridgeService } = await import('../engines/plivo-elevenlabs/services/elevenlabs-bridge.service');
-        
-        const sessionKey = callPlivoUuid || uuid;
-        if (sessionKey) {
-          const session = AudioBridgeService.getSession(sessionKey);
-          const elSession = ElevenLabsBridgeService.getSession(sessionKey) || (uuid ? ElevenLabsBridgeService.getSession(uuid) : undefined);
+        try {
+          const { AudioBridgeService } = await import('../engines/plivo/services/audio-bridge.service');
+          const { ElevenLabsBridgeService } = await import('../engines/plivo-elevenlabs/services/elevenlabs-bridge.service');
           
-          const isPlivoOpenAiConnected = session && session.status === 'connected';
-          const isPlivoElevenLabsConnected = elSession && elSession.status === 'connected' && Boolean((elSession as any).isPlivoReady || (elSession as any).plivoWs);
+          const sessionKey = callPlivoUuid || uuid;
+          if (sessionKey) {
+            const session = AudioBridgeService.getSession(sessionKey);
+            const elSession = ElevenLabsBridgeService.getSession(sessionKey) || (uuid ? ElevenLabsBridgeService.getSession(uuid) : undefined);
+            
+            const isPlivoOpenAiConnected = session && session.status === 'connected';
+            const isPlivoElevenLabsConnected = elSession && elSession.status === 'connected' && Boolean((elSession as any).isPlivoReady || (elSession as any).plivoWs);
 
-          if (isPlivoOpenAiConnected || isPlivoElevenLabsConnected) {
-            isAnswered = true;
-          } else if ((session && session.status === 'disconnected') || (elSession && elSession.status === 'disconnected')) {
-            isEnded = true;
+            if (isPlivoOpenAiConnected || isPlivoElevenLabsConnected) {
+              isAnswered = true;
+            } else if ((session && session.status === 'disconnected') || (elSession && elSession.status === 'disconnected')) {
+              isEnded = true;
+            }
           }
-        }
+        } catch (_) {}
       }
 
-      // 2. Check Twilio Calls DB Record
-      if (twilioSid || callId || provider === 'twilio' || provider === 'twilio_openai') {
+      // 2. Check Twilio + OpenAI Realtime Calls
+      else if (provider === 'twilio_openai') {
         const { twilioOpenaiCalls } = await import('@shared/schema');
-        const { eq, or } = await import('drizzle-orm');
         const conditions = [];
         if (callId) conditions.push(eq(twilioOpenaiCalls.id, callId));
         if (twilioSid) conditions.push(eq(twilioOpenaiCalls.twilioCallSid, twilioSid));
@@ -1873,23 +1874,29 @@ ${allUrls.map(u => {
         }
 
         // Check active WebSocket session
-        const { AudioBridgeService: TwilioAudioBridge } = await import('../engines/twilio-openai/services/audio-bridge.service');
-        if (twilioSid) {
-          const session = (TwilioAudioBridge as any).getSession ? (TwilioAudioBridge as any).getSession(twilioSid) : null;
-          if (session && session.status === 'connected') {
-            isAnswered = true;
-          } else if (session && session.status === 'disconnected') {
-            isEnded = true;
+        try {
+          const { AudioBridgeService: TwilioAudioBridge } = await import('../engines/twilio-openai/services/audio-bridge.service');
+          if (twilioSid) {
+            const session = (TwilioAudioBridge as any).getSession ? (TwilioAudioBridge as any).getSession(twilioSid) : null;
+            if (session && session.status === 'connected') {
+              isAnswered = true;
+            } else if (session && session.status === 'disconnected') {
+              isEnded = true;
+            }
           }
-        }
+        } catch (_) {}
       }
 
-      // 3. Check General Calls DB Record (for ElevenLabs or generic calls)
-      if (callId || provider === 'twilio_elevenlabs' || provider === 'elevenlabs') {
-        const { calls } = await import('@shared/schema');
-        const { eq } = await import('drizzle-orm');
-        if (callId) {
-          const [callRecord] = await db
+      // 3. Twilio + ElevenLabs Native (or generic Twilio calls)
+      else {
+        const conditions = [];
+        if (callId) conditions.push(eq(calls.id, callId));
+        if (twilioSid) conditions.push(eq(calls.twilioSid, twilioSid));
+        if (uuid) conditions.push(eq(calls.elevenLabsConversationId, uuid));
+
+        let callRecord: any = null;
+        if (conditions.length > 0) {
+          const rows = await db
             .select({
               id: calls.id,
               status: calls.status,
@@ -1897,38 +1904,56 @@ ${allUrls.map(u => {
               elevenLabsConversationId: calls.elevenLabsConversationId
             })
             .from(calls)
-            .where(eq(calls.id, callId))
+            .where(or(...conditions))
             .limit(1);
+          callRecord = rows[0];
+        }
 
-          if (callRecord) {
-            rawStatus = callRecord.status;
-            if (['in-progress', 'in_progress', 'answered'].includes(callRecord.status)) {
-              isAnswered = true;
-            } else if (['completed', 'failed', 'busy', 'no-answer', 'no_answer', 'canceled', 'cancelled'].includes(callRecord.status)) {
-              isEnded = true;
-            } else {
-              // Call is in 'initiated' state: check live status via Twilio API
-              const targetSid = callRecord.twilioSid || twilioSid;
-              if (targetSid && targetSid.startsWith('CA')) {
-                try {
-                  const { getTwilioClient } = await import('../services/twilio-connector');
-                  const twilioClient = await getTwilioClient();
-                  const twilioCall = await twilioClient.calls(targetSid).fetch();
-                  if (twilioCall) {
-                    rawStatus = twilioCall.status;
-                    if (twilioCall.status === 'in-progress') {
-                      isAnswered = true;
-                      await db.update(calls).set({ status: 'in-progress' }).where(eq(calls.id, callRecord.id));
-                    } else if (['completed', 'busy', 'no-answer', 'canceled', 'failed'].includes(twilioCall.status)) {
-                      isEnded = true;
-                      await db.update(calls).set({ status: twilioCall.status }).where(eq(calls.id, callRecord.id));
-                    }
+        if (callRecord) {
+          rawStatus = callRecord.status;
+          if (['in-progress', 'in_progress', 'answered'].includes(callRecord.status)) {
+            isAnswered = true;
+          } else if (['completed', 'failed', 'busy', 'no-answer', 'no_answer', 'canceled', 'cancelled'].includes(callRecord.status)) {
+            isEnded = true;
+          } else {
+            // Call is currently in 'initiated' state - query Twilio API directly
+            const targetSid = callRecord.twilioSid || twilioSid;
+            if (targetSid && targetSid.startsWith('CA')) {
+              try {
+                const { getTwilioClient } = await import('../services/twilio-connector');
+                const twilioClient = await getTwilioClient();
+                const twilioCall = await twilioClient.calls(targetSid).fetch();
+                if (twilioCall) {
+                  rawStatus = twilioCall.status;
+                  if (twilioCall.status === 'in-progress') {
+                    isAnswered = true;
+                    await db.update(calls).set({ status: 'in-progress' }).where(eq(calls.id, callRecord.id));
+                  } else if (['completed', 'busy', 'no-answer', 'canceled', 'failed'].includes(twilioCall.status)) {
+                    isEnded = true;
+                    await db.update(calls).set({ status: twilioCall.status }).where(eq(calls.id, callRecord.id));
                   }
-                } catch (_) {
-                  // Ignore transient fetch errors
                 }
+              } catch (twErr: any) {
+                console.warn('[demo-call-status] Twilio fetch error:', twErr.message);
               }
             }
+          }
+        } else if (twilioSid && twilioSid.startsWith('CA')) {
+          // Fallback: check Twilio directly if no DB record found
+          try {
+            const { getTwilioClient } = await import('../services/twilio-connector');
+            const twilioClient = await getTwilioClient();
+            const twilioCall = await twilioClient.calls(twilioSid).fetch();
+            if (twilioCall) {
+              rawStatus = twilioCall.status;
+              if (twilioCall.status === 'in-progress') {
+                isAnswered = true;
+              } else if (['completed', 'busy', 'no-answer', 'canceled', 'failed'].includes(twilioCall.status)) {
+                isEnded = true;
+              }
+            }
+          } catch (twErr: any) {
+            console.warn('[demo-call-status] Twilio fetch error:', twErr.message);
           }
         }
       }
@@ -1944,6 +1969,7 @@ ${allUrls.map(u => {
         isEnded
       });
     } catch (err: any) {
+      console.error('[demo-call-status] Error:', err);
       return res.json({ success: false, status: null, isAnswered: false, isEnded: false });
     }
   });

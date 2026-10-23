@@ -524,6 +524,7 @@ export default function DemoPage() {
           if (result.callId) params.append("callId", result.callId);
           if (result.provider) params.append("provider", result.provider);
           if (result.twilioSid) params.append("twilioSid", result.twilioSid);
+          params.append("_t", Date.now().toString());
 
           const statusRes = await fetch(`/api/public/demo-call-status?${params.toString()}`);
           const statusData = await statusRes.json();
@@ -534,7 +535,7 @@ export default function DemoPage() {
           }
 
           // Case 1: Call is Answered & in-progress
-          if (statusData.isAnswered && !hasConnected) {
+          if ((statusData.isAnswered || statusData.status === 'in-progress') && !hasConnected) {
             hasConnected = true;
             setCallStatus("active");
             addLog("success", `Call Connected! AI Agent is speaking.`);
