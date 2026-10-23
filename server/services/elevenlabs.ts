@@ -1113,8 +1113,7 @@ IMPORTANT: Do NOT ask the caller for their phone number - you already have it fr
           agent_output_audio_format: "pcm_16000",
         },
         asr: {
-          provider: "elevenlabs",
-          model: "scribe_v2_realtime",
+          provider: "scribe_realtime",
           user_input_audio_format: "pcm_16000",
         },
         conversation: {
@@ -1399,8 +1398,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
           } : {}),
         },
         asr: {
-          provider: "elevenlabs",
-          model: "scribe_v2_realtime",
+          provider: "scribe_realtime",
           user_input_audio_format: "pcm_16000",
         },
         conversation: {
@@ -1522,8 +1520,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
       // Always include ASR and TTS config for consistent settings
       conversation_config: {
         asr: {
-          provider: "elevenlabs",
-          model: "scribe_v2_realtime",  // Scribe v2 Realtime for better ASR accuracy
+          provider: "scribe_realtime",
           user_input_audio_format: "pcm_16000",  // PCM 16kHz for Scribe
         },
         tts: {
@@ -1878,7 +1875,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
       updatePayload.conversation_config = {};
     }
     updatePayload.conversation_config.asr = {
-      provider: "elevenlabs",
+      provider: "scribe_realtime",
       user_input_audio_format: "pcm_16000"
     };
 
@@ -2032,7 +2029,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
           }
         },
         asr: {
-          provider: "elevenlabs",
+          provider: "scribe_realtime",
           user_input_audio_format: "ulaw_8000", // µ-law format for Twilio native integration
         }
       },
@@ -2377,7 +2374,7 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
 
     // ALWAYS include ASR config for ElevenLabs to ensure proper audio format
     conversationConfigUpdates.asr = {
-      provider: "elevenlabs",
+      provider: "scribe_realtime",
       user_input_audio_format: "pcm_16000", // PCM 16kHz to match widget audio format
     };
 
