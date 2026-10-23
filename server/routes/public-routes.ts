@@ -1648,17 +1648,19 @@ ${allUrls.map(u => {
    * POST /api/public/demo-hangup - End an active demo call on carrier network (Plivo / Twilio / CVE)
    */
   router.post("/api/public/demo-hangup", async (req: Request, res: Response) => {
-    const { callId, uuid, internalId, provider, twilioSid } = req.body;
-    console.log(`[DemoCall] Hangup request received: callId=${callId}, uuid=${uuid}, internalId=${internalId}, provider=${provider}, twilioSid=${twilioSid}`);
+    const { callId, uuid, internalId, provider, twilioSid, phoneNumber, toNumber } = req.body;
+    const destNumber = phoneNumber || toNumber;
+    console.log(`[DemoCall] Hangup request received: callId=${callId}, uuid=${uuid}, internalId=${internalId}, provider=${provider}, twilioSid=${twilioSid}, destNumber=${destNumber}`);
 
     try {
       // 1. Plivo Hangup (covers plivo, plivo_openai, plivo_elevenlabs)
-      if (uuid || internalId || provider?.startsWith('plivo') || provider === 'plivo' || provider === 'plivo_elevenlabs' || provider === 'plivo_openai') {
+      if (provider?.startsWith('plivo') || provider === 'plivo') {
         let plivoCarrierUuid: string | undefined = undefined;
 
         // If callId is provided, look up the plivo_calls record
         if (callId) {
           try {
+            const { plivoCalls } = await import('@shared/schema');
             const [pCall] = await db
               .select()
               .from(plivoCalls)
@@ -1693,6 +1695,7 @@ ${allUrls.map(u => {
             let authToken = process.env.PLIVO_AUTH_TOKEN;
 
             if (!authId || !authToken) {
+              const { plivoCredentials } = await import('@shared/schema');
               const [primaryCred] = await db
                 .select()
                 .from(plivoCredentials)
@@ -1737,30 +1740,8 @@ ${allUrls.map(u => {
         }
       }
 
-      // 2. Twilio Hangup
-      if (twilioSid || provider === 'twilio' || provider === 'twilio_openai') {
-        if (twilioSid) {
-          try {
-            const { TwilioOpenAICallService } = await import('../engines/twilio-openai/services/twilio-openai-call.service');
-            await TwilioOpenAICallService.hangupCall(twilioSid);
-            console.log(`[DemoCall] Twilio hangup executed for SID: ${twilioSid}`);
-          } catch (e: any) {
-            console.warn(`[DemoCall] Twilio hangup warning: ${e.message}`);
-          }
-          // Direct Twilio Client call cancel fallback
-          try {
-            const { getTwilioClient } = await import('../engines/twilio-openai/config/twilio-openai-config');
-            const twilioClient = await getTwilioClient();
-            await twilioClient.calls(twilioSid).update({ status: 'completed' });
-            console.log(`[DemoCall] Direct Twilio REST API status updated to completed for SID: ${twilioSid}`);
-          } catch (e: any) {
-            console.warn(`[DemoCall] Direct Twilio REST API hangup warning: ${e.message}`);
-          }
-        }
-      }
-
-      // 3. Custom Voice Engine Hangup
-      if (provider === 'custom-voice-engine') {
+      // 2. Custom Voice Engine Hangup
+      else if (provider === 'custom-voice-engine') {
         try {
           const { audioSessionManager } = await import('../plugins/custom-voice-engine/services/audio-pipeline/audio-session');
           if (callId) {
@@ -1769,6 +1750,108 @@ ${allUrls.map(u => {
           }
         } catch (e: any) {
           console.warn(`[DemoCall] CVE hangup warning: ${e.message}`);
+        }
+      }
+
+      // 3. Twilio Hangup (twilio, twilio_elevenlabs, twilio_openai)
+      else {
+        let targetSid = twilioSid;
+        let destPhone = destNumber;
+
+        // If twilioSid not directly provided, query from calls table
+        if (!targetSid && callId) {
+          try {
+            const [callRec] = await db
+              .select({ twilioSid: calls.twilioSid, phoneNumber: calls.phoneNumber })
+              .from(calls)
+              .where(eq(calls.id, callId))
+              .limit(1);
+            if (callRec?.twilioSid) targetSid = callRec.twilioSid;
+            if (!destPhone && callRec?.phoneNumber) destPhone = callRec.phoneNumber;
+          } catch (_) {}
+        }
+
+        // If still not found, check by uuid / elevenLabsConversationId
+        if (!targetSid && uuid) {
+          if (uuid.startsWith('CA')) {
+            targetSid = uuid;
+          } else {
+            try {
+              const [cRec] = await db
+                .select({ twilioSid: calls.twilioSid, phoneNumber: calls.phoneNumber })
+                .from(calls)
+                .where(eq(calls.elevenLabsConversationId, uuid))
+                .limit(1);
+              if (cRec?.twilioSid) targetSid = cRec.twilioSid;
+              if (!destPhone && cRec?.phoneNumber) destPhone = cRec.phoneNumber;
+            } catch (_) {}
+          }
+        }
+
+        // If still not found, check twilio_openai_calls table
+        if (!targetSid && callId) {
+          try {
+            const { twilioOpenaiCalls } = await import('@shared/schema');
+            const [topCall] = await db
+              .select({ twilioCallSid: twilioOpenaiCalls.twilioCallSid })
+              .from(twilioOpenaiCalls)
+              .where(eq(twilioOpenaiCalls.id, callId))
+              .limit(1);
+            if (topCall?.twilioCallSid) targetSid = topCall.twilioCallSid;
+          } catch (_) {}
+        }
+
+        // Fallback: query active Twilio calls if targetSid not known yet but phone number is available
+        if (!targetSid && destPhone) {
+          try {
+            const { getTwilioClient } = await import('../services/twilio-connector');
+            const twilioClient = await getTwilioClient();
+            const activeCalls = await twilioClient.calls.list({
+              to: destPhone,
+              limit: 3
+            });
+            const matching = activeCalls.find(c => ['ringing', 'in-progress', 'queued'].includes(c.status));
+            if (matching) {
+              targetSid = matching.sid;
+              if (callId) {
+                await db.update(calls).set({ twilioSid: targetSid }).where(eq(calls.id, callId)).catch(() => {});
+              }
+            }
+          } catch (listErr: any) {
+            console.warn(`[DemoCall] Twilio active calls lookup warning: ${listErr.message}`);
+          }
+        }
+
+        // Direct Twilio REST API call hangup/cancel on carrier network
+        if (targetSid && targetSid.startsWith('CA')) {
+          try {
+            const { getTwilioClient } = await import('../services/twilio-connector');
+            const twilioClient = await getTwilioClient();
+            await twilioClient.calls(targetSid).update({ status: 'completed' });
+            console.log(`[DemoCall] Successfully hung up Twilio call on carrier network: ${targetSid}`);
+          } catch (e: any) {
+            console.warn(`[DemoCall] Twilio carrier hangup warning: ${e.message}`);
+          }
+        }
+
+        // Mark call as completed in database
+        if (callId) {
+          await db
+            .update(calls)
+            .set({ status: 'completed', endedAt: new Date() })
+            .where(eq(calls.id, callId))
+            .catch(() => {});
+        }
+
+        // Clean up Twilio OpenAI AudioBridge session if applicable
+        if (targetSid) {
+          try {
+            const { AudioBridgeService: TwilioAudioBridge } = await import('../engines/twilio-openai/services/audio-bridge.service');
+            const session = (TwilioAudioBridge as any).getSession ? (TwilioAudioBridge as any).getSession(targetSid) : null;
+            if (session && session.ws) {
+              session.ws.close();
+            }
+          } catch (_) {}
         }
       }
 
@@ -1966,7 +2049,8 @@ ${allUrls.map(u => {
         success: true,
         status: rawStatus,
         isAnswered,
-        isEnded
+        isEnded,
+        twilioSid: callRecord?.twilioSid || twilioSid || null,
       });
     } catch (err: any) {
       console.error('[demo-call-status] Error:', err);

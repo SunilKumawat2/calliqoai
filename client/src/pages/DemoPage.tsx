@@ -232,7 +232,7 @@ export default function DemoPage() {
   const [timerSeconds, setTimerSeconds] = useState<number>(0);
 
   // Active call tracking reference for hangup & race condition protection
-  const activeCallRef = useRef<{ callId?: string; uuid?: string; provider?: string; twilioSid?: string } | null>(null);
+  const activeCallRef = useRef<{ callId?: string; uuid?: string; internalId?: string; provider?: string; twilioSid?: string; phoneNumber?: string } | null>(null);
   const isCancelledRef = useRef<boolean>(false);
 
   const [providerNumbers, setProviderNumbers] = useState<{ twilio: string | null; plivo: string | null }>({
@@ -484,6 +484,7 @@ export default function DemoPage() {
             internalId: result.internalId,
             provider: result.provider,
             twilioSid: result.twilioSid,
+            phoneNumber: cleanPhone,
           }),
         }).catch(err => console.error("In-flight cancel hangup error:", err));
 
@@ -499,6 +500,7 @@ export default function DemoPage() {
         internalId: result.internalId,
         provider: result.provider,
         twilioSid: result.twilioSid,
+        phoneNumber: cleanPhone,
       };
 
       setCallStatus("ringing");
@@ -532,6 +534,11 @@ export default function DemoPage() {
           if (isCancelledRef.current) {
             clearInterval(pollInterval);
             return;
+          }
+
+          // Cache twilioSid if discovered during polling
+          if (statusData.twilioSid && activeCallRef.current && !activeCallRef.current.twilioSid) {
+            activeCallRef.current.twilioSid = statusData.twilioSid;
           }
 
           // Case 1: Call is Answered & in-progress
