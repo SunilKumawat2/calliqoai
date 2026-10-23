@@ -495,7 +495,7 @@ export default function DemoPage() {
       // Store call details for hangup triggering
       activeCallRef.current = {
         callId: result.callId,
-        uuid: result.uuid,
+        uuid: result.uuid || result.conversationId,
         internalId: result.internalId,
         provider: result.provider,
         twilioSid: result.twilioSid,
@@ -519,7 +519,8 @@ export default function DemoPage() {
 
         try {
           const params = new URLSearchParams();
-          if (result.uuid) params.append("uuid", result.uuid);
+          const targetUuid = result.uuid || result.conversationId;
+          if (targetUuid) params.append("uuid", targetUuid);
           if (result.callId) params.append("callId", result.callId);
           if (result.provider) params.append("provider", result.provider);
           if (result.twilioSid) params.append("twilioSid", result.twilioSid);

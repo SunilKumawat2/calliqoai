@@ -1630,6 +1630,7 @@ ${allUrls.map(u => {
           success: true,
           message: "Demo call initiated successfully via ElevenLabs native API.",
           callId,
+          uuid: result.conversationId || callId,
           conversationId: result.conversationId,
           twilioSid: result.callSid,
           provider: 'twilio_elevenlabs',
@@ -1889,7 +1890,12 @@ ${allUrls.map(u => {
         const { eq } = await import('drizzle-orm');
         if (callId) {
           const [callRecord] = await db
-            .select({ status: calls.status })
+            .select({
+              id: calls.id,
+              status: calls.status,
+              twilioSid: calls.twilioSid,
+              elevenLabsConversationId: calls.elevenLabsConversationId
+            })
             .from(calls)
             .where(eq(calls.id, callId))
             .limit(1);
@@ -1898,9 +1904,30 @@ ${allUrls.map(u => {
             rawStatus = callRecord.status;
             if (['in-progress', 'in_progress', 'answered'].includes(callRecord.status)) {
               isAnswered = true;
-            }
-            if (['completed', 'failed', 'busy', 'no-answer', 'no_answer', 'canceled', 'cancelled'].includes(callRecord.status)) {
+            } else if (['completed', 'failed', 'busy', 'no-answer', 'no_answer', 'canceled', 'cancelled'].includes(callRecord.status)) {
               isEnded = true;
+            } else {
+              // Call is in 'initiated' state: check live status via Twilio API
+              const targetSid = callRecord.twilioSid || twilioSid;
+              if (targetSid && targetSid.startsWith('CA')) {
+                try {
+                  const { getTwilioClient } = await import('../services/twilio-connector');
+                  const twilioClient = await getTwilioClient();
+                  const twilioCall = await twilioClient.calls(targetSid).fetch();
+                  if (twilioCall) {
+                    rawStatus = twilioCall.status;
+                    if (twilioCall.status === 'in-progress') {
+                      isAnswered = true;
+                      await db.update(calls).set({ status: 'in-progress' }).where(eq(calls.id, callRecord.id));
+                    } else if (['completed', 'busy', 'no-answer', 'canceled', 'failed'].includes(twilioCall.status)) {
+                      isEnded = true;
+                      await db.update(calls).set({ status: twilioCall.status }).where(eq(calls.id, callRecord.id));
+                    }
+                  }
+                } catch (_) {
+                  // Ignore transient fetch errors
+                }
+              }
             }
           }
         }
