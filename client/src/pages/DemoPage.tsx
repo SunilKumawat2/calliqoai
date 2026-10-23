@@ -525,7 +525,10 @@ export default function DemoPage() {
           if (targetUuid) params.append("uuid", targetUuid);
           if (result.callId) params.append("callId", result.callId);
           if (result.provider) params.append("provider", result.provider);
-          if (result.twilioSid) params.append("twilioSid", result.twilioSid);
+          if (activeCallRef.current?.twilioSid || result.twilioSid) {
+            params.append("twilioSid", (activeCallRef.current?.twilioSid || result.twilioSid) as string);
+          }
+          if (cleanPhone) params.append("phoneNumber", cleanPhone);
           params.append("_t", Date.now().toString());
 
           const statusRes = await fetch(`/api/public/demo-call-status?${params.toString()}`);

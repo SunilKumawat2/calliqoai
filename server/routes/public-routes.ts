@@ -1879,6 +1879,7 @@ ${allUrls.map(u => {
       let isAnswered = false;
       let isEnded = false;
       let rawStatus: string | null = null;
+      let discoveredTwilioSid: string | null = twilioSid || null;
 
       // 1. Check Plivo Calls (Plivo+OpenAI and Plivo+ElevenLabs)
       if (provider?.startsWith('plivo') || provider === 'plivo') {
@@ -1940,13 +1941,14 @@ ${allUrls.map(u => {
 
         if (conditions.length > 0) {
           const [callRecord] = await db
-            .select({ status: twilioOpenaiCalls.status })
+            .select({ status: twilioOpenaiCalls.status, twilioCallSid: twilioOpenaiCalls.twilioCallSid })
             .from(twilioOpenaiCalls)
             .where(or(...conditions))
             .limit(1);
 
           if (callRecord) {
             rawStatus = callRecord.status;
+            if (callRecord.twilioCallSid) discoveredTwilioSid = callRecord.twilioCallSid;
             if (['in-progress', 'answered'].includes(callRecord.status)) {
               isAnswered = true;
             }
@@ -1984,6 +1986,7 @@ ${allUrls.map(u => {
               id: calls.id,
               status: calls.status,
               twilioSid: calls.twilioSid,
+              phoneNumber: calls.phoneNumber,
               elevenLabsConversationId: calls.elevenLabsConversationId
             })
             .from(calls)
@@ -1994,15 +1997,38 @@ ${allUrls.map(u => {
 
         if (callRecord) {
           rawStatus = callRecord.status;
+          if (callRecord.twilioSid) discoveredTwilioSid = callRecord.twilioSid;
+
           if (['in-progress', 'in_progress', 'answered'].includes(callRecord.status)) {
             isAnswered = true;
           } else if (['completed', 'failed', 'busy', 'no-answer', 'no_answer', 'canceled', 'cancelled'].includes(callRecord.status)) {
             isEnded = true;
           } else {
             // Call is currently in 'initiated' state - query Twilio API directly
-            const targetSid = callRecord.twilioSid || twilioSid;
+            let targetSid = callRecord.twilioSid || twilioSid;
+
+            // If targetSid is not known, lookup active Twilio call for this phone number
+            const destPhone = (req.query.phoneNumber as string) || callRecord.phoneNumber;
+            if (!targetSid && destPhone) {
+              try {
+                const { getTwilioClient } = await import('../services/twilio-connector');
+                const twilioClient = await getTwilioClient();
+                const activeCalls = await twilioClient.calls.list({
+                  to: destPhone,
+                  limit: 3
+                });
+                const matching = activeCalls.find(c => ['ringing', 'in-progress', 'queued'].includes(c.status));
+                if (matching) {
+                  targetSid = matching.sid;
+                  discoveredTwilioSid = targetSid;
+                  await db.update(calls).set({ twilioSid: targetSid }).where(eq(calls.id, callRecord.id)).catch(() => {});
+                }
+              } catch (_) {}
+            }
+
             if (targetSid && targetSid.startsWith('CA')) {
               try {
+                discoveredTwilioSid = targetSid;
                 const { getTwilioClient } = await import('../services/twilio-connector');
                 const twilioClient = await getTwilioClient();
                 const twilioCall = await twilioClient.calls(targetSid).fetch();
@@ -2024,6 +2050,7 @@ ${allUrls.map(u => {
         } else if (twilioSid && twilioSid.startsWith('CA')) {
           // Fallback: check Twilio directly if no DB record found
           try {
+            discoveredTwilioSid = twilioSid;
             const { getTwilioClient } = await import('../services/twilio-connector');
             const twilioClient = await getTwilioClient();
             const twilioCall = await twilioClient.calls(twilioSid).fetch();
@@ -2050,7 +2077,7 @@ ${allUrls.map(u => {
         status: rawStatus,
         isAnswered,
         isEnded,
-        twilioSid: callRecord?.twilioSid || twilioSid || null,
+        twilioSid: discoveredTwilioSid,
       });
     } catch (err: any) {
       console.error('[demo-call-status] Error:', err);
