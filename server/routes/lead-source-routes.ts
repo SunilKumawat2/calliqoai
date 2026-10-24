@@ -202,7 +202,8 @@ leadSourceRouter.post('/v1/integrations/zoho/:webhookKey', async (req: Request, 
       return res.status(403).json({ success: false, error: 'Zoho CRM integration is currently paused' });
     }
 
-    const leadData = LeadSourceService.parseZohoLead(req.body);
+    const payload = (req.body && Object.keys(req.body).length > 0) ? req.body : req.query;
+    const leadData = LeadSourceService.parseZohoLead(payload);
     const result = await LeadSourceService.ingestLead(integration, leadData, 'zoho_crm');
 
     return res.json({
