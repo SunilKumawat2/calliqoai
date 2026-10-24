@@ -186,6 +186,39 @@ leadSourceRouter.post('/v1/integrations/meta/:webhookKey', async (req: Request, 
   }
 });
 
+/**
+ * Zoho CRM Dedicated Inbound Lead Webhook (Workflow Rules & Instant Actions)
+ */
+leadSourceRouter.post('/v1/integrations/zoho/:webhookKey', async (req: Request, res: Response) => {
+  try {
+    const { webhookKey } = req.params;
+    const integration = await LeadSourceService.getIntegrationByWebhookKey(webhookKey);
+
+    if (!integration) {
+      return res.status(404).json({ success: false, error: 'Zoho CRM integration webhook key not found' });
+    }
+
+    if (integration.status !== 'active') {
+      return res.status(403).json({ success: false, error: 'Zoho CRM integration is currently paused' });
+    }
+
+    const leadData = LeadSourceService.parseZohoLead(req.body);
+    const result = await LeadSourceService.ingestLead(integration, leadData, 'zoho_crm');
+
+    return res.json({
+      success: true,
+      service: 'Zoho CRM Lead Delivery',
+      leadId: result.leadId,
+      autoCallInitiated: result.callInitiated,
+      callId: result.callId,
+      message: 'Zoho CRM lead successfully received and queued',
+    });
+  } catch (err: any) {
+    console.error('[LeadSource] Zoho CRM webhook error:', err.message);
+    return res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // ============================================================
 // Authenticated Management Endpoints (Requires Login)
 // ============================================================

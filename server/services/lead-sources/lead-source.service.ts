@@ -38,10 +38,12 @@ export interface NormalizedLead {
   lastName?: string;
   phone: string;
   email?: string;
+  company?: string;
   city?: string;
   project?: string;
   budget?: string;
   notes?: string;
+  externalLeadId?: string;
   rawPayload: Record<string, any>;
 }
 
@@ -236,6 +238,57 @@ export class LeadSourceService {
   }
 
   /**
+   * Parser for Zoho CRM Lead Webhook & Workflow Automation
+   */
+  static parseZohoLead(body: any): NormalizedLead {
+    let b = body || {};
+    // Handle nested Zoho array responses { data: [...] } or direct array
+    if (Array.isArray(b.data) && b.data.length > 0) {
+      b = b.data[0];
+    } else if (Array.isArray(b) && b.length > 0) {
+      b = b[0];
+    }
+
+    const rawFirst = b.First_Name || b.first_name || b.firstName || b.FirstName || '';
+    const rawLast = b.Last_Name || b.last_name || b.lastName || b.LastName || '';
+    const rawFull = b.Full_Name || b.full_name || b.name || b.Name || b.lead_name || b.Customer_Name || '';
+
+    let firstName = rawFirst ? String(rawFirst).trim() : '';
+    let lastName = rawLast ? String(rawLast).trim() : '';
+
+    if (!firstName && rawFull) {
+      const parts = String(rawFull).trim().split(/\s+/);
+      firstName = parts[0] || 'Zoho Prospect';
+      lastName = parts.slice(1).join(' ') || '';
+    } else if (!firstName) {
+      firstName = 'Zoho Prospect';
+    }
+
+    const rawPhone = b.Phone || b.phone || b.Mobile || b.mobile || b.phone_number || b.Mobile_Number || b.Contact_Number || '';
+    const rawEmail = b.Email || b.email || b.Secondary_Email || '';
+    const rawCompany = b.Company || b.company || b.Account_Name || '';
+    const rawCity = b.City || b.city || b.State || b.state || '';
+    const rawProject = b.Project || b.project || b.Product_Interest || b.Interest || b.Service || rawCompany || '';
+    const rawBudget = b.Annual_Revenue || b.annual_revenue || b.budget || b.Budget || '';
+    const rawNotes = b.Description || b.description || b.Notes || b.notes || (rawCompany ? `Company: ${rawCompany}` : '');
+    const externalLeadId = b.id || b.Lead_Id || b.lead_id || b.record_id || b.Id || undefined;
+
+    return {
+      firstName,
+      lastName: lastName || undefined,
+      phone: this.normalizePhoneNumber(rawPhone),
+      email: rawEmail ? String(rawEmail).trim() : undefined,
+      company: rawCompany ? String(rawCompany).trim() : undefined,
+      city: rawCity ? String(rawCity).trim() : undefined,
+      project: rawProject ? String(rawProject).trim() : undefined,
+      budget: rawBudget ? String(rawBudget).trim() : undefined,
+      notes: rawNotes ? String(rawNotes).trim() : undefined,
+      externalLeadId: externalLeadId ? String(externalLeadId) : undefined,
+      rawPayload: b,
+    };
+  }
+
+  /**
    * Ingest lead from any source, save to CRM, and optionally trigger AI Speed-to-Lead call
    */
   static async ingestLead(
@@ -264,12 +317,15 @@ export class LeadSourceService {
       lastName: leadData.lastName || null,
       phone: leadData.phone,
       email: leadData.email || null,
+      company: leadData.company || leadData.rawPayload?.Company || leadData.rawPayload?.company || null,
       stage: 'new',
       tags: [source, integration.name],
       customFields: {
         source,
         integrationId: integration.id,
         integrationName: integration.name,
+        externalLeadId: leadData.externalLeadId || null,
+        company: leadData.company || leadData.rawPayload?.Company || null,
         project: leadData.project || leadData.rawPayload?.project || leadData.rawPayload?.project_name || null,
         budget: leadData.budget || leadData.rawPayload?.budget || leadData.rawPayload?.price || null,
         city: leadData.city || leadData.rawPayload?.city || leadData.rawPayload?.location || null,

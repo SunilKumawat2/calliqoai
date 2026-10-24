@@ -57,7 +57,7 @@ export interface LeadSourceIntegration {
   id: string;
   userId: string;
   name: string;
-  sourceType: 'website_form' | 'meta_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'housing' | 'custom_webhook';
+  sourceType: 'website_form' | 'meta_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'housing' | 'custom_webhook' | 'zoho_crm';
   campaignId: string | null;
   agentId: string | null;
   spreadsheetId: string | null;
@@ -558,6 +558,7 @@ export function CRMIntegrationsDashboard() {
   const realEstateSources = leadSources.filter(s => ['99acres', 'magicbricks', 'housing'].includes(s.sourceType));
   const adSources = leadSources.filter(s => ['meta_ads', 'google_ads'].includes(s.sourceType));
   const webSources = leadSources.filter(s => ['website_form', 'custom_webhook'].includes(s.sourceType));
+  const zohoSources = leadSources.filter(s => s.sourceType === 'zoho_crm');
 
   // Compute aggregate stats
   const totalLeadsCaptured = leadSources.reduce((acc, curr) => acc + (curr.totalLeads || 0), 0) + 
@@ -567,6 +568,8 @@ export function CRMIntegrationsDashboard() {
   // Helper to get platform webhook endpoint
   const getWebhookUrl = (source: LeadSourceIntegration) => {
     switch (source.sourceType) {
+      case 'zoho_crm':
+        return `${baseUrl}/api/v1/integrations/zoho/${source.webhookKey}`;
       case '99acres':
         return `${baseUrl}/api/v1/integrations/99acres/${source.webhookKey}`;
       case 'magicbricks':
@@ -1078,7 +1081,7 @@ export function CRMIntegrationsDashboard() {
 
       {/* Main Tabs Navigation */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-2 md:grid-cols-5 h-auto p-1 bg-muted/60 border border-border/50 rounded-xl">
+        <TabsList className="grid grid-cols-2 md:grid-cols-6 h-auto p-1 bg-muted/60 border border-border/50 rounded-xl">
           <TabsTrigger value="overview" className="gap-2 py-2.5 text-xs font-semibold">
             <Sparkles className="w-4 h-4 text-emerald-500" />
             Overview & Hub
@@ -1086,6 +1089,10 @@ export function CRMIntegrationsDashboard() {
           <TabsTrigger value="sheets-calendar" className="gap-2 py-2.5 text-xs font-semibold">
             <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
             Google Sheets & Calendar ({configs.length})
+          </TabsTrigger>
+          <TabsTrigger value="zoho-crm" className="gap-2 py-2.5 text-xs font-semibold">
+            <Database className="w-4 h-4 text-red-500" />
+            Zoho CRM ({zohoSources.length})
           </TabsTrigger>
           <TabsTrigger value="real-estate" className="gap-2 py-2.5 text-xs font-semibold">
             <Building2 className="w-4 h-4 text-blue-500" />
@@ -1259,6 +1266,111 @@ export function CRMIntegrationsDashboard() {
         {/* ============================================================ */}
         <TabsContent value="sheets-calendar" className="space-y-6 m-0">
           {renderGoogleWorkspaceSection()}
+        </TabsContent>
+
+        {/* ============================================================ */}
+        {/* TAB: ZOHO CRM INTEGRATION (Automated Inbound & Outbound Calling) */}
+        {/* ============================================================ */}
+        <TabsContent value="zoho-crm" className="space-y-6 m-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Zoho CRM Overview Card */}
+            <Card className="border border-border/60 hover:shadow-md transition-all md:col-span-2">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-red-600/10 text-red-600 flex items-center justify-center font-bold">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <Badge className="bg-red-500/10 text-red-600 border-0 text-[10px] font-semibold">
+                    Two-Way CTI & Lead Sync
+                  </Badge>
+                </div>
+                <CardTitle className="text-base font-semibold mt-2 flex items-center gap-2">
+                  Zoho CRM Automated Lead-to-Call Pipeline
+                </CardTitle>
+                <CardDescription className="text-xs leading-relaxed">
+                  Connect your company's Zoho CRM with Calliqo AI. When a new lead is created in Zoho CRM, it is instantly captured into Calliqo CRM and dialed by your assigned AI Voice Agent with speed-to-lead automation!
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-center">
+                    <span className="text-xs text-muted-foreground block">Capture Speed</span>
+                    <span className="text-sm font-bold text-emerald-500">Instant (Real-time)</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-center">
+                    <span className="text-xs text-muted-foreground block">Auto AI Dialing</span>
+                    <span className="text-sm font-bold text-amber-500">Within 15 Seconds</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-center">
+                    <span className="text-xs text-muted-foreground block">Data Ingested</span>
+                    <span className="text-sm font-bold text-blue-500">Leads, Company, Notes</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <Button 
+                    size="sm" 
+                    className="bg-red-600 hover:bg-red-700 text-white gap-2 font-medium"
+                    onClick={() => {
+                      setNewLeadSource(prev => ({ ...prev, name: "Zoho CRM Lead Stream", sourceType: "zoho_crm" }));
+                      setLeadSourceDialogOpen(true);
+                    }}
+                  >
+                    <Plus className="w-4 h-4" /> Connect Zoho CRM Stream
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Step-by-Step Zoho Setup Guide */}
+            <Card className="border border-border/60 bg-muted/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" /> 60-Second Zoho Setup Guide
+                </CardTitle>
+                <CardDescription className="text-[11px]">
+                  How to trigger webhooks in Zoho CRM:
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2.5 text-xs text-muted-foreground">
+                <div className="space-y-1">
+                  <p className="font-semibold text-foreground">1. In Zoho CRM:</p>
+                  <p className="text-[11px]">Go to <strong>Setup &gt; Automation &gt; Actions &gt; Webhooks</strong>.</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-semibold text-foreground">2. Click "Configure Webhook":</p>
+                  <p className="text-[11px]">Name: <code className="bg-background px-1 py-0.5 rounded">Calliqo AI Auto-Caller</code></p>
+                  <p className="text-[11px]">URL: Paste the webhook URL generated below.</p>
+                  <p className="text-[11px]">Method: <code className="bg-background px-1 py-0.5 rounded">POST</code></p>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-semibold text-foreground">3. Attach to Workflow Rule:</p>
+                  <p className="text-[11px]">Create a rule on <strong>Leads module &gt; On Lead Creation</strong> &gt; Action: select this Webhook.</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Active Zoho CRM Endpoints */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Active Zoho CRM Webhook Endpoints</CardTitle>
+              <CardDescription className="text-xs">
+                Copy this webhook URL into your Zoho CRM Webhook Action
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {zohoSources.length === 0 ? (
+                <div className="text-center py-8 text-xs text-muted-foreground border border-dashed rounded-xl">
+                  No Zoho CRM streams configured yet. Click "Connect Zoho CRM Stream" above to generate your webhook URL.
+                </div>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {zohoSources.map(renderLeadSourceCard)}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ============================================================ */}
@@ -1642,6 +1754,7 @@ export function CRMIntegrationsDashboard() {
                     <SelectValue placeholder="Select platform" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="zoho_crm">Zoho CRM (Webhook & Workflow Automation)</SelectItem>
                     <SelectItem value="99acres">99acres.com</SelectItem>
                     <SelectItem value="magicbricks">Magicbricks.com</SelectItem>
                     <SelectItem value="housing">Housing.com</SelectItem>
