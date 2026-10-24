@@ -365,7 +365,18 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      res.json(campaign);
+      let agentName = null;
+      if (campaign.agentId) {
+        try {
+          const agent = await storage.getAgent(campaign.agentId);
+          agentName = agent?.name || null;
+        } catch (e) {}
+      }
+
+      res.json({
+        ...campaign,
+        agentName
+      });
     } catch (error: any) {
       console.error("Get campaign error:", error);
       res.status(500).json({ error: "Failed to get campaign" });
@@ -784,11 +795,69 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
       }
 
       const openai = new OpenAI({ apiKey });
-      const requestedDomain = (req.body?.domain as string) || '';
+      // Fetch agent details for context
+      let agent = null;
+      if (campaign.agentId) {
+        try {
+          agent = await storage.getAgent(campaign.agentId);
+        } catch (e) {}
+      }
 
-      const domainInstruction = requestedDomain && requestedDomain !== 'auto'
-        ? `Focus specifically on domain "${requestedDomain}" (one of: "political" | "real_estate" | "healthcare" | "general_business"). You MUST set "campaignType" in the JSON to "${requestedDomain}".`
-        : `Determine whether this campaign is: "political", "real_estate", "healthcare", or "general_business" based on the call transcripts. If it does not contain political/election terms, DO NOT label it as political; default to "general_business".`;
+      // Determine campaign domain strictly
+      let effectiveDomain = (req.body?.domain as string) || '';
+      if (!effectiveDomain || effectiveDomain === 'auto') {
+        const agentName = (agent?.name || '').toLowerCase();
+        const campName = (campaign.name || '').toLowerCase();
+        const combinedHeader = `${agentName} ${campName}`;
+        const transcriptsText = callSnippets.toLowerCase();
+
+        if (/\b(real estate|real state|estate|flat|flats|plot|plots|property|properties|builder|realty|housing|bhk|villa|apartment|township)\b/i.test(combinedHeader) ||
+            /\b(real estate|real state|1bhk|2bhk|3bhk|4bhk|\bbhk\b|ready to move|under construction|site visit|flats?|plots?|villa|sqft|possession)\b/i.test(transcriptsText)) {
+          effectiveDomain = 'real_estate';
+        } else if (/\b(doctor|dr\b|clinic|hospital|patient|dental|healthcare|medicine|treatment|physician|opd)\b/i.test(combinedHeader) ||
+                   /\b(doctor|dr\b|clinic|hospital|patient|dental|treatment|consultation|fees|opd|appointment)\b/i.test(transcriptsText)) {
+          effectiveDomain = 'healthcare';
+        } else if (/\b(mla|vidhayak|sarpanch|election|chunav|voter|matdata|constituency|muktsar|brar|neta|sarkar|bjp|congress|akali dal|aam aadmi party)\b/i.test(combinedHeader) ||
+                   /\b(mla|vidhayak|sarpanch|chunav|election|matdata|constituency|aam aadmi party|akali dal|bjp|congress|prashasan)\b/i.test(transcriptsText)) {
+          effectiveDomain = 'political';
+        } else {
+          effectiveDomain = 'general_business';
+        }
+      }
+
+      const domainInstruction = `The detected domain for this campaign is "${effectiveDomain}".
+Agent Name: "${agent?.name || 'N/A'}"
+Campaign Name: "${campaign.name}"
+You MUST set "campaignType": "${effectiveDomain}" in the JSON response.
+CRITICAL DOMAIN RULES:
+- If "${effectiveDomain}" is "real_estate":
+  * Audience is BUYERS ("Buyer").
+  * badgeTitle: "Real Estate Intelligence".
+  * negativeTitle: "Buyer Objections / आपत्तियां".
+  * positiveTitle: "What Buyers Liked / खूबियां".
+  * alternativeTitle: "Competitor Projects Considered".
+  * Focus completely on property (flats, plots, budget, location, possession, amenities, site visits). DO NOT mention voters, politics, or government.
+- If "${effectiveDomain}" is "healthcare":
+  * Audience is PATIENTS ("Patient").
+  * badgeTitle: "Clinic & Healthcare Intelligence".
+  * negativeTitle: "Patient Concerns / समस्याएं".
+  * positiveTitle: "Satisfied Feedback / संतुष्टि".
+  * alternativeTitle: "Other Clinics Considered".
+  * Focus completely on treatments, doctors, appointments, fees, and care quality.
+- If "${effectiveDomain}" is "political":
+  * Audience is VOTERS ("Voter").
+  * badgeTitle: "Political Survey Intelligence".
+  * negativeTitle: "Negative Issues / कमियां".
+  * positiveTitle: "Positive Highlights / खूबियां".
+  * alternativeTitle: "Opposition / Other Parties".
+  * Focus on public issues, governance, MLA performance, and political parties.
+- If "${effectiveDomain}" is "general_business":
+  * Audience is CUSTOMERS ("Customer").
+  * badgeTitle: "Customer Feedback Intelligence".
+  * negativeTitle: "Customer Complaints / समस्याएं".
+  * positiveTitle: "What Customers Liked / अच्छाई".
+  * alternativeTitle: "Competitor Alternatives".
+  * Focus on customer service, product/ride quality, and objections.`;
 
       const prompt = `You are an expert multi-domain campaign intelligence and customer/public sentiment analyst.
 Analyze the following phone call transcripts for the campaign "${campaign.name}".

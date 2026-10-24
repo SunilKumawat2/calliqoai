@@ -143,7 +143,6 @@ export default function CampaignDetail() {
   });
 
   const [selectedSentimentFilter, setSelectedSentimentFilter] = useState<'negative' | 'positive' | 'parties' | 'all'>('negative');
-  const [domainOverride, setDomainOverride] = useState<string | null>(null);
 
   const { data: sentimentInsights, isLoading: insightsLoading } = useQuery<any>({
     queryKey: [`/api/campaigns/${id}/sentiment-insights`],
@@ -156,7 +155,7 @@ export default function CampaignDetail() {
 
   const analyzeInsightsMutation = useMutation({
     mutationFn: async (targetDomain?: string) => {
-      const activeDomain = targetDomain || domainOverride || 'auto';
+      const activeDomain = targetDomain || 'auto';
       const res = await apiRequest("POST", `/api/campaigns/${id}/sentiment-insights`, { domain: activeDomain });
       return res.json();
     },
@@ -1052,55 +1051,79 @@ export default function CampaignDetail() {
           {/* Smart Adaptive Feedback & Sentiment Intelligence */}
           {(() => {
             const detectDomain = () => {
-              if (domainOverride) return domainOverride;
               if (sentimentInsights?.campaignType) return sentimentInsights.campaignType;
 
-              // 1. Check transcripts & AI summaries of calls
+              const agentName = (((campaign as any)?.agentName || '') as string).toLowerCase();
+              const campName = ((campaign?.name || '') as string).toLowerCase();
+              const combinedHeader = `${agentName} ${campName}`;
               const transcriptsText = calls.map(c => `${c.transcript || ''} ${c.aiSummary || ''}`).join(' ').toLowerCase();
-              if (/mla|mp\b|neta|vidhayak|sarpanch|election|chunav|voter|matdata|party|parties|congress|bjp|aap|sad|opposition|sarkar|government/i.test(transcriptsText)) {
-                return 'political';
-              }
-              if (/real estate|flats?|plots?|propert|builder|realty|2bhk|3bhk|bhk|villa|sqft|possession|apartment/i.test(transcriptsText)) {
+
+              // 1. Real Estate / Property
+              if (/\b(real estate|real state|estate|flat|flats|plot|plots|property|properties|builder|realty|housing|bhk|villa|apartment|township)\b/i.test(combinedHeader) ||
+                  /\b(real estate|real state|1bhk|2bhk|3bhk|4bhk|\bbhk\b|ready to move|under construction|site visit|flats?|plots?|villa|sqft|possession)\b/i.test(transcriptsText)) {
                 return 'real_estate';
               }
-              if (/doctor|clinic|patient|hospital|medicine|dental|treatment|consultation|fees|appointment/i.test(transcriptsText)) {
+
+              // 2. Healthcare / Doctor / Clinic / Hospital
+              if (/\b(doctor|dr\b|clinic|hospital|patient|dental|healthcare|medicine|treatment|physician|opd)\b/i.test(combinedHeader) ||
+                  /\b(doctor|dr\b|clinic|hospital|patient|dental|treatment|consultation|fees|opd|appointment)\b/i.test(transcriptsText)) {
                 return 'healthcare';
               }
 
-              // 2. Check campaign name
-              const campName = (campaign?.name || '').toLowerCase();
-              if (/polit|chunav|voter|mla|mp\b|neta|election|survey|ballot|constituency/i.test(campName)) {
+              // 3. Political / Election / Constituency (Strict word boundaries, no loose "aap" or "mp")
+              if (/\b(mla|vidhayak|sarpanch|election|chunav|voter|matdata|constituency|muktsar|brar|neta|sarkar|bjp|congress|akali dal|aam aadmi party)\b/i.test(combinedHeader) ||
+                  /\b(mla|vidhayak|sarpanch|chunav|election|matdata|constituency|aam aadmi party|akali dal|bjp|congress|prashasan)\b/i.test(transcriptsText)) {
                 return 'political';
               }
-              if (/estate|flat|plot|propert|builder|realty|housing/i.test(campName)) {
-                return 'real_estate';
-              }
-              if (/doc|clinic|health|hospital|patient|medic|dental/i.test(campName)) {
-                return 'healthcare';
-              }
 
-              // Default to general business / sales / service
+              // 4. Default: General Business / Service
               return 'general_business';
             };
 
             const cType = detectDomain();
-            const audLabel = sentimentInsights?.audienceLabel || (cType === 'real_estate' ? 'Buyer' : cType === 'healthcare' ? 'Patient' : cType === 'general_business' ? 'Customer' : 'Voter');
-            const bTitle = sentimentInsights?.badgeTitle || (cType === 'real_estate' ? 'Real Estate Intelligence' : cType === 'healthcare' ? 'Healthcare & Clinic Intelligence' : cType === 'general_business' ? 'Customer Feedback Intelligence' : 'Political Survey Intelligence');
-            const mainTitle = cType === 'real_estate' ? 'Buyer Sentiment & Objections Analysis' : cType === 'healthcare' ? 'Patient Feedback & Care Analysis' : cType === 'general_business' ? 'Customer Sentiment & Market Intelligence' : 'Voter Sentiment & Issues Analysis';
-            const subtitle = cType === 'real_estate' 
-              ? 'ग्राहक प्रतिक्रिया: आपत्तियां (Objections), प्रोजेक्ट खूबियां (Positive Highlights) एवं प्रतिस्पर्धी प्रोजेक्ट्स (Competitors)'
-              : cType === 'healthcare'
-              ? 'मरीज़ प्रतिक्रिया: मुख्य समस्याएं (Concerns), संतुष्टि के बिंदु (Satisfied Points) एवं सुझाव'
-              : cType === 'general_business'
-              ? 'ग्राहक प्रतिक्रिया: समस्याएं (Complaints), पसंद की बातें (Praises) एवं विकल्प (Competitor Alternatives)'
-              : 'जनता का फीडबैक: मुख्य समस्याएं (Negative Issues), काम जो पसंद आया (Positive Reasons) एवं विपक्षी दल की प्राथमिकता';
+            const audLabel = sentimentInsights?.audienceLabel || (
+              cType === 'real_estate' ? 'Buyer' : 
+              cType === 'healthcare' ? 'Patient' : 
+              cType === 'political' ? 'Voter' : 'Customer'
+            );
+            const bTitle = sentimentInsights?.badgeTitle || (
+              cType === 'real_estate' ? 'Real Estate Intelligence' : 
+              cType === 'healthcare' ? 'Clinic & Healthcare Intelligence' : 
+              cType === 'political' ? 'Political Survey Intelligence' : 'Customer Feedback Intelligence'
+            );
+            const mainTitle = sentimentInsights?.mainTitle || (
+              cType === 'real_estate' ? 'Buyer Sentiment & Objections Analysis' : 
+              cType === 'healthcare' ? 'Patient Feedback & Care Analysis' : 
+              cType === 'political' ? 'Voter Sentiment & Issues Analysis' : 'Customer Sentiment & Market Intelligence'
+            );
+            const subtitle = sentimentInsights?.subtitle || (
+              cType === 'real_estate' 
+                ? 'ग्राहक प्रतिक्रिया : मुख्य आपत्तियां (Objections), प्रोजेक्ट की खूबियां (What Buyers Liked) एवं अन्य प्रोजेक्ट्स (Competitors)'
+                : cType === 'healthcare'
+                ? 'मरीज़ प्रतिक्रिया : मुख्य समस्याएं (Concerns), संतुष्टि के बिंदु (Satisfied Points) एवं सुझाव'
+                : cType === 'political'
+                ? 'जनता का फीडबैक : मुख्य समस्याएं (Negative Issues), काम जो पसंद आया (Positive Reasons) एवं विपक्षी दल की प्राथमिकता'
+                : 'ग्राहक प्रतिक्रिया : समस्याएं (Complaints), पसंद की बातें (Praises) एवं विकल्प (Competitor Alternatives)'
+            );
 
-            const negTitle = sentimentInsights?.negativeTitle || (cType === 'real_estate' ? 'Customer Objections / आपत्तियां' : cType === 'healthcare' ? 'Patient Concerns / समस्याएं' : cType === 'general_business' ? 'Key Complaints / समस्याएं' : 'Negative Issues / कमियां');
-            const posTitle = sentimentInsights?.positiveTitle || (cType === 'real_estate' ? 'What Buyers Liked / खूबियां' : cType === 'healthcare' ? 'Satisfied Feedback / संतुष्टि' : cType === 'general_business' ? 'What Customers Liked / अच्छाई' : 'Positive Highlights / प्रशंसा');
-            const altTitle = sentimentInsights?.alternativeTitle || (cType === 'real_estate' ? 'Competitor Projects Considered' : cType === 'healthcare' ? 'Other Clinics Considered' : cType === 'general_business' ? 'Competitor Alternatives' : 'Opposition / Other Parties');
-            const summaryTitle = cType === 'real_estate' ? 'Project Market & Buyer Summary:' : cType === 'healthcare' ? 'Clinic & Patient Care Summary:' : cType === 'general_business' ? 'Customer Sentiment Executive Summary:' : 'Constituency Executive Summary:';
+            const negTitle = sentimentInsights?.negativeTitle || (
+              cType === 'real_estate' ? 'Buyer Objections / आपत्तियां' : 
+              cType === 'healthcare' ? 'Patient Concerns / समस्याएं' : 
+              cType === 'political' ? 'Negative Issues / कमियां' : 'Customer Complaints / समस्याएं'
+            );
+            const posTitle = sentimentInsights?.positiveTitle || (
+              cType === 'real_estate' ? 'What Buyers Liked / खूबियां' : 
+              cType === 'healthcare' ? 'Satisfied Feedback / संतुष्टि' : 
+              cType === 'political' ? 'Positive Highlights / खूबियां' : 'What Customers Liked / अच्छाई'
+            );
+            const altTitle = sentimentInsights?.alternativeTitle || (
+              cType === 'real_estate' ? 'Competitor Projects Considered' : 
+              cType === 'healthcare' ? 'Other Clinics Considered' : 
+              cType === 'political' ? 'Opposition / Other Parties' : 'Competitor Alternatives'
+            );
+            const summaryTitle = cType === 'real_estate' ? 'Project Market & Buyer Summary:' : cType === 'healthcare' ? 'Clinic & Patient Care Summary:' : cType === 'political' ? 'Constituency Executive Summary:' : 'Customer Sentiment Executive Summary:';
 
-            const BadgeIcon = cType === 'real_estate' ? Building : cType === 'healthcare' ? Activity : cType === 'general_business' ? Briefcase : Vote;
+            const BadgeIcon = cType === 'real_estate' ? Building : cType === 'healthcare' ? Activity : cType === 'political' ? Vote : Briefcase;
 
             return (
               <Card className="p-6 border border-border/80 shadow-md bg-card/60">
@@ -1110,38 +1133,6 @@ export default function CampaignDetail() {
                       <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs py-0.5 px-2.5">
                         <BadgeIcon className="h-3.5 w-3.5 mr-1 text-primary inline" /> {bTitle}
                       </Badge>
-
-                      {/* Interactive Domain Switcher */}
-                      <div className="inline-flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-border/50 text-[11px]">
-                        <button
-                          type="button"
-                          onClick={() => setDomainOverride('political')}
-                          className={`px-2 py-0.5 rounded font-medium transition-all flex items-center gap-1 ${cType === 'political' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
-                          <Vote className="h-2.5 w-2.5" /> Political
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDomainOverride('real_estate')}
-                          className={`px-2 py-0.5 rounded font-medium transition-all flex items-center gap-1 ${cType === 'real_estate' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
-                          <Building className="h-2.5 w-2.5" /> Real Estate
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDomainOverride('healthcare')}
-                          className={`px-2 py-0.5 rounded font-medium transition-all flex items-center gap-1 ${cType === 'healthcare' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
-                          <Activity className="h-2.5 w-2.5" /> Clinic
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDomainOverride('general_business')}
-                          className={`px-2 py-0.5 rounded font-medium transition-all flex items-center gap-1 ${cType === 'general_business' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
-                        >
-                          <Briefcase className="h-2.5 w-2.5" /> Business
-                        </button>
-                      </div>
                     </div>
 
                     <h3 className="text-xl font-bold tracking-tight text-foreground">
@@ -1167,7 +1158,7 @@ export default function CampaignDetail() {
                       ) : (
                         <>
                           <Sparkles className="h-4 w-4 mr-1.5 text-yellow-300" />
-                          {sentimentInsights ? `Re-Analyze ${audLabel} Feedback` : `Analyze ${audLabel} Sentiment (AI)`}
+                          {sentimentInsights ? `Re-Analyze ${audLabel} Feedback` : `Analyze ${audLabel} Feedback (AI)`}
                         </>
                       )}
                     </Button>
@@ -1282,9 +1273,11 @@ export default function CampaignDetail() {
                           <ThumbsDown className="h-5 w-5" />
                         </div>
                         <div>
-                          <h4 className="font-semibold text-sm">Negative Feedback & Objections Deep-Dive</h4>
+                          <h4 className="font-semibold text-sm">
+                            {cType === 'real_estate' ? 'Buyer Objections & Concerns Deep-Dive' : cType === 'healthcare' ? 'Patient Concerns & Feedback Deep-Dive' : cType === 'political' ? 'Negative Feedback & Public Issues Deep-Dive' : 'Customer Complaints & Objections Deep-Dive'}
+                          </h4>
                           <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                            Click "Analyze {audLabel} Sentiment (AI)" above to automatically extract all specific complaints, objections, and reasons {audLabel.toLowerCase()}s mentioned.
+                            Click "Analyze {audLabel} Feedback (AI)" above to automatically extract all specific complaints, objections, and reasons {audLabel.toLowerCase()}s mentioned.
                           </p>
                         </div>
                         {calls.filter(c => c.sentiment === 'negative').length > 0 && (
@@ -1347,10 +1340,10 @@ export default function CampaignDetail() {
                         </div>
                         <div>
                           <h4 className="font-semibold text-sm">
-                            {calls.filter(c => c.sentiment === 'positive').length === 0 ? `No Positive Calls In This Campaign` : "Positive Insights Ready For Analysis"}
+                            {calls.filter(c => c.sentiment === 'positive').length === 0 ? `No Positive Calls In This Campaign` : `${audLabel} Positive Highlights Ready For Analysis`}
                           </h4>
                           <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                            Click "Analyze {audLabel} Sentiment (AI)" to automatically detect what features, works, and qualities {audLabel.toLowerCase()}s appreciated.
+                            Click "Analyze {audLabel} Feedback (AI)" to automatically detect what features, works, and qualities {audLabel.toLowerCase()}s appreciated.
                           </p>
                         </div>
                       </div>
@@ -1372,7 +1365,7 @@ export default function CampaignDetail() {
                               </h4>
                             </div>
                             <Badge variant="outline" className="text-xs border-indigo-500/30 text-indigo-300 bg-indigo-500/10">
-                              {cType === 'political' ? 'Opposition Lean' : 'Competitor Mention'}
+                              {cType === 'political' ? 'Opposition Lean' : cType === 'real_estate' ? 'Competitor Project' : cType === 'healthcare' ? 'Other Clinic' : 'Competitor Mention'}
                             </Badge>
                           </div>
                           <div className="text-sm text-foreground/90">
@@ -1401,9 +1394,11 @@ export default function CampaignDetail() {
                           <Landmark className="h-5 w-5" />
                         </div>
                         <div>
-                          <h4 className="font-semibold text-sm">Alternative & Competitor Analysis</h4>
+                          <h4 className="font-semibold text-sm">
+                            {cType === 'real_estate' ? 'Competitor Projects & Alternatives' : cType === 'healthcare' ? 'Other Clinics & Doctor Options' : cType === 'political' ? 'Opposition & Alternative Party Lean' : 'Alternative & Competitor Analysis'}
+                          </h4>
                           <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                            Click "Analyze {audLabel} Sentiment (AI)" above to scan which competitors or alternative choices {audLabel.toLowerCase()}s mentioned and why.
+                            Click "Analyze {audLabel} Feedback (AI)" above to scan which competitors or alternative choices {audLabel.toLowerCase()}s mentioned and why.
                           </p>
                         </div>
                       </div>
