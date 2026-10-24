@@ -713,6 +713,172 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
     }
   });
 
+  // Get cached sentiment insights for a campaign
+  router.get("/api/campaigns/:campaignId/sentiment-insights", authenticateHybrid, async (req: AuthRequest, res: Response) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign || campaign.userId !== req.userId) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const config = (campaign.config as Record<string, any>) || {};
+      if (config.sentimentInsights) {
+        return res.json(config.sentimentInsights);
+      }
+
+      res.json(null);
+    } catch (error: any) {
+      console.error("Get sentiment insights error:", error);
+      res.status(500).json({ error: "Failed to get sentiment insights" });
+    }
+  });
+
+  // Generate / Refresh AI sentiment and public issue insights for a campaign
+  router.post("/api/campaigns/:campaignId/sentiment-insights", authenticateHybrid, async (req: AuthRequest, res: Response) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign || campaign.userId !== req.userId) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // 1. Fetch all calls for this campaign across all telephony engines
+      const callsList = await storage.getCampaignCalls(req.params.campaignId);
+
+      // Filter calls that have transcripts or aiSummary
+      const completedCalls = callsList.filter(c => 
+        (c.transcript && c.transcript.trim().length > 10) || 
+        (c.aiSummary && c.aiSummary.trim().length > 10)
+      );
+
+      if (completedCalls.length === 0) {
+        return res.json({
+          summary: "Abhi is campaign me completed calls ke transcripts uplabdh nahi hain. Calls complete hone ke baad yaha voter feedback analyze hoga.",
+          topNegativeIssues: [],
+          topPositivePoints: [],
+          alternativePartyPreferences: [],
+          neutralObservations: [],
+          keyTakeaways: [],
+          totalAnalyzed: 0
+        });
+      }
+
+      // Gather call transcripts into compact snippets
+      const callSnippets = completedCalls.slice(0, 35).map((c, i) => {
+        const sentiment = c.sentiment || 'neutral';
+        const classification = c.classification || 'unknown';
+        const transcriptText = c.transcript ? c.transcript.replace(/[\r\n]+/g, ' ').substring(0, 900) : (c.aiSummary || '');
+        return `[Call #${i + 1} | Sentiment: ${sentiment} | Classification: ${classification}]\nTranscript: ${transcriptText}`;
+      }).join("\n\n");
+
+      // 2. Get OpenAI instance
+      const OpenAI = (await import('openai')).default;
+      let apiKey = process.env.OPENAI_API_KEY;
+      try {
+        const { OpenAIPoolService } = await import('../engines/plivo/services/openai-pool.service');
+        const cred = await OpenAIPoolService.getAvailableCredential();
+        if (cred?.apiKey) apiKey = cred.apiKey;
+      } catch (e) {}
+
+      if (!apiKey) {
+        return res.status(500).json({ error: "OpenAI API key not available for analysis" });
+      }
+
+      const openai = new OpenAI({ apiKey });
+
+      const prompt = `You are an expert political campaign intelligence and public survey analyst.
+Analyze the following voter/constituent phone call transcripts for the political/outreach campaign "${campaign.name}".
+
+Extract deep, actionable insights into voter sentiment:
+1. TOP NEGATIVE ISSUES / GRIEVANCES (मुख्य समस्याएं / क्या बातें लोगों को खराब लगीं):
+   - What specific complaints did voters express about the incumbent MLA / Government / System? (e.g. lack of ground-level reach, corruption, roads/water, broken promises, inflation, arrogance).
+   - Provide a concise title, clear explanation in Hindi/Hinglish, and exact/representative verbatim quotes in the voter's actual language.
+2. TOP POSITIVE POINTS / APPRECIATIONS (सकारात्मक बातें / क्या काम अच्छा लगा):
+   - What did satisfied voters praise or appreciate? (e.g. welfare schemes, personal accessibility, honesty, party loyalty).
+   - Provide title, explanation, and verbatim quotes.
+3. ALTERNATIVE PARTY / OPPOSITION PREFERENCES (विपक्षी पार्टी / दूसरा विकल्प क्यों पसंद है):
+   - If voters mentioned supporting or leaning towards another party (Congress, AAP, BJP, SAD, Independent, etc.), specify the party name, the exact reason why they prefer them (e.g. "Congress listened to poor people's voices"), and quotes.
+4. NEUTRAL / UNDECIDED OBSERVATIONS (तटस्थ या असमंजस वाले वोटर्स):
+   - What are undecided voters waiting for or saying?
+5. EXECUTIVE SUMMARY & KEY TAKEAWAYS (मुख्य निष्कर्ष व रणनीति सुझाव):
+   - 2-3 sentence strategic briefing of the constituency ground reality and actionable takeaways for the political team.
+
+Respond ONLY with valid JSON in this structure:
+{
+  "summary": "Short 2-3 line executive summary of the constituency voter mood and overall trend",
+  "topNegativeIssues": [
+    {
+      "issue": "Short Title in Hindi/Hinglish (e.g. ग्राउंड लेवल पर सुनवाई न होना)",
+      "description": "Clear explanation of what voters said",
+      "count": 1,
+      "sampleQuotes": ["Exact or representative voter quote in Hindi/Punjabi/English"]
+    }
+  ],
+  "topPositivePoints": [
+    {
+      "point": "Short Title in Hindi/Hinglish (e.g. जन कल्याणकारी योजनाओं का लाभ)",
+      "description": "Clear explanation of what was appreciated",
+      "count": 1,
+      "sampleQuotes": ["Exact or representative voter quote"]
+    }
+  ],
+  "alternativePartyPreferences": [
+    {
+      "party": "Party / Candidate Name (e.g. Congress / AAP / BJP / etc.)",
+      "reason": "Why the voter prefers them / what specific work was praised",
+      "sampleQuotes": ["Exact quote from voter"]
+    }
+  ],
+  "neutralObservations": [
+    {
+      "topic": "Topic Name",
+      "observation": "What undecided voters expressed"
+    }
+  ],
+  "keyTakeaways": [
+    "Actionable political takeaway 1",
+    "Actionable political takeaway 2"
+  ]
+}
+
+Call Transcripts:
+${callSnippets}`;
+
+      const aiResponse = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      const content = aiResponse.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error("No response from AI analyzer");
+      }
+
+      const insights = JSON.parse(content);
+      insights.totalAnalyzed = completedCalls.length;
+      insights.generatedAt = new Date().toISOString();
+
+      // Cache into campaign config
+      try {
+        const existingConfig = (campaign.config as Record<string, any>) || {};
+        await storage.updateCampaign(campaign.id, {
+          config: {
+            ...existingConfig,
+            sentimentInsights: insights
+          }
+        });
+      } catch (err) {
+        console.error("Failed to cache sentiment insights in campaign config:", err);
+      }
+
+      res.json(insights);
+    } catch (error: any) {
+      console.error("Analyze sentiment insights error:", error);
+      res.status(500).json({ error: error.message || "Failed to analyze sentiment insights" });
+    }
+  });
+
   // Get campaign batch job (campaignId param version)
   router.get("/api/campaigns/:campaignId/batch", authenticateHybrid, async (req: AuthRequest, res: Response) => {
     try {
