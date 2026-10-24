@@ -784,16 +784,17 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
       }
 
       const openai = new OpenAI({ apiKey });
+      const requestedDomain = (req.body?.domain as string) || '';
+
+      const domainInstruction = requestedDomain && requestedDomain !== 'auto'
+        ? `Focus specifically on domain "${requestedDomain}" (one of: "political" | "real_estate" | "healthcare" | "general_business"). You MUST set "campaignType" in the JSON to "${requestedDomain}".`
+        : `Determine whether this campaign is: "political", "real_estate", "healthcare", or "general_business" based on the call transcripts. If it does not contain political/election terms, DO NOT label it as political; default to "general_business".`;
 
       const prompt = `You are an expert multi-domain campaign intelligence and customer/public sentiment analyst.
 Analyze the following phone call transcripts for the campaign "${campaign.name}".
 
-STEP 1: AUTO-DETECT CAMPAIGN DOMAIN:
-Determine whether this campaign is:
-- "political": (Elections, MLA/MP surveys, government feedback, constituency outreach, political party sentiment)
-- "real_estate": (Properties, builders, apartments, plots, commercial, home buying, site visits)
-- "healthcare": (Doctors, clinics, hospitals, patient appointments, consultations, treatments)
-- "general_business": (E-commerce, customer support, salon, insurance, loan, general sales/feedback)
+STEP 1: CAMPAIGN DOMAIN:
+${domainInstruction}
 
 STEP 2: EXTRACT DEEP ADAPTIVE INSIGHTS ACCORDING TO DOMAIN:
 1. TOP NEGATIVE ISSUES / OBJECTIONS:

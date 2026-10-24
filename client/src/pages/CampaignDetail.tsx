@@ -143,6 +143,7 @@ export default function CampaignDetail() {
   });
 
   const [selectedSentimentFilter, setSelectedSentimentFilter] = useState<'negative' | 'positive' | 'parties' | 'all'>('negative');
+  const [domainOverride, setDomainOverride] = useState<string | null>(null);
 
   const { data: sentimentInsights, isLoading: insightsLoading } = useQuery<any>({
     queryKey: [`/api/campaigns/${id}/sentiment-insights`],
@@ -154,21 +155,22 @@ export default function CampaignDetail() {
   });
 
   const analyzeInsightsMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/campaigns/${id}/sentiment-insights`);
+    mutationFn: async (targetDomain?: string) => {
+      const activeDomain = targetDomain || domainOverride || 'auto';
+      const res = await apiRequest("POST", `/api/campaigns/${id}/sentiment-insights`, { domain: activeDomain });
       return res.json();
     },
     onSuccess: (data) => {
       queryClient.setQueryData([`/api/campaigns/${id}/sentiment-insights`], data);
       toast({
-        title: "Voter Sentiment Analysis Complete",
-        description: "Public feedback and key political issues have been successfully synthesized.",
+        title: "Sentiment & Issues Analysis Complete",
+        description: "Customer/Audience feedback has been successfully synthesized.",
       });
     },
     onError: (err: any) => {
       toast({
         title: "Analysis Failed",
-        description: err?.message || "Could not analyze voter feedback. Please try again.",
+        description: err?.message || "Could not analyze call feedback. Please try again.",
         variant: "destructive",
       });
     },
@@ -1049,7 +1051,39 @@ export default function CampaignDetail() {
 
           {/* Smart Adaptive Feedback & Sentiment Intelligence */}
           {(() => {
-            const cType = sentimentInsights?.campaignType || 'political';
+            const detectDomain = () => {
+              if (domainOverride) return domainOverride;
+              if (sentimentInsights?.campaignType) return sentimentInsights.campaignType;
+
+              // 1. Check transcripts & AI summaries of calls
+              const transcriptsText = calls.map(c => `${c.transcript || ''} ${c.aiSummary || ''}`).join(' ').toLowerCase();
+              if (/mla|mp\b|neta|vidhayak|sarpanch|election|chunav|voter|matdata|party|parties|congress|bjp|aap|sad|opposition|sarkar|government/i.test(transcriptsText)) {
+                return 'political';
+              }
+              if (/real estate|flats?|plots?|propert|builder|realty|2bhk|3bhk|bhk|villa|sqft|possession|apartment/i.test(transcriptsText)) {
+                return 'real_estate';
+              }
+              if (/doctor|clinic|patient|hospital|medicine|dental|treatment|consultation|fees|appointment/i.test(transcriptsText)) {
+                return 'healthcare';
+              }
+
+              // 2. Check campaign name
+              const campName = (campaign?.name || '').toLowerCase();
+              if (/polit|chunav|voter|mla|mp\b|neta|election|survey|ballot|constituency/i.test(campName)) {
+                return 'political';
+              }
+              if (/estate|flat|plot|propert|builder|realty|housing/i.test(campName)) {
+                return 'real_estate';
+              }
+              if (/doc|clinic|health|hospital|patient|medic|dental/i.test(campName)) {
+                return 'healthcare';
+              }
+
+              // Default to general business / sales / service
+              return 'general_business';
+            };
+
+            const cType = detectDomain();
             const audLabel = sentimentInsights?.audienceLabel || (cType === 'real_estate' ? 'Buyer' : cType === 'healthcare' ? 'Patient' : cType === 'general_business' ? 'Customer' : 'Voter');
             const bTitle = sentimentInsights?.badgeTitle || (cType === 'real_estate' ? 'Real Estate Intelligence' : cType === 'healthcare' ? 'Healthcare & Clinic Intelligence' : cType === 'general_business' ? 'Customer Feedback Intelligence' : 'Political Survey Intelligence');
             const mainTitle = cType === 'real_estate' ? 'Buyer Sentiment & Objections Analysis' : cType === 'healthcare' ? 'Patient Feedback & Care Analysis' : cType === 'general_business' ? 'Customer Sentiment & Market Intelligence' : 'Voter Sentiment & Issues Analysis';
@@ -1071,15 +1105,48 @@ export default function CampaignDetail() {
             return (
               <Card className="p-6 border border-border/80 shadow-md bg-card/60">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-border/60">
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs py-0.5 px-2.5">
                         <BadgeIcon className="h-3.5 w-3.5 mr-1 text-primary inline" /> {bTitle}
                       </Badge>
-                      <h3 className="text-xl font-bold tracking-tight text-foreground">
-                        {mainTitle}
-                      </h3>
+
+                      {/* Interactive Domain Switcher */}
+                      <div className="inline-flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-border/50 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setDomainOverride('political')}
+                          className={`px-2 py-0.5 rounded font-medium transition-all flex items-center gap-1 ${cType === 'political' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          <Vote className="h-2.5 w-2.5" /> Political
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDomainOverride('real_estate')}
+                          className={`px-2 py-0.5 rounded font-medium transition-all flex items-center gap-1 ${cType === 'real_estate' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          <Building className="h-2.5 w-2.5" /> Real Estate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDomainOverride('healthcare')}
+                          className={`px-2 py-0.5 rounded font-medium transition-all flex items-center gap-1 ${cType === 'healthcare' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          <Activity className="h-2.5 w-2.5" /> Clinic
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDomainOverride('general_business')}
+                          className={`px-2 py-0.5 rounded font-medium transition-all flex items-center gap-1 ${cType === 'general_business' ? 'bg-primary text-primary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                          <Briefcase className="h-2.5 w-2.5" /> Business
+                        </button>
+                      </div>
                     </div>
+
+                    <h3 className="text-xl font-bold tracking-tight text-foreground">
+                      {mainTitle}
+                    </h3>
                     <p className="text-xs text-muted-foreground">
                       {subtitle}
                     </p>
@@ -1088,7 +1155,7 @@ export default function CampaignDetail() {
                   <div className="flex items-center gap-2">
                     <Button
                       size="sm"
-                      onClick={() => analyzeInsightsMutation.mutate()}
+                      onClick={() => analyzeInsightsMutation.mutate(cType)}
                       disabled={analyzeInsightsMutation.isPending || calls.filter(c => c.transcript || c.aiSummary).length === 0}
                       className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-sm h-9 px-4 font-medium"
                     >
