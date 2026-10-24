@@ -785,58 +785,81 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
 
       const openai = new OpenAI({ apiKey });
 
-      const prompt = `You are an expert political campaign intelligence and public survey analyst.
-Analyze the following voter/constituent phone call transcripts for the political/outreach campaign "${campaign.name}".
+      const prompt = `You are an expert multi-domain campaign intelligence and customer/public sentiment analyst.
+Analyze the following phone call transcripts for the campaign "${campaign.name}".
 
-Extract deep, actionable insights into voter sentiment:
-1. TOP NEGATIVE ISSUES / GRIEVANCES (मुख्य समस्याएं / क्या बातें लोगों को खराब लगीं):
-   - What specific complaints did voters express about the incumbent MLA / Government / System? (e.g. lack of ground-level reach, corruption, roads/water, broken promises, inflation, arrogance).
-   - Provide a concise title, clear explanation in Hindi/Hinglish, and exact/representative verbatim quotes in the voter's actual language.
-2. TOP POSITIVE POINTS / APPRECIATIONS (सकारात्मक बातें / क्या काम अच्छा लगा):
-   - What did satisfied voters praise or appreciate? (e.g. welfare schemes, personal accessibility, honesty, party loyalty).
-   - Provide title, explanation, and verbatim quotes.
-3. ALTERNATIVE PARTY / OPPOSITION PREFERENCES (विपक्षी पार्टी / दूसरा विकल्प क्यों पसंद है):
-   - If voters mentioned supporting or leaning towards another party (Congress, AAP, BJP, SAD, Independent, etc.), specify the party name, the exact reason why they prefer them (e.g. "Congress listened to poor people's voices"), and quotes.
-4. NEUTRAL / UNDECIDED OBSERVATIONS (तटस्थ या असमंजस वाले वोटर्स):
-   - What are undecided voters waiting for or saying?
-5. EXECUTIVE SUMMARY & KEY TAKEAWAYS (मुख्य निष्कर्ष व रणनीति सुझाव):
-   - 2-3 sentence strategic briefing of the constituency ground reality and actionable takeaways for the political team.
+STEP 1: AUTO-DETECT CAMPAIGN DOMAIN:
+Determine whether this campaign is:
+- "political": (Elections, MLA/MP surveys, government feedback, constituency outreach, political party sentiment)
+- "real_estate": (Properties, builders, apartments, plots, commercial, home buying, site visits)
+- "healthcare": (Doctors, clinics, hospitals, patient appointments, consultations, treatments)
+- "general_business": (E-commerce, customer support, salon, insurance, loan, general sales/feedback)
+
+STEP 2: EXTRACT DEEP ADAPTIVE INSIGHTS ACCORDING TO DOMAIN:
+1. TOP NEGATIVE ISSUES / OBJECTIONS:
+   - For Political: Top public grievances / complaints about incumbent MLA / govt / local issues (roads, water, accessibility, promises).
+   - For Real Estate: Key buyer objections / hesitations (budget, pricing, location distance, possession delay, high interest, loan issues).
+   - For Healthcare: Patient concerns (long wait times, doctor availability, high fees, staff behavior).
+   - For General Business: Customer complaints / friction points.
+   - For each: Title in Hindi/Hinglish, clear description, count, and exact verbatim quotes.
+
+2. TOP POSITIVE POINTS / PRAISES:
+   - What did satisfied people appreciate / praise? (e.g. Political: welfare schemes / accessibility; Real Estate: prime location / amenities / pricing; Healthcare: doctor care / treatment result).
+   - Title, description, count, and exact verbatim quotes.
+
+3. ALTERNATIVE / COMPETITOR PREFERENCES:
+   - For Political: Other political parties voters prefer (Congress, AAP, BJP, SAD, Independent) and specific reasons why.
+   - For Real Estate: Other competitor projects/builders buyers mentioned considering and why.
+   - For Healthcare: Other doctors/hospitals mentioned and why.
+   - For General Business: Competitor brands preferred and why.
+
+4. UNDECIDED / NEUTRAL OBSERVATIONS:
+   - What are undecided prospects/voters waiting for?
+
+5. STRATEGIC KEY TAKEAWAYS:
+   - 2-3 high-impact actionable recommendations for the campaign management team.
 
 Respond ONLY with valid JSON in this structure:
 {
-  "summary": "Short 2-3 line executive summary of the constituency voter mood and overall trend",
+  "campaignType": "political" | "real_estate" | "healthcare" | "general_business",
+  "badgeTitle": "e.g. Political Survey Intelligence | Real Estate Intelligence | Healthcare & Clinic Intelligence | Customer Feedback Intelligence",
+  "audienceLabel": "e.g. Voter | Buyer | Patient | Customer",
+  "negativeTitle": "e.g. Negative Issues / कमियां | Customer Objections / आपत्तियां | Patient Concerns / समस्याएं | Key Complaints",
+  "positiveTitle": "e.g. Positive Highlights / अच्छाई | What Buyers Liked / खूबियां | Satisfied Feedback / संतुष्टि | Top Highlights",
+  "alternativeTitle": "e.g. Opposition / Other Parties | Competitor Projects Considered | Other Clinics Considered | Competitor Alternatives",
+  "summary": "2-3 line executive summary of the overall sentiment and mood",
   "topNegativeIssues": [
     {
-      "issue": "Short Title in Hindi/Hinglish (e.g. ग्राउंड लेवल पर सुनवाई न होना)",
-      "description": "Clear explanation of what voters said",
+      "issue": "Short Title in Hindi/Hinglish",
+      "description": "Clear explanation of what people said",
       "count": 1,
-      "sampleQuotes": ["Exact or representative voter quote in Hindi/Punjabi/English"]
+      "sampleQuotes": ["Exact or representative verbatim quote"]
     }
   ],
   "topPositivePoints": [
     {
-      "point": "Short Title in Hindi/Hinglish (e.g. जन कल्याणकारी योजनाओं का लाभ)",
+      "point": "Short Title in Hindi/Hinglish",
       "description": "Clear explanation of what was appreciated",
       "count": 1,
-      "sampleQuotes": ["Exact or representative voter quote"]
+      "sampleQuotes": ["Exact verbatim quote"]
     }
   ],
   "alternativePartyPreferences": [
     {
-      "party": "Party / Candidate Name (e.g. Congress / AAP / BJP / etc.)",
-      "reason": "Why the voter prefers them / what specific work was praised",
-      "sampleQuotes": ["Exact quote from voter"]
+      "party": "Party / Competitor / Alternative Name",
+      "reason": "Why the person prefers them / what specific feature/work was praised",
+      "sampleQuotes": ["Exact verbatim quote"]
     }
   ],
   "neutralObservations": [
     {
       "topic": "Topic Name",
-      "observation": "What undecided voters expressed"
+      "observation": "What undecided people expressed"
     }
   ],
   "keyTakeaways": [
-    "Actionable political takeaway 1",
-    "Actionable political takeaway 2"
+    "Actionable recommendation 1",
+    "Actionable recommendation 2"
   ]
 }
 

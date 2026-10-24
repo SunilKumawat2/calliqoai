@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, PhoneCall, Download, CheckCircle2, XCircle, Clock, Loader2, TrendingUp, Users, Target, Pause, StopCircle, Play, Flame, ThermometerSun, Snowflake, RefreshCw, RotateCcw, Layers, PhoneForwarded, Sparkles, ThumbsUp, ThumbsDown, AlertTriangle, MessageSquare, Quote, Vote, Landmark } from "lucide-react";
+import { ArrowLeft, PhoneCall, Download, CheckCircle2, XCircle, Clock, Loader2, TrendingUp, Users, Target, Pause, StopCircle, Play, Flame, ThermometerSun, Snowflake, RefreshCw, RotateCcw, Layers, PhoneForwarded, Sparkles, ThumbsUp, ThumbsDown, AlertTriangle, MessageSquare, Quote, Vote, Landmark, Building, Activity, Briefcase } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -1047,352 +1047,375 @@ export default function CampaignDetail() {
             </Card>
           </div>
 
-          {/* Public Feedback & Voter Sentiment Trends (Political Campaign Intelligence) */}
-          <Card className="p-6 border border-border/80 shadow-md bg-card/60">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-border/60">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs py-0.5 px-2.5">
-                    <Vote className="h-3.5 w-3.5 mr-1 text-primary inline" /> Political Survey Intelligence
-                  </Badge>
-                  <h3 className="text-xl font-bold tracking-tight text-foreground">
-                    Voter Sentiment & Issues Analysis
-                  </h3>
+          {/* Smart Adaptive Feedback & Sentiment Intelligence */}
+          {(() => {
+            const cType = sentimentInsights?.campaignType || 'political';
+            const audLabel = sentimentInsights?.audienceLabel || (cType === 'real_estate' ? 'Buyer' : cType === 'healthcare' ? 'Patient' : cType === 'general_business' ? 'Customer' : 'Voter');
+            const bTitle = sentimentInsights?.badgeTitle || (cType === 'real_estate' ? 'Real Estate Intelligence' : cType === 'healthcare' ? 'Healthcare & Clinic Intelligence' : cType === 'general_business' ? 'Customer Feedback Intelligence' : 'Political Survey Intelligence');
+            const mainTitle = cType === 'real_estate' ? 'Buyer Sentiment & Objections Analysis' : cType === 'healthcare' ? 'Patient Feedback & Care Analysis' : cType === 'general_business' ? 'Customer Sentiment & Market Intelligence' : 'Voter Sentiment & Issues Analysis';
+            const subtitle = cType === 'real_estate' 
+              ? 'ग्राहक प्रतिक्रिया: आपत्तियां (Objections), प्रोजेक्ट खूबियां (Positive Highlights) एवं प्रतिस्पर्धी प्रोजेक्ट्स (Competitors)'
+              : cType === 'healthcare'
+              ? 'मरीज़ प्रतिक्रिया: मुख्य समस्याएं (Concerns), संतुष्टि के बिंदु (Satisfied Points) एवं सुझाव'
+              : cType === 'general_business'
+              ? 'ग्राहक प्रतिक्रिया: समस्याएं (Complaints), पसंद की बातें (Praises) एवं विकल्प (Competitor Alternatives)'
+              : 'जनता का फीडबैक: मुख्य समस्याएं (Negative Issues), काम जो पसंद आया (Positive Reasons) एवं विपक्षी दल की प्राथमिकता';
+
+            const negTitle = sentimentInsights?.negativeTitle || (cType === 'real_estate' ? 'Customer Objections / आपत्तियां' : cType === 'healthcare' ? 'Patient Concerns / समस्याएं' : cType === 'general_business' ? 'Key Complaints / समस्याएं' : 'Negative Issues / कमियां');
+            const posTitle = sentimentInsights?.positiveTitle || (cType === 'real_estate' ? 'What Buyers Liked / खूबियां' : cType === 'healthcare' ? 'Satisfied Feedback / संतुष्टि' : cType === 'general_business' ? 'What Customers Liked / अच्छाई' : 'Positive Highlights / प्रशंसा');
+            const altTitle = sentimentInsights?.alternativeTitle || (cType === 'real_estate' ? 'Competitor Projects Considered' : cType === 'healthcare' ? 'Other Clinics Considered' : cType === 'general_business' ? 'Competitor Alternatives' : 'Opposition / Other Parties');
+            const summaryTitle = cType === 'real_estate' ? 'Project Market & Buyer Summary:' : cType === 'healthcare' ? 'Clinic & Patient Care Summary:' : cType === 'general_business' ? 'Customer Sentiment Executive Summary:' : 'Constituency Executive Summary:';
+
+            const BadgeIcon = cType === 'real_estate' ? Building : cType === 'healthcare' ? Activity : cType === 'general_business' ? Briefcase : Vote;
+
+            return (
+              <Card className="p-6 border border-border/80 shadow-md bg-card/60">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-border/60">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs py-0.5 px-2.5">
+                        <BadgeIcon className="h-3.5 w-3.5 mr-1 text-primary inline" /> {bTitle}
+                      </Badge>
+                      <h3 className="text-xl font-bold tracking-tight text-foreground">
+                        {mainTitle}
+                      </h3>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {subtitle}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => analyzeInsightsMutation.mutate()}
+                      disabled={analyzeInsightsMutation.isPending || calls.filter(c => c.transcript || c.aiSummary).length === 0}
+                      className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-sm h-9 px-4 font-medium"
+                    >
+                      {analyzeInsightsMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Analyzing Transcripts...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-1.5 text-yellow-300" />
+                          {sentimentInsights ? `Re-Analyze ${audLabel} Feedback` : `Analyze ${audLabel} Sentiment (AI)`}
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  जनता का फीडबैक: मुख्य समस्याएं (Negative Issues), काम जो पसंद आया (Positive Reasons) एवं विपक्षी दल की प्राथमिकता
-                </p>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => analyzeInsightsMutation.mutate()}
-                  disabled={analyzeInsightsMutation.isPending || calls.filter(c => c.transcript || c.aiSummary).length === 0}
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-sm h-9 px-4 font-medium"
-                >
-                  {analyzeInsightsMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Analyzing Transcripts...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 mr-1.5 text-yellow-300" />
-                      {sentimentInsights ? "Re-Analyze Voter Mood" : "Analyze Voter Sentiment (AI)"}
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
+                {/* Executive Summary Banner */}
+                {sentimentInsights?.summary && (
+                  <div className="mt-5 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 flex gap-3 items-start">
+                    <Sparkles className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-sm">
+                      <span className="font-semibold text-blue-400">{summaryTitle}</span>
+                      <p className="text-muted-foreground leading-relaxed">{sentimentInsights.summary}</p>
+                      {sentimentInsights.generatedAt && (
+                        <span className="text-[11px] text-muted-foreground/70 block pt-1">
+                          Last synthesized: {format(new Date(sentimentInsights.generatedAt), "MMM d, yyyy 'at' h:mm a")} ({sentimentInsights.totalAnalyzed || 0} calls analyzed)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-            {/* Executive Summary Banner */}
-            {sentimentInsights?.summary && (
-              <div className="mt-5 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 flex gap-3 items-start">
-                <Sparkles className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
-                <div className="space-y-1 text-sm">
-                  <span className="font-semibold text-blue-400">Constituency Executive Summary:</span>
-                  <p className="text-muted-foreground leading-relaxed">{sentimentInsights.summary}</p>
-                  {sentimentInsights.generatedAt && (
-                    <span className="text-[11px] text-muted-foreground/70 block pt-1">
-                      Last synthesized: {format(new Date(sentimentInsights.generatedAt), "MMM d, yyyy 'at' h:mm a")} ({sentimentInsights.totalAnalyzed || 0} calls analyzed)
-                    </span>
-                  )}
+                {/* Filter Navigation Pills */}
+                <div className="mt-5 flex flex-wrap items-center gap-2">
+                  <Button
+                    variant={selectedSentimentFilter === 'negative' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedSentimentFilter('negative')}
+                    className={`text-xs h-8 rounded-lg ${selectedSentimentFilter === 'negative' ? 'bg-red-600 hover:bg-red-700 text-white' : 'hover:bg-red-500/10 hover:text-red-400'}`}
+                  >
+                    <ThumbsDown className="h-3.5 w-3.5 mr-1.5" />
+                    {negTitle}
+                    <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px] bg-red-950/60 text-red-300">
+                      {sentimentInsights?.topNegativeIssues?.length ?? calls.filter(c => c.sentiment === 'negative').length}
+                    </Badge>
+                  </Button>
+
+                  <Button
+                    variant={selectedSentimentFilter === 'positive' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedSentimentFilter('positive')}
+                    className={`text-xs h-8 rounded-lg ${selectedSentimentFilter === 'positive' ? 'bg-green-600 hover:bg-green-700 text-white' : 'hover:bg-green-500/10 hover:text-green-400'}`}
+                  >
+                    <ThumbsUp className="h-3.5 w-3.5 mr-1.5" />
+                    {posTitle}
+                    <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px] bg-green-950/60 text-green-300">
+                      {sentimentInsights?.topPositivePoints?.length ?? calls.filter(c => c.sentiment === 'positive').length}
+                    </Badge>
+                  </Button>
+
+                  <Button
+                    variant={selectedSentimentFilter === 'parties' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedSentimentFilter('parties')}
+                    className={`text-xs h-8 rounded-lg ${selectedSentimentFilter === 'parties' ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'hover:bg-indigo-500/10 hover:text-indigo-400'}`}
+                  >
+                    <Landmark className="h-3.5 w-3.5 mr-1.5" />
+                    {altTitle}
+                    <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px] bg-indigo-950/60 text-indigo-300">
+                      {sentimentInsights?.alternativePartyPreferences?.length ?? 0}
+                    </Badge>
+                  </Button>
+
+                  <Button
+                    variant={selectedSentimentFilter === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedSentimentFilter('all')}
+                    className="text-xs h-8 rounded-lg"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+                    All {audLabel} Calls ({calls.length})
+                  </Button>
                 </div>
-              </div>
-            )}
 
-            {/* Filter Navigation Pills */}
-            <div className="mt-5 flex flex-wrap items-center gap-2">
-              <Button
-                variant={selectedSentimentFilter === 'negative' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedSentimentFilter('negative')}
-                className={`text-xs h-8 rounded-lg ${selectedSentimentFilter === 'negative' ? 'bg-red-600 hover:bg-red-700 text-white' : 'hover:bg-red-500/10 hover:text-red-400'}`}
-              >
-                <ThumbsDown className="h-3.5 w-3.5 mr-1.5" />
-                Negative Issues / कमियां
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px] bg-red-950/60 text-red-300">
-                  {sentimentInsights?.topNegativeIssues?.length ?? calls.filter(c => c.sentiment === 'negative').length}
-                </Badge>
-              </Button>
-
-              <Button
-                variant={selectedSentimentFilter === 'positive' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedSentimentFilter('positive')}
-                className={`text-xs h-8 rounded-lg ${selectedSentimentFilter === 'positive' ? 'bg-green-600 hover:bg-green-700 text-white' : 'hover:bg-green-500/10 hover:text-green-400'}`}
-              >
-                <ThumbsUp className="h-3.5 w-3.5 mr-1.5" />
-                Positive Highlights / प्रशंसा
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px] bg-green-950/60 text-green-300">
-                  {sentimentInsights?.topPositivePoints?.length ?? calls.filter(c => c.sentiment === 'positive').length}
-                </Badge>
-              </Button>
-
-              <Button
-                variant={selectedSentimentFilter === 'parties' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedSentimentFilter('parties')}
-                className={`text-xs h-8 rounded-lg ${selectedSentimentFilter === 'parties' ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'hover:bg-indigo-500/10 hover:text-indigo-400'}`}
-              >
-                <Landmark className="h-3.5 w-3.5 mr-1.5" />
-                Opposition / Other Parties
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px] bg-indigo-950/60 text-indigo-300">
-                  {sentimentInsights?.alternativePartyPreferences?.length ?? 0}
-                </Badge>
-              </Button>
-
-              <Button
-                variant={selectedSentimentFilter === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedSentimentFilter('all')}
-                className="text-xs h-8 rounded-lg"
-              >
-                <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
-                All Voter Calls ({calls.length})
-              </Button>
-            </div>
-
-            {/* TAB CONTENT: Negative Issues */}
-            {selectedSentimentFilter === 'negative' && (
-              <div className="mt-5 space-y-3">
-                {sentimentInsights?.topNegativeIssues && sentimentInsights.topNegativeIssues.length > 0 ? (
-                  sentimentInsights.topNegativeIssues.map((item: any, idx: number) => (
-                    <div key={idx} className="p-4 rounded-xl border border-red-500/25 bg-red-500/5 space-y-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
-                          <h4 className="font-semibold text-base text-red-400">{item.issue}</h4>
+                {/* TAB CONTENT: Negative Issues */}
+                {selectedSentimentFilter === 'negative' && (
+                  <div className="mt-5 space-y-3">
+                    {sentimentInsights?.topNegativeIssues && sentimentInsights.topNegativeIssues.length > 0 ? (
+                      sentimentInsights.topNegativeIssues.map((item: any, idx: number) => (
+                        <div key={idx} className="p-4 rounded-xl border border-red-500/25 bg-red-500/5 space-y-2.5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+                              <h4 className="font-semibold text-base text-red-400">{item.issue}</h4>
+                            </div>
+                            {item.count && (
+                              <Badge variant="outline" className="text-xs border-red-500/30 text-red-400 bg-red-500/10">
+                                {item.count} {audLabel.toLowerCase()}{item.count > 1 ? 's' : ''} mentioned
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-foreground/90">{item.description}</p>
+                          {item.sampleQuotes && item.sampleQuotes.length > 0 && (
+                            <div className="space-y-1.5 pt-1">
+                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                <Quote className="h-3 w-3 text-red-400" /> Exact {audLabel} Statements:
+                              </span>
+                              <div className="space-y-1">
+                                {item.sampleQuotes.map((q: string, qIdx: number) => (
+                                  <div key={qIdx} className="text-xs italic bg-background/60 p-2.5 rounded-lg border border-border/50 text-foreground/80">
+                                    "{q}"
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        {item.count && (
-                          <Badge variant="outline" className="text-xs border-red-500/30 text-red-400 bg-red-500/10">
-                            {item.count} voter{item.count > 1 ? 's' : ''} mentioned
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-foreground/90">{item.description}</p>
-                      {item.sampleQuotes && item.sampleQuotes.length > 0 && (
-                        <div className="space-y-1.5 pt-1">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                            <Quote className="h-3 w-3 text-red-400" /> Exact Voter Statements:
-                          </span>
-                          <div className="space-y-1">
-                            {item.sampleQuotes.map((q: string, qIdx: number) => (
-                              <div key={qIdx} className="text-xs italic bg-background/60 p-2.5 rounded-lg border border-border/50 text-foreground/80">
-                                "{q}"
+                      ))
+                    ) : (
+                      <div className="p-6 text-center border border-dashed rounded-xl space-y-3 bg-muted/20">
+                        <div className="mx-auto w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center text-red-400">
+                          <ThumbsDown className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-sm">Negative Feedback & Objections Deep-Dive</h4>
+                          <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                            Click "Analyze {audLabel} Sentiment (AI)" above to automatically extract all specific complaints, objections, and reasons {audLabel.toLowerCase()}s mentioned.
+                          </p>
+                        </div>
+                        {calls.filter(c => c.sentiment === 'negative').length > 0 && (
+                          <div className="pt-2 text-left space-y-2">
+                            <span className="text-xs font-semibold text-muted-foreground">Recorded Negative Calls ({calls.filter(c => c.sentiment === 'negative').length}):</span>
+                            {calls.filter(c => c.sentiment === 'negative').map(c => (
+                              <div key={c.id} className="text-xs p-3 rounded-lg border bg-card/70 space-y-1">
+                                <div className="flex justify-between font-medium text-muted-foreground">
+                                  <span>Call ID: {c.id.substring(0, 8)}...</span>
+                                  <span className="text-red-400 font-semibold">Negative</span>
+                                </div>
+                                <p className="text-foreground leading-relaxed">{c.aiSummary || c.transcript || "No transcript recorded"}</p>
                               </div>
                             ))}
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-6 text-center border border-dashed rounded-xl space-y-3 bg-muted/20">
-                    <div className="mx-auto w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center text-red-400">
-                      <ThumbsDown className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-sm">Negative Feedback Deep-Dive</h4>
-                      <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                        Click "Analyze Voter Sentiment (AI)" above to automatically extract all specific complaints, grievances, and reasons voters mentioned.
-                      </p>
-                    </div>
-                    {calls.filter(c => c.sentiment === 'negative').length > 0 && (
-                      <div className="pt-2 text-left space-y-2">
-                        <span className="text-xs font-semibold text-muted-foreground">Recorded Negative Calls ({calls.filter(c => c.sentiment === 'negative').length}):</span>
-                        {calls.filter(c => c.sentiment === 'negative').map(c => (
-                          <div key={c.id} className="text-xs p-3 rounded-lg border bg-card/70 space-y-1">
-                            <div className="flex justify-between font-medium text-muted-foreground">
-                              <span>Call ID: {c.id.substring(0, 8)}...</span>
-                              <span className="text-red-400 font-semibold">Negative</span>
-                            </div>
-                            <p className="text-foreground leading-relaxed">{c.aiSummary || c.transcript || "No transcript recorded"}</p>
-                          </div>
-                        ))}
+                        )}
                       </div>
                     )}
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* TAB CONTENT: Positive Highlights */}
-            {selectedSentimentFilter === 'positive' && (
-              <div className="mt-5 space-y-3">
-                {sentimentInsights?.topPositivePoints && sentimentInsights.topPositivePoints.length > 0 ? (
-                  sentimentInsights.topPositivePoints.map((item: any, idx: number) => (
-                    <div key={idx} className="p-4 rounded-xl border border-green-500/25 bg-green-500/5 space-y-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <ThumbsUp className="h-4 w-4 text-green-500 shrink-0" />
-                          <h4 className="font-semibold text-base text-green-400">{item.point}</h4>
-                        </div>
-                        {item.count && (
-                          <Badge variant="outline" className="text-xs border-green-500/30 text-green-400 bg-green-500/10">
-                            {item.count} voter{item.count > 1 ? 's' : ''} mentioned
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-foreground/90">{item.description}</p>
-                      {item.sampleQuotes && item.sampleQuotes.length > 0 && (
-                        <div className="space-y-1.5 pt-1">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                            <Quote className="h-3 w-3 text-green-400" /> Voter Quotes:
-                          </span>
-                          <div className="space-y-1">
-                            {item.sampleQuotes.map((q: string, qIdx: number) => (
-                              <div key={qIdx} className="text-xs italic bg-background/60 p-2.5 rounded-lg border border-border/50 text-foreground/80">
-                                "{q}"
-                              </div>
-                            ))}
+                {/* TAB CONTENT: Positive Highlights */}
+                {selectedSentimentFilter === 'positive' && (
+                  <div className="mt-5 space-y-3">
+                    {sentimentInsights?.topPositivePoints && sentimentInsights.topPositivePoints.length > 0 ? (
+                      sentimentInsights.topPositivePoints.map((item: any, idx: number) => (
+                        <div key={idx} className="p-4 rounded-xl border border-green-500/25 bg-green-500/5 space-y-2.5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <ThumbsUp className="h-4 w-4 text-green-500 shrink-0" />
+                              <h4 className="font-semibold text-base text-green-400">{item.point}</h4>
+                            </div>
+                            {item.count && (
+                              <Badge variant="outline" className="text-xs border-green-500/30 text-green-400 bg-green-500/10">
+                                {item.count} {audLabel.toLowerCase()}{item.count > 1 ? 's' : ''} mentioned
+                              </Badge>
+                            )}
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-6 text-center border border-dashed rounded-xl space-y-3 bg-muted/20">
-                    <div className="mx-auto w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center text-green-400">
-                      <ThumbsUp className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-sm">
-                        {calls.filter(c => c.sentiment === 'positive').length === 0 ? "No Positive Calls In This Campaign" : "Positive Insights Ready For Analysis"}
-                      </h4>
-                      <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                        Click "Analyze Voter Sentiment (AI)" to automatically detect what policies, works, and candidate qualities voters appreciated.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB CONTENT: Opposition / Alternative Party Preferences */}
-            {selectedSentimentFilter === 'parties' && (
-              <div className="mt-5 space-y-3">
-                {sentimentInsights?.alternativePartyPreferences && sentimentInsights.alternativePartyPreferences.length > 0 ? (
-                  sentimentInsights.alternativePartyPreferences.map((item: any, idx: number) => (
-                    <div key={idx} className="p-4 rounded-xl border border-indigo-500/25 bg-indigo-500/5 space-y-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <Landmark className="h-4 w-4 text-indigo-400 shrink-0" />
-                          <h4 className="font-semibold text-base text-indigo-300">
-                            Preferred Choice: <span className="text-indigo-200 underline underline-offset-4">{item.party}</span>
-                          </h4>
-                        </div>
-                        <Badge variant="outline" className="text-xs border-indigo-500/30 text-indigo-300 bg-indigo-500/10">
-                          Opposition Lean
-                        </Badge>
-                      </div>
-                      <div className="text-sm text-foreground/90">
-                        <span className="font-medium text-indigo-300">Reason / Why voters like them: </span>
-                        {item.reason}
-                      </div>
-                      {item.sampleQuotes && item.sampleQuotes.length > 0 && (
-                        <div className="space-y-1.5 pt-1">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                            <Quote className="h-3 w-3 text-indigo-400" /> Voter Statement:
-                          </span>
-                          <div className="space-y-1">
-                            {item.sampleQuotes.map((q: string, qIdx: number) => (
-                              <div key={qIdx} className="text-xs italic bg-background/60 p-2.5 rounded-lg border border-border/50 text-foreground/80">
-                                "{q}"
+                          <p className="text-sm text-foreground/90">{item.description}</p>
+                          {item.sampleQuotes && item.sampleQuotes.length > 0 && (
+                            <div className="space-y-1.5 pt-1">
+                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                <Quote className="h-3 w-3 text-green-400" /> {audLabel} Quotes:
+                              </span>
+                              <div className="space-y-1">
+                                {item.sampleQuotes.map((q: string, qIdx: number) => (
+                                  <div key={qIdx} className="text-xs italic bg-background/60 p-2.5 rounded-lg border border-border/50 text-foreground/80">
+                                    "{q}"
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-6 text-center border border-dashed rounded-xl space-y-3 bg-muted/20">
-                    <div className="mx-auto w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400">
-                      <Landmark className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-sm">Alternative Party Analysis</h4>
-                      <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                        Click "Analyze Voter Sentiment (AI)" above to scan which rival parties or candidates voters mentioned and why they prefer them.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB CONTENT: All Calls Transcripts */}
-            {selectedSentimentFilter === 'all' && (
-              <div className="mt-5 space-y-3">
-                {calls.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-6">No calls recorded yet for this campaign.</p>
-                ) : (
-                  calls.map((c, idx) => (
-                    <div key={c.id || idx} className="p-4 rounded-xl border border-border bg-card/60 space-y-2">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs font-mono">
-                            Call #{idx + 1}
-                          </Badge>
-                          <Badge 
-                            variant="outline"
-                            className={`text-xs ${
-                              c.sentiment === 'positive' 
-                                ? 'bg-green-500/10 text-green-400 border-green-500/20' 
-                                : c.sentiment === 'negative' 
-                                ? 'bg-red-500/10 text-red-400 border-red-500/20' 
-                                : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
-                            }`}
-                          >
-                            {c.sentiment || 'neutral'}
-                          </Badge>
-                          {c.classification && (
-                            <Badge variant="secondary" className="text-xs capitalize">
-                              {c.classification}
-                            </Badge>
+                            </div>
                           )}
                         </div>
-                        {c.duration && (
-                          <span className="text-xs text-muted-foreground font-mono">
-                            {Math.floor(c.duration / 60)}m {c.duration % 60}s
-                          </span>
-                        )}
-                      </div>
-
-                      {c.aiSummary && (
-                        <p className="text-sm text-foreground/90 bg-muted/30 p-2.5 rounded-lg border border-border/40">
-                          <span className="font-semibold text-xs text-muted-foreground block mb-0.5">AI Summary:</span>
-                          {c.aiSummary}
-                        </p>
-                      )}
-
-                      {c.transcript && (
-                        <div className="text-xs text-muted-foreground max-h-36 overflow-y-auto space-y-1 bg-background/50 p-2.5 rounded-lg border border-border/40 font-sans leading-relaxed whitespace-pre-wrap">
-                          {c.transcript}
+                      ))
+                    ) : (
+                      <div className="p-6 text-center border border-dashed rounded-xl space-y-3 bg-muted/20">
+                        <div className="mx-auto w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center text-green-400">
+                          <ThumbsUp className="h-5 w-5" />
                         </div>
-                      )}
-                    </div>
-                  ))
+                        <div>
+                          <h4 className="font-semibold text-sm">
+                            {calls.filter(c => c.sentiment === 'positive').length === 0 ? `No Positive Calls In This Campaign` : "Positive Insights Ready For Analysis"}
+                          </h4>
+                          <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                            Click "Analyze {audLabel} Sentiment (AI)" to automatically detect what features, works, and qualities {audLabel.toLowerCase()}s appreciated.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
-              </div>
-            )}
 
-            {/* Key Actionable Takeaways */}
-            {sentimentInsights?.keyTakeaways && sentimentInsights.keyTakeaways.length > 0 && (
-              <div className="mt-5 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20 space-y-2">
-                <span className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Target className="h-3.5 w-3.5 text-purple-400" /> Strategic Takeaways for Campaign Team:
-                </span>
-                <ul className="text-xs space-y-1.5 text-foreground/90 list-disc list-inside">
-                  {sentimentInsights.keyTakeaways.map((point: string, pIdx: number) => (
-                    <li key={pIdx} className="leading-relaxed">{point}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </Card>
+                {/* TAB CONTENT: Opposition / Alternative Party Preferences */}
+                {selectedSentimentFilter === 'parties' && (
+                  <div className="mt-5 space-y-3">
+                    {sentimentInsights?.alternativePartyPreferences && sentimentInsights.alternativePartyPreferences.length > 0 ? (
+                      sentimentInsights.alternativePartyPreferences.map((item: any, idx: number) => (
+                        <div key={idx} className="p-4 rounded-xl border border-indigo-500/25 bg-indigo-500/5 space-y-2.5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <Landmark className="h-4 w-4 text-indigo-400 shrink-0" />
+                              <h4 className="font-semibold text-base text-indigo-300">
+                                Preferred Alternative: <span className="text-indigo-200 underline underline-offset-4">{item.party}</span>
+                              </h4>
+                            </div>
+                            <Badge variant="outline" className="text-xs border-indigo-500/30 text-indigo-300 bg-indigo-500/10">
+                              {cType === 'political' ? 'Opposition Lean' : 'Competitor Mention'}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-foreground/90">
+                            <span className="font-medium text-indigo-300">Reason / Why they prefer them: </span>
+                            {item.reason}
+                          </div>
+                          {item.sampleQuotes && item.sampleQuotes.length > 0 && (
+                            <div className="space-y-1.5 pt-1">
+                              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                <Quote className="h-3 w-3 text-indigo-400" /> {audLabel} Statement:
+                              </span>
+                              <div className="space-y-1">
+                                {item.sampleQuotes.map((q: string, qIdx: number) => (
+                                  <div key={qIdx} className="text-xs italic bg-background/60 p-2.5 rounded-lg border border-border/50 text-foreground/80">
+                                    "{q}"
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-6 text-center border border-dashed rounded-xl space-y-3 bg-muted/20">
+                        <div className="mx-auto w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+                          <Landmark className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-sm">Alternative & Competitor Analysis</h4>
+                          <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                            Click "Analyze {audLabel} Sentiment (AI)" above to scan which competitors or alternative choices {audLabel.toLowerCase()}s mentioned and why.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB CONTENT: All Calls Transcripts */}
+                {selectedSentimentFilter === 'all' && (
+                  <div className="mt-5 space-y-3">
+                    {calls.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">No calls recorded yet for this campaign.</p>
+                    ) : (
+                      calls.map((c, idx) => (
+                        <div key={c.id || idx} className="p-4 rounded-xl border border-border bg-card/60 space-y-2">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs font-mono">
+                                Call #{idx + 1}
+                              </Badge>
+                              <Badge 
+                                variant="outline"
+                                className={`text-xs ${
+                                  c.sentiment === 'positive' 
+                                    ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                                    : c.sentiment === 'negative' 
+                                    ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                                    : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                                }`}
+                              >
+                                {c.sentiment || 'neutral'}
+                              </Badge>
+                              {c.classification && (
+                                <Badge variant="secondary" className="text-xs capitalize">
+                                  {c.classification}
+                                </Badge>
+                              )}
+                            </div>
+                            {c.duration && (
+                              <span className="text-xs text-muted-foreground font-mono">
+                                {Math.floor(c.duration / 60)}m {c.duration % 60}s
+                              </span>
+                            )}
+                          </div>
+
+                          {c.aiSummary && (
+                            <p className="text-sm text-foreground/90 bg-muted/30 p-2.5 rounded-lg border border-border/40">
+                              <span className="font-semibold text-xs text-muted-foreground block mb-0.5">AI Summary:</span>
+                              {c.aiSummary}
+                            </p>
+                          )}
+
+                          {c.transcript && (
+                            <div className="text-xs text-muted-foreground max-h-36 overflow-y-auto space-y-1 bg-background/50 p-2.5 rounded-lg border border-border/40 font-sans leading-relaxed whitespace-pre-wrap">
+                              {c.transcript}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {/* Key Actionable Takeaways */}
+                {sentimentInsights?.keyTakeaways && sentimentInsights.keyTakeaways.length > 0 && (
+                  <div className="mt-5 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20 space-y-2">
+                    <span className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Target className="h-3.5 w-3.5 text-purple-400" /> Strategic Takeaways for Campaign Team:
+                    </span>
+                    <ul className="text-xs space-y-1.5 text-foreground/90 list-disc list-inside">
+                      {sentimentInsights.keyTakeaways.map((point: string, pIdx: number) => (
+                        <li key={pIdx} className="leading-relaxed">{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </Card>
+            );
+          })()}
         </TabsContent>
 
         <TabsContent value="recipients">
