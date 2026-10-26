@@ -517,13 +517,12 @@ export class LeadSourceService {
                     /[\u0900-\u097F]/.test(agent.systemPrompt || '') || 
                     /namaste|kripya|baad|baje|karein|boliye|humne|baat/i.test(agent.systemPrompt || '');
 
+    // Always respect the exact firstMessage configured on the agent or campaign custom greeting
     let firstMessage = customGreeting || agent.firstMessage || '';
-    if (!customGreeting && lead.firstName) {
-      if (isHindi) {
-        firstMessage = `नमस्ते ${lead.firstName} जी, मैं ${agent.name} बात कर रहा हूँ। आपकी इन्क्वायरी हमें प्राप्त हुई थी। क्या मैं आपके सवाल में सहायता कर सकता हूँ?`;
-      } else {
-        firstMessage = `Hello ${lead.firstName}, I am ${agent.name}. Thank you for your inquiry with us. How can I assist you today?`;
-      }
+    if (firstMessage && lead.firstName) {
+      firstMessage = firstMessage
+        .replace(/\{\{\s*(?:first_name|firstName|name|contact_name)\s*\}\}/gi, lead.firstName)
+        .replace(/\{first_name\}/gi, lead.firstName);
     }
 
     // Resolve or insert contact record if campaignId exists (plivo_calls.contact_id FK references contacts.id)
