@@ -335,10 +335,10 @@ export class ElevenLabsBridgeService {
         if (Object.keys(conversationOverride).length > 0) {
           configOverride.conversation = conversationOverride;
         }
-        // Use 6.0s turn_timeout so the agent gives the user natural time to respond instead of cutting in after 1.5s
+        // Use 10.0s turn_timeout so the agent gives the user natural time to respond instead of cutting in
         configOverride.turn = { 
           turn_eagerness: "patient",
-          turn_timeout: 6.0
+          turn_timeout: 10.0
         };
         if (shouldFilterNoise) {
           configOverride.vad = { background_voice_detection: true };
