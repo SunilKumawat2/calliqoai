@@ -22,9 +22,11 @@ import { eq, or, sql } from 'drizzle-orm';
 
 interface PlivoStreamMessage {
   event: string;
+  streamId?: string;
   streamSid?: string;
   start?: {
-    streamSid: string;
+    streamId?: string;
+    streamSid?: string;
     callId: string;
     tracks: string[];
     mediaFormat?: {
@@ -95,7 +97,7 @@ function handleStreamConnection(ws: WebSocket, callUuid: string): void {
           break;
           
         case 'start':
-          streamSid = message.start?.streamSid || message.streamSid || null;
+          streamSid = (message.start as any)?.streamId || message.start?.streamSid || (message as any)?.streamId || message.streamSid || null;
           console.log(`[Plivo-ElevenLabs Stream] Stream started: ${streamSid}`);
           if (message.start?.mediaFormat) {
             console.log(`[Plivo-ElevenLabs Stream] Media format: ${JSON.stringify(message.start.mediaFormat)}`);

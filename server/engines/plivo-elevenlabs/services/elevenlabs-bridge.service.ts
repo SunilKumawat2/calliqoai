@@ -180,7 +180,7 @@ export class ElevenLabsBridgeService {
     if (elevenLabsApiKey && session.agentId) {
       try {
         await syncAgentBackgroundSoundInElevenLabs(session.agentId, elevenLabsApiKey, bgSoundKey, noiseCancellation);
-        // Ensure turn_timeout is 30s and first message interruption is disabled on ElevenLabs
+        // Ensure turn_timeout is 30s and allow natural interruptions on ElevenLabs
         fetch(`https://api.elevenlabs.io/v1/convai/agents/${session.agentId}`, {
           method: 'PATCH',
           headers: {
@@ -189,8 +189,8 @@ export class ElevenLabsBridgeService {
           },
           body: JSON.stringify({
             conversation_config: {
-              agent: { disable_first_message_interruptions: true },
-              turn: { mode: "turn", turn_eagerness: "patient", turn_timeout: 30 }
+              agent: { disable_first_message_interruptions: false },
+              turn: { mode: "turn", turn_eagerness: "normal", turn_timeout: 30 }
             }
           })
         }).catch(() => {});
@@ -340,8 +340,8 @@ export class ElevenLabsBridgeService {
           }
         }
 
-        // Guard against initial line connect noise/burst cutting off first message
-        agentOverride.disable_first_message_interruptions = true;
+        // Allow user interruptions right from the first message
+        agentOverride.disable_first_message_interruptions = false;
 
         if (Object.keys(agentOverride).length > 0) {
           configOverride.agent = agentOverride;
@@ -351,7 +351,7 @@ export class ElevenLabsBridgeService {
         }
         if (shouldFilterNoise) {
           configOverride.vad = { background_voice_detection: true };
-          configOverride.turn = { turn_eagerness: "patient" };
+          configOverride.turn = { turn_eagerness: "normal" };
         }
         if (Object.keys(configOverride).length > 0) {
           initMessage.conversation_config_override = configOverride;
@@ -439,15 +439,16 @@ export class ElevenLabsBridgeService {
           break;
 
         case 'interruption':
+        case 'agent_interruption':
           logger.info(`🛑 [PlivoElevenLabsBridge] User interruption detected, clearing Plivo audio playback`, undefined, 'PlivoElevenLabsBridge');
-          if (session.plivoWs && (session.plivoWs as any).readyState === WebSocket.OPEN) {
-            try {
-              (session.plivoWs as any).send(JSON.stringify({ event: 'clearAudio' }));
-            } catch (e: any) {}
-          }
+          session.initialAudioQueue = [];
+          this.clearPlivoBuffer(session);
           break;
           
         case 'user_transcript':
+          // Immediate barge-in cutoff: as soon as caller speaks, flush Plivo queued audio so agent stops talking over user
+          session.initialAudioQueue = [];
+          this.clearPlivoBuffer(session);
           const userText = (message as any).user_transcription_event?.user_transcript || message.user_transcript?.text;
           const isUserFinal = (message as any).user_transcription_event?.is_final ?? message.user_transcript?.is_final ?? true;
           if (userText) {
@@ -555,6 +556,32 @@ export class ElevenLabsBridgeService {
       (session.plivoWs as any).send(JSON.stringify(playAudioMessage));
     } catch (e: any) {
       logger.warn(`Error sending audio to Plivo stream: ${e?.message || e}`, undefined, 'PlivoElevenLabsBridge');
+    }
+  }
+
+  /**
+   * Immediately clears any buffered audio playback on Plivo side for barge-in / interruptions
+   */
+  static clearPlivoBuffer(session: CallSession): void {
+    if (!session.plivoWs || (session.plivoWs as any).readyState !== WebSocket.OPEN) {
+      return;
+    }
+    try {
+      const payloads: any[] = [];
+      if (session.streamSid) {
+        payloads.push({
+          event: 'clearAudio',
+          streamId: session.streamSid,
+        });
+      }
+      payloads.push({ event: 'clearAudio' });
+
+      for (const p of payloads) {
+        (session.plivoWs as any).send(JSON.stringify(p));
+      }
+      logger.info(`[PlivoElevenLabsBridge] Sent clearAudio to Plivo (streamId: ${session.streamSid || 'none'}) for ${session.callUuid}`, undefined, 'PlivoElevenLabsBridge');
+    } catch (e: any) {
+      logger.warn(`Failed to send clearAudio to Plivo: ${e?.message || e}`, undefined, 'PlivoElevenLabsBridge');
     }
   }
   
