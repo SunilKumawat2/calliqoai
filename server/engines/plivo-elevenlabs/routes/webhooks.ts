@@ -81,7 +81,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
       
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
+  <Stream bidirectional="true" keepCallAlive="true" audioTrack="inbound" noiseCancellation="true" contentType="audio/x-mulaw;rate=8000">
     ${streamUrl}
   </Stream>
   <Wait length="3600"/>
@@ -533,7 +533,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
       
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
+  <Stream bidirectional="true" keepCallAlive="true" audioTrack="inbound" noiseCancellation="true" contentType="audio/x-mulaw;rate=8000">
     ${streamUrl}
   </Stream>
   <Wait length="3600"/>
@@ -724,7 +724,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Speak voice="${subTts.voice}" language="${subTts.language}">${safeTransferMessage}</Speak>
-  <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
+  <Stream bidirectional="true" keepCallAlive="true" audioTrack="inbound" noiseCancellation="true" contentType="audio/x-mulaw;rate=8000">
     ${streamUrl}
   </Stream>
   <Wait length="3600"/>
@@ -745,7 +745,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Speak voice="${subTts.voice}" language="${subTts.language}">${safeTransferMessage}</Speak>
-  <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
+  <Stream bidirectional="true" keepCallAlive="true" audioTrack="inbound" noiseCancellation="true" contentType="audio/x-mulaw;rate=8000">
     ${streamUrl}
   </Stream>
 </Response>`;
@@ -944,7 +944,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
       
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
+  <Stream bidirectional="true" keepCallAlive="true" audioTrack="inbound" noiseCancellation="true" contentType="audio/x-mulaw;rate=8000">
     ${streamUrl}
   </Stream>
 </Response>`;

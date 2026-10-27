@@ -326,15 +326,22 @@ export class ElevenLabsBridgeService {
           }
         }
 
+        // Guard against initial line connect noise/burst cutting off first message
+        agentOverride.disable_first_message_interruptions = true;
+
         if (Object.keys(agentOverride).length > 0) {
           configOverride.agent = agentOverride;
         }
         if (Object.keys(conversationOverride).length > 0) {
           configOverride.conversation = conversationOverride;
         }
+        // Use 6.0s turn_timeout so the agent gives the user natural time to respond instead of cutting in after 1.5s
+        configOverride.turn = { 
+          turn_eagerness: "patient",
+          turn_timeout: 6.0
+        };
         if (shouldFilterNoise) {
           configOverride.vad = { background_voice_detection: true };
-          configOverride.turn = { turn_eagerness: "patient" };
         }
         if (Object.keys(configOverride).length > 0) {
           initMessage.conversation_config_override = configOverride;
@@ -418,6 +425,15 @@ export class ElevenLabsBridgeService {
             } else {
               this.sendToPlivoStream(session, mulawBase64);
             }
+          }
+          break;
+
+        case 'interruption':
+          logger.info(`🛑 [PlivoElevenLabsBridge] User interruption detected, clearing Plivo audio playback`, undefined, 'PlivoElevenLabsBridge');
+          if (session.plivoWs && (session.plivoWs as any).readyState === WebSocket.OPEN) {
+            try {
+              (session.plivoWs as any).send(JSON.stringify({ event: 'clearAudio' }));
+            } catch (e: any) {}
           }
           break;
           
@@ -544,6 +560,11 @@ export class ElevenLabsBridgeService {
     }
     
     if (!session.elevenLabsWs || (session.elevenLabsWs as any).readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    // Drop early audio if Plivo media stream is not ready/stabilized to prevent connect burst from triggering VAD
+    if (!session.isPlivoReady) {
       return;
     }
     
