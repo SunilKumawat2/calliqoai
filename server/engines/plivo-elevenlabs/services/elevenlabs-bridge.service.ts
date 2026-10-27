@@ -180,6 +180,20 @@ export class ElevenLabsBridgeService {
     if (elevenLabsApiKey && session.agentId) {
       try {
         await syncAgentBackgroundSoundInElevenLabs(session.agentId, elevenLabsApiKey, bgSoundKey, noiseCancellation);
+        // Ensure turn_timeout is 30s and first message interruption is disabled on ElevenLabs
+        fetch(`https://api.elevenlabs.io/v1/convai/agents/${session.agentId}`, {
+          method: 'PATCH',
+          headers: {
+            'xi-api-key': elevenLabsApiKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            conversation_config: {
+              agent: { disable_first_message_interruptions: true },
+              turn: { mode: "turn", turn_eagerness: "patient", turn_timeout: 30 }
+            }
+          })
+        }).catch(() => {});
       } catch (syncErr: any) {
         logger.warn(`Failed background sound / noise filter REST sync: ${syncErr.message}`, undefined, 'PlivoElevenLabsBridge');
       }
