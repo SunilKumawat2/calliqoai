@@ -180,7 +180,7 @@ export class ElevenLabsBridgeService {
     if (elevenLabsApiKey && session.agentId) {
       try {
         await syncAgentBackgroundSoundInElevenLabs(session.agentId, elevenLabsApiKey, bgSoundKey, noiseCancellation);
-        // Ensure turn_timeout is 30s and allow natural interruptions on ElevenLabs
+        // Ensure turn_timeout is 30s, natural speed, and eager turn responsiveness on ElevenLabs
         fetch(`https://api.elevenlabs.io/v1/convai/agents/${session.agentId}`, {
           method: 'PATCH',
           headers: {
@@ -189,8 +189,9 @@ export class ElevenLabsBridgeService {
           },
           body: JSON.stringify({
             conversation_config: {
+              tts: { speed: 1.08 },
               agent: { disable_first_message_interruptions: false },
-              turn: { mode: "turn", turn_eagerness: "normal", turn_timeout: 30 }
+              turn: { mode: "turn", turn_eagerness: "eager", turn_timeout: 30 }
             }
           })
         }).catch(() => {});
@@ -349,10 +350,9 @@ export class ElevenLabsBridgeService {
         if (Object.keys(conversationOverride).length > 0) {
           configOverride.conversation = conversationOverride;
         }
-        if (shouldFilterNoise) {
-          configOverride.vad = { background_voice_detection: true };
-          configOverride.turn = { turn_eagerness: "normal" };
-        }
+        // Use eager turn-taking for snappy human-like response latency without delayed silence waiting
+        configOverride.turn = { turn_eagerness: "eager" };
+        configOverride.tts = { speed: 1.08 };
         if (Object.keys(configOverride).length > 0) {
           initMessage.conversation_config_override = configOverride;
         }
