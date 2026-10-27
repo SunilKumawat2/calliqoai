@@ -191,7 +191,8 @@ export class ElevenLabsBridgeService {
             conversation_config: {
               tts: { speed: 1.08 },
               agent: { disable_first_message_interruptions: false },
-              turn: { mode: "turn", turn_eagerness: "eager", turn_timeout: 30 }
+              turn: { mode: "turn", turn_eagerness: "eager", turn_timeout: 30 },
+              vad: { background_voice_detection: true }
             }
           })
         }).catch(() => {});
@@ -353,6 +354,9 @@ export class ElevenLabsBridgeService {
         // Use eager turn-taking for snappy human-like response latency without delayed silence waiting
         configOverride.turn = { turn_eagerness: "eager" };
         configOverride.tts = { speed: 1.08 };
+        if (shouldFilterNoise) {
+          configOverride.vad = { background_voice_detection: true };
+        }
         if (Object.keys(configOverride).length > 0) {
           initMessage.conversation_config_override = configOverride;
         }
