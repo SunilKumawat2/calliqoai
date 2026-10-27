@@ -192,7 +192,7 @@ export class ElevenLabsBridgeService {
               tts: { speed: 1.08 },
               agent: { disable_first_message_interruptions: false },
               turn: { mode: "turn", turn_eagerness: "eager", turn_timeout: 30 },
-              vad: { background_voice_detection: true }
+              // vad: { background_voice_detection: true } // Commented out as requested - Plivo telecom noise cancellation handles line cleanly without dropping user speech
             }
           })
         }).catch(() => {});
@@ -354,9 +354,10 @@ export class ElevenLabsBridgeService {
         // Use eager turn-taking for snappy human-like response latency without delayed silence waiting
         configOverride.turn = { turn_eagerness: "eager" };
         configOverride.tts = { speed: 1.08 };
-        if (shouldFilterNoise) {
-          configOverride.vad = { background_voice_detection: true };
-        }
+        // Background voice detection commented out as requested - Plivo telecom noise cancellation handles line cleanly without dropping user speech
+        // if (shouldFilterNoise) {
+        //   configOverride.vad = { background_voice_detection: true };
+        // }
         if (Object.keys(configOverride).length > 0) {
           initMessage.conversation_config_override = configOverride;
         }
