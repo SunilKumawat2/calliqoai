@@ -189,7 +189,7 @@ export class ElevenLabsBridgeService {
           },
           body: JSON.stringify({
             conversation_config: {
-              tts: { speed: 1.08 },
+              tts: { speed: 1.30 },
               agent: { disable_first_message_interruptions: false },
               turn: { mode: "turn", turn_eagerness: "eager", turn_timeout: 30 },
               // vad: { background_voice_detection: true } // Commented out as requested - Plivo telecom noise cancellation handles line cleanly without dropping user speech
@@ -358,7 +358,7 @@ export class ElevenLabsBridgeService {
         }
         // Use eager turn-taking for snappy human-like response latency without delayed silence waiting
         configOverride.turn = { turn_eagerness: "eager" };
-        configOverride.tts = { speed: 1.08 };
+        configOverride.tts = { speed: 1.30 };
         // Background voice detection commented out as requested - Plivo telecom noise cancellation handles line cleanly without dropping user speech
         // if (shouldFilterNoise) {
         //   configOverride.vad = { background_voice_detection: true };
