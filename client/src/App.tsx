@@ -669,10 +669,13 @@ function UserGuard({ children }: { children: React.ReactNode }) {
 
   // Handle auth errors for regular users
   useEffect(() => {
-    if (!isTeamMember && isError) {
+    if (!isTeamMember && (isError || (!isLoading && !user))) {
       AuthStorage.clearAuth();
+      if (typeof window !== 'undefined' && window.location.pathname.startsWith('/app')) {
+        window.location.href = '/login';
+      }
     }
-  }, [isError, isTeamMember]);
+  }, [isError, isLoading, user, isTeamMember]);
 
   // Show loading state
   if (isTeamMember ? teamAuthLoading : isLoading) {
@@ -728,7 +731,7 @@ function Router() {
     setIsTeamMember(teamAuth);
     setIsAdminTeamMember(adminTeamAuth);
     setIsChecking(false);
-  }, []);
+  }, [location]);
 
   // Debug logging
   useEffect(() => {
@@ -767,6 +770,12 @@ function Router() {
   // Redirect authenticated users away from login/register immediately
   // This prevents the flash when page reloads after login
   if (isAuthenticated && (location === '/login' || location === '/register')) {
+    const regularAuth = AuthStorage.isAuthenticated();
+    const teamAuth = TeamAuth.isAuthenticated();
+    if (!regularAuth && !teamAuth) {
+      setIsAuthenticated(false);
+      return <PublicRouter />;
+    }
     // Admin team members go to /admin
     if (isAdminTeamMember) {
       console.log("Router - Authenticated admin team member on auth page, redirecting to /admin");
