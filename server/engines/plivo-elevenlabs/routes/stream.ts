@@ -104,6 +104,29 @@ function handleStreamConnection(ws: WebSocket, callUuid: string): void {
           }
           
           if (!ElevenLabsBridgeService.hasSession(callUuid)) {
+            try {
+              const [callRow] = await db
+                .select()
+                .from(plivoCalls)
+                .where(or(
+                  eq(plivoCalls.plivoCallUuid, callUuid),
+                  eq(plivoCalls.id, callUuid),
+                  sql`${plivoCalls.metadata}->>'internalId' = ${callUuid}`,
+                  sql`${plivoCalls.metadata}->>'requestUuid' = ${callUuid}`
+                ))
+                .limit(1);
+
+              const internalId = (callRow?.metadata as any)?.internalId || callRow?.id;
+              if (internalId && ElevenLabsBridgeService.hasSession(internalId)) {
+                ElevenLabsBridgeService.aliasSession(internalId, callUuid);
+                console.log(`[Plivo-ElevenLabs Stream] Successfully aliased session ${internalId} -> ${callUuid}`);
+              }
+            } catch (dbErr: any) {
+              console.error(`[Plivo-ElevenLabs Stream] Error checking DB for session alias:`, dbErr?.message || dbErr);
+            }
+          }
+
+          if (!ElevenLabsBridgeService.hasSession(callUuid)) {
             console.error(`[Plivo-ElevenLabs Stream] ERROR: No session found for ${callUuid}. Audio will be dropped.`);
             console.error(`[Plivo-ElevenLabs Stream] Session must be created by /incoming webhook or outbound call service before stream connects.`);
             sessionMissing = true;

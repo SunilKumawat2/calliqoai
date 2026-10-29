@@ -529,7 +529,11 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
         })();
       }
 
-      const streamUrl = getSipStreamUrl(CallUUID || callId);
+      if (CallUUID && callId) {
+        ElevenLabsBridgeService.aliasSession(callId, CallUUID);
+      }
+
+      const streamUrl = getSipStreamUrl(callId || CallUUID);
       
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>

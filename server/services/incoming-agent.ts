@@ -352,7 +352,11 @@ export class IncomingAgentService {
 
     if (params.name) elevenLabsUpdates.name = params.name;
     // Always include system prompt (resolved from params or fallback to currentAgent) to ensure it gets enhanced with tool instructions
-    elevenLabsUpdates.prompt = params.systemPrompt ?? currentAgent.systemPrompt;
+    const rawPrompt = params.systemPrompt ?? currentAgent.systemPrompt;
+    const voicemailRule = `\n\n[VOICEMAIL & OPERATOR DETECTION RULE]:\nIf you hear an automated voicemail greeting, IVR carrier announcement, or answering machine (e.g. "please leave a message after the tone", "forwarded to voicemail", "the person you are calling is unavailable", "aapka dial kiya gaya number vyast hai, kripya baad mein call karein", "switched off"), IMMEDIATELY stop speaking and invoke end_call with reason "voicemail_detected". Never talk to answering machines or leave voice messages.`;
+    elevenLabsUpdates.prompt = rawPrompt && !rawPrompt.includes('[VOICEMAIL & OPERATOR DETECTION RULE]')
+      ? `${rawPrompt}${voicemailRule}`
+      : rawPrompt;
     if (params.elevenLabsVoiceId) elevenLabsUpdates.voice_id = params.elevenLabsVoiceId;
     if (params.firstMessage) elevenLabsUpdates.first_message = params.firstMessage;
 
