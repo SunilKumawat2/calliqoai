@@ -25,7 +25,7 @@ import { PlivoElevenLabsConfig } from '../config/config';
 import { logger } from '../../../utils/logger';
 
 import { db } from '../../../db';
-import { plivoCalls, calls, agents } from '@shared/schema';
+import { plivoCalls, calls, agents, plivoCredentials } from '@shared/schema';
 import { eq, or, sql } from 'drizzle-orm';
 import { syncAgentBackgroundSoundInElevenLabs } from '../../../services/elevenlabs';
 
@@ -342,6 +342,11 @@ export class ElevenLabsBridgeService {
           }
         }
 
+        const voicemailPromptRule = `\n\n[VOICEMAIL & OPERATOR DETECTION RULE]:\nIf you hear an automated voicemail greeting, IVR carrier announcement, or answering machine (e.g. "please leave a message after the tone", "forwarded to voicemail", "the person you are calling is unavailable", "aapka dial kiya gaya number vyast hai, kripya baad mein call karein", "switched off"), IMMEDIATELY stop speaking and invoke end_call with reason "voicemail_detected". Never talk to answering machines or leave voice messages.`;
+        if (agentOverride.prompt?.prompt && !agentOverride.prompt.prompt.includes('[VOICEMAIL & OPERATOR DETECTION RULE]')) {
+          agentOverride.prompt.prompt += voicemailPromptRule;
+        }
+
         // Allow user interruptions right from the first message
         agentOverride.disable_first_message_interruptions = false;
 
@@ -498,6 +503,15 @@ export class ElevenLabsBridgeService {
               const targetNumber = params.destination || params.phoneNumber || params.number || session.transferPhoneNumber;
               this.handleCallTransfer(session, targetNumber).catch(err => {
                 logger.error(`Error in handleCallTransfer: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge');
+              });
+            } else if (toolName === 'end_call' || toolName === 'hangup' || toolName === 'end_conversation') {
+              const isVoicemail = params.reason === 'voicemail_detected' || params.reason === 'voicemail';
+              logger.info(`[ElevenLabs Tool Call] Agent invoked ${toolName} (reason: ${params.reason || 'normal'}) for ${session.callUuid}`, undefined, 'PlivoElevenLabsBridge');
+              this.handleVoicemailDetected(
+                session,
+                isVoicemail ? 'Agent end_call: voicemail_detected' : 'Agent end_call: call concluded'
+              ).catch(err => {
+                logger.error(`Error in handleVoicemailDetected from end_call: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge');
               });
             }
           }
@@ -847,13 +861,19 @@ export class ElevenLabsBridgeService {
 
     logger.warn(`[Voicemail Interceptor] Voicemail detected on Plivo+ElevenLabs call ${session.callUuid}: "${transcript}". Triggering immediate carrier hangup!`, undefined, 'PlivoElevenLabsBridge');
 
-    // 1. Immediately clear queued audio and close ElevenLabs WS so no AI audio plays
+    // 1. Immediately clear queued audio, close Plivo WS & ElevenLabs WS so no AI audio plays and line drops
     session.initialAudioQueue = [];
     if (session.elevenLabsWs) {
       try {
         (session.elevenLabsWs as any).close();
       } catch (_) {}
     }
+    if (session.plivoWs) {
+      try {
+        (session.plivoWs as any).close(1000, 'Voicemail detected');
+      } catch (_) {}
+    }
+    session.status = 'disconnected';
 
     // 2. Look up the call in DB to get Plivo request UUID & Plivo credentials
     try {
@@ -913,12 +933,16 @@ export class ElevenLabsBridgeService {
       const isPlivoUuid = targetUuid && !targetUuid.startsWith('plivo-el-');
       if (isPlivoUuid) {
         try {
-          const { storage } = await import('../../../storage');
           const plivo = (await import('plivo')).default || (await import('plivo'));
-          const plivoSetting = await storage.getGlobalSetting('plivo_credentials');
-          const plivoCreds = (plivoSetting?.value as any) || {};
-          const plivoAuthId = plivoCreds.auth_id || process.env.PLIVO_AUTH_ID;
-          const plivoAuthToken = plivoCreds.auth_token || process.env.PLIVO_AUTH_TOKEN;
+          // Look up active credential from plivoCredentials table
+          const [cred] = await db
+            .select()
+            .from(plivoCredentials)
+            .where(eq(plivoCredentials.isActive, true))
+            .limit(1);
+
+          const plivoAuthId = cred?.authId || process.env.PLIVO_AUTH_ID;
+          const plivoAuthToken = cred?.authToken || process.env.PLIVO_AUTH_TOKEN;
 
           if (plivoAuthId && plivoAuthToken) {
             const client = new (plivo as any).Client(plivoAuthId, plivoAuthToken);

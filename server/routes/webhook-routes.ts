@@ -1214,6 +1214,22 @@ export async function handleTwilioStatusWebhook(req: Request, res: Response) {
       metadata 
     };
 
+    // Twilio Answering Machine Detection (AMD) - auto-hangup and mark no-answer
+    const AnsweredBy = (req.body as any)?.AnsweredBy || (req.query as any)?.AnsweredBy;
+    const isAnsweringMachine = AnsweredBy && typeof AnsweredBy === 'string' && (AnsweredBy.startsWith('machine_') || AnsweredBy === 'fax');
+    if (isAnsweringMachine) {
+      console.log(`🤖 [Status Webhook] Twilio AMD detected answering machine for CallSid ${CallSid}: ${AnsweredBy}`);
+      updateData.status = 'no-answer';
+      metadata.hangupCause = 'VOICEMAIL_DETECTED';
+      metadata.voicemailDetected = true;
+      metadata.answeredBy = AnsweredBy;
+      if (CallSid && CallStatus !== 'completed') {
+        getTwilioClient().then(client => {
+          client.calls(CallSid).update({ status: 'completed' }).catch(() => {});
+        }).catch(() => {});
+      }
+    }
+
     if (CallSid && !queryCallId) {
       updateData.twilioSid = CallSid;
     }

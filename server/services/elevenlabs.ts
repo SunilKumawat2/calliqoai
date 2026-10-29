@@ -770,15 +770,13 @@ export class ElevenLabsService {
       console.log(`   ✓ System Tool: language_detection`);
     }
 
-    // End Call tool - allows agent to gracefully terminate calls
-    if (agentConfig.endConversationEnabled) {
-      systemTools.push({
-        type: "system",
-        name: "end_call",
-        description: "End the call when the user is finished or says goodbye"
-      });
-      console.log(`   ✓ System Tool: end_call`);
-    }
+    // End Call tool - allows agent to gracefully terminate calls on user request or voicemail detection
+    systemTools.push({
+      type: "system",
+      name: "end_call",
+      description: "End the call immediately when the conversation is finished, user says goodbye, or when an automated voicemail / answering machine is detected"
+    });
+    console.log(`   ✓ System Tool: end_call (always enabled for voicemail & hangup)`);
 
     if (systemTools.length > 0) {
       console.log(`   📦 Built ${systemTools.length} system tool(s) for ElevenLabs agent`);
@@ -969,12 +967,12 @@ Remember: EXECUTE the tool first, THEN speak. Never speak about searching - just
       );
     }
 
-    // Add end conversation instructions if enabled
-    if (agentConfig.endConversationEnabled) {
-      toolInstructions.push(
-        `You can end the conversation gracefully when the user indicates they are finished. Use the end conversation tool when the user says goodbye, expresses that they're done, or when you've fully addressed their needs.`
-      );
-    }
+    // Add end conversation & voicemail detection instructions
+    toolInstructions.push(
+      `VOICEMAIL & CALL TERMINATION INSTRUCTIONS:
+- You have access to the "end_call" tool. Use it to gracefully terminate calls when the conversation is finished or user says goodbye.
+- CRITICAL VOICEMAIL RULE: If you hear an automated voicemail greeting, IVR carrier announcement, or answering machine (e.g. "please leave a message after the tone", "forwarded to voicemail", "the person you are calling is unavailable", "aapka dial kiya gaya number vyast hai, kripya baad mein call karein", "switched off"), you MUST IMMEDIATELY stop speaking and execute the "end_call" tool with reason "voicemail_detected". Never speak to answering machines or leave voice messages.`
+    );
 
     // Add appointment booking instructions if enabled
     if (agentConfig.appointmentBookingEnabled) {
@@ -1345,16 +1343,13 @@ You are a script reader, not a conversational AI. Execute the workflow mechanica
       console.log(`   ✓ System Tool: language_detection`);
     }
 
-    // End call system tool - allows agent to hang up when reaching workflow end
-    // This is essential for Flow Agents to properly terminate calls
-    if (hasEndNodes) {
-      systemTools.push({
-        type: "system",
-        name: "end_call",
-        description: "End the call when the conversation is complete, the user says goodbye, or the workflow reaches its end"
-      });
-      console.log(`   ✓ System Tool: end_call`);
-    }
+    // End call system tool - allows agent to hang up when reaching workflow end or on voicemail
+    systemTools.push({
+      type: "system",
+      name: "end_call",
+      description: "End the call when the conversation is complete, the user says goodbye, the workflow reaches its end, or when an automated voicemail / answering machine is detected"
+    });
+    console.log(`   ✓ System Tool: end_call (always enabled)`);
 
     // Note: Transfer functionality is handled by workflow phone_number nodes directly
     // ElevenLabs uses the workflow edges to determine when to transfer calls
