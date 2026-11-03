@@ -36,14 +36,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, UserCheck, UserX, CreditCard, Download, Loader2, Gift, UserPlus, Trash2, AlertTriangle, Shield, ShieldCheck, ShieldX, FileCheck, Eye, ExternalLink, Search, RotateCcw } from "lucide-react";
+import { MoreHorizontal, UserCheck, UserX, CreditCard, Download, Loader2, Gift, UserPlus, Trash2, AlertTriangle, Shield, ShieldCheck, ShieldX, FileCheck, Eye, ExternalLink, Search, RotateCcw, Sparkles, Globe, Building2, CheckCircle2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import Papa from "papaparse";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState, useEffect } from "react";
+import { Switch } from "@/components/ui/switch";
+import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
 import { Pagination } from "@/components/Pagination";
 import { useTranslation } from "react-i18next";
@@ -95,6 +96,14 @@ interface PaginatedResponse {
   };
 }
 
+const WHITE_LABEL_INDUSTRIES = [
+  { id: "healthcare", name: "Healthcare & Clinics", defaultSub: "Dermatology & Skin Clinic", icon: "🩺" },
+  { id: "real_estate", name: "Real Estate & Housing", defaultSub: "Residential Apartments", icon: "🏢" },
+  { id: "education", name: "Education & Coaching", defaultSub: "Test Prep & Competitive Exams", icon: "🎓" },
+  { id: "automobile", name: "Automobile & Dealerships", defaultSub: "Multi-Brand Dealership", icon: "🚗" },
+  { id: "general", name: "General Sales & Consulting", defaultSub: "B2B SaaS & Services", icon: "💼" },
+];
+
 export default function UserManagement() {
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -115,7 +124,19 @@ export default function UserManagement() {
     role: "user",
     planType: "free",
     credits: 0,
-    isActive: true
+    isActive: true,
+    isWhiteLabel: false,
+    whiteLabelIndustry: "healthcare",
+    whiteLabelBusinessName: "",
+    whiteLabelCustomDomain: "",
+  });
+  const [whiteLabelDialogOpen, setWhiteLabelDialogOpen] = useState(false);
+  const [whiteLabelUser, setWhiteLabelUser] = useState<User | null>(null);
+  const [whiteLabelForm, setWhiteLabelForm] = useState({
+    businessName: "",
+    industry: "healthcare",
+    subIndustry: "Dermatology & Skin Clinic",
+    customDomain: "",
   });
   const [promoCreditsAmount, setPromoCreditsAmount] = useState(0);
   const [page, setPage] = useState(1);
@@ -249,7 +270,11 @@ export default function UserManagement() {
         role: "user",
         planType: "free",
         credits: 0,
-        isActive: true
+        isActive: true,
+        isWhiteLabel: false,
+        whiteLabelIndustry: "healthcare",
+        whiteLabelBusinessName: "",
+        whiteLabelCustomDomain: "",
       });
       refetch();
     },
@@ -260,6 +285,83 @@ export default function UserManagement() {
         variant: "destructive"
       });
     }
+  });
+
+  // White-Label Clients query and mutations
+  const { data: whitelabelData, refetch: refetchWhiteLabel } = useQuery<{ success: boolean; clients: any[] }>({
+    queryKey: ["/api/admin/whitelabel/clients"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/admin/whitelabel/clients");
+      return res.json();
+    },
+  });
+
+  const whitelabelMap = useMemo(() => {
+    const map = new Map<string, any>();
+    if (whitelabelData && Array.isArray(whitelabelData.clients)) {
+      whitelabelData.clients.forEach((c: any) => {
+        if (c.id) map.set(c.id, c.branding);
+        if (c.email) map.set(c.email.toLowerCase(), c.branding);
+      });
+    }
+    return map;
+  }, [whitelabelData]);
+
+  const createWhiteLabelClient = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await apiRequest("POST", "/api/admin/whitelabel/clients", payload);
+      return res.json();
+    },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/whitelabel/clients"] });
+      toast({
+        title: "Client Workspace Created! 🎉",
+        description: res.message || "New white-label client is ready.",
+      });
+      setCreateUserDialog(false);
+      setCreateUserForm({
+        email: "",
+        password: "",
+        name: "",
+        role: "user",
+        planType: "free",
+        credits: 0,
+        isActive: true,
+        isWhiteLabel: false,
+        whiteLabelIndustry: "healthcare",
+        whiteLabelBusinessName: "",
+        whiteLabelCustomDomain: "",
+      });
+      refetch();
+      refetchWhiteLabel();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to create white-label client",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const saveWhiteLabelMutation = useMutation({
+    mutationFn: async ({ userId, data }: { userId: string; data: any }) => {
+      const res = await apiRequest("PATCH", `/api/admin/whitelabel/clients/${userId}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/whitelabel/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "White-Label Setup Saved! 🎉" });
+      setWhiteLabelDialogOpen(false);
+      setWhiteLabelUser(null);
+      refetch();
+      refetchWhiteLabel();
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update white-label", description: err.message, variant: "destructive" });
+    },
   });
 
   const deleteUser = useMutation({
@@ -390,7 +492,21 @@ export default function UserManagement() {
       });
       return;
     }
-    createUser.mutate(createUserForm);
+
+    if (createUserForm.isWhiteLabel) {
+      const selectedInd = WHITE_LABEL_INDUSTRIES.find(i => i.id === createUserForm.whiteLabelIndustry);
+      createWhiteLabelClient.mutate({
+        businessName: createUserForm.whiteLabelBusinessName?.trim() || createUserForm.name.trim(),
+        email: createUserForm.email.trim(),
+        password: createUserForm.password,
+        industry: createUserForm.whiteLabelIndustry,
+        subIndustry: selectedInd?.defaultSub || "General",
+        customDomain: createUserForm.whiteLabelCustomDomain?.trim() || undefined,
+        credits: createUserForm.credits || 5000,
+      });
+    } else {
+      createUser.mutate(createUserForm);
+    }
   };
 
   const handleOpenDeleteConfirm = (user: User) => {
@@ -681,7 +797,18 @@ export default function UserManagement() {
                 <TableRow key={user.id}>
                   <TableCell>
                     <div>
-                      <div className="font-medium">{user.name}</div>
+                      <div className="font-medium flex items-center gap-1.5 flex-wrap">
+                        <span>{user.name}</span>
+                        {(whitelabelMap.has(user.id) || whitelabelMap.has(user.email.toLowerCase())) && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-500/40 text-purple-600 dark:text-purple-400 bg-purple-500/10 font-normal flex items-center gap-1">
+                            <Sparkles className="w-2.5 h-2.5" />
+                            {(whitelabelMap.get(user.id) || whitelabelMap.get(user.email.toLowerCase()))?.industry === 'healthcare' ? 'Healthcare' :
+                             (whitelabelMap.get(user.id) || whitelabelMap.get(user.email.toLowerCase()))?.industry === 'real_estate' ? 'Real Estate' :
+                             (whitelabelMap.get(user.id) || whitelabelMap.get(user.email.toLowerCase()))?.industry === 'education' ? 'Education' :
+                             (whitelabelMap.get(user.id) || whitelabelMap.get(user.email.toLowerCase()))?.industry === 'automobile' ? 'Automobile' : 'White-Label'}
+                          </Badge>
+                        )}
+                      </div>
                       <div className="text-sm text-muted-foreground">{user.email}</div>
                       {user.role === 'admin' && (
                         <Badge variant="secondary" className="mt-1">
@@ -752,6 +879,24 @@ export default function UserManagement() {
                           <Gift className="mr-2 h-4 w-4" />
                           {t("adminDashboard.users.addPromoCredits")}
                         </DropdownMenuItem>
+                        {user.role !== 'admin' && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const existing = whitelabelMap.get(user.id) || whitelabelMap.get(user.email.toLowerCase());
+                              setWhiteLabelUser(user);
+                              setWhiteLabelForm({
+                                businessName: existing?.businessName || user.name || "",
+                                industry: existing?.industry || "healthcare",
+                                subIndustry: existing?.subIndustry || (existing?.industry === "real_estate" ? "Residential Apartments" : "Dermatology & Skin Clinic"),
+                                customDomain: existing?.customDomain || "",
+                              });
+                              setWhiteLabelDialogOpen(true);
+                            }}
+                          >
+                            <Sparkles className="mr-2 h-4 w-4 text-purple-600" />
+                            {(whitelabelMap.has(user.id) || whitelabelMap.has(user.email.toLowerCase())) ? "Edit White-Label Branding" : "Enable White-Label"}
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => toggleActive(user)}
@@ -1005,6 +1150,81 @@ export default function UserManagement() {
                 data-testid="input-create-credits"
               />
             </div>
+
+            {/* White-Label Workspace Option */}
+            <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold cursor-pointer">
+                      Enable White-Label Workspace
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Provision dedicated clinic/brand CRM with custom domain
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={createUserForm.isWhiteLabel}
+                  onCheckedChange={(checked) =>
+                    setCreateUserForm({
+                      ...createUserForm,
+                      isWhiteLabel: checked,
+                      whiteLabelBusinessName: checked && !createUserForm.whiteLabelBusinessName ? createUserForm.name : createUserForm.whiteLabelBusinessName,
+                      credits: checked && createUserForm.credits === 0 ? 5000 : createUserForm.credits
+                    })
+                  }
+                />
+              </div>
+
+              {createUserForm.isWhiteLabel && (
+                <div className="space-y-3 pt-2 text-xs border-t border-purple-500/20">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">Business / Clinic Name</Label>
+                    <Input
+                      value={createUserForm.whiteLabelBusinessName}
+                      onChange={(e) => setCreateUserForm({ ...createUserForm, whiteLabelBusinessName: e.target.value })}
+                      placeholder="e.g. Apex Living or City Care Dental Clinic"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium">Industry Vertical</Label>
+                      <Select
+                        value={createUserForm.whiteLabelIndustry}
+                        onValueChange={(val) => setCreateUserForm({ ...createUserForm, whiteLabelIndustry: val })}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {WHITE_LABEL_INDUSTRIES.map((ind) => (
+                            <SelectItem key={ind.id} value={ind.id}>
+                              {ind.icon} {ind.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium">Custom Domain (Optional)</Label>
+                      <Input
+                        value={createUserForm.whiteLabelCustomDomain}
+                        onChange={(e) => setCreateUserForm({ ...createUserForm, whiteLabelCustomDomain: e.target.value })}
+                        placeholder="crm.clientdomain.com"
+                        className="h-8 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateUserDialog(false)}>
@@ -1012,15 +1232,18 @@ export default function UserManagement() {
             </Button>
             <Button
               onClick={handleCreateUser}
-              disabled={createUser.isPending}
+              disabled={createUser.isPending || createWhiteLabelClient.isPending}
               data-testid="button-create-user-submit"
+              className={createUserForm.isWhiteLabel ? "bg-purple-600 hover:bg-purple-700 text-white font-semibold" : ""}
             >
-              {createUser.isPending ? (
+              {createUser.isPending || createWhiteLabelClient.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : createUserForm.isWhiteLabel ? (
+                <Sparkles className="h-4 w-4 mr-2" />
               ) : (
                 <UserPlus className="h-4 w-4 mr-2" />
               )}
-              {t("adminDashboard.users.addUser")}
+              {createUserForm.isWhiteLabel ? "Provision White-Label Client" : t("adminDashboard.users.addUser")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1188,6 +1411,110 @@ export default function UserManagement() {
                 </Button>
               </>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit White-Label Dialog for Existing User */}
+      <Dialog open={whiteLabelDialogOpen} onOpenChange={setWhiteLabelDialogOpen}>
+        <DialogContent className="max-w-md sm:rounded-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="w-5 h-5 text-purple-600" />
+              White-Label Workspace Setup
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Configure branding and industry vertical for <strong>{whiteLabelUser?.name}</strong> ({whiteLabelUser?.email}).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-xs">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Business / Clinic Name</Label>
+              <Input
+                placeholder="e.g. Apex Realty & Living"
+                value={whiteLabelForm.businessName}
+                onChange={(e) => setWhiteLabelForm({ ...whiteLabelForm, businessName: e.target.value })}
+                className="h-9 text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Industry Vertical</Label>
+              <Select
+                value={whiteLabelForm.industry}
+                onValueChange={(val) => {
+                  const preset = WHITE_LABEL_INDUSTRIES.find((p) => p.id === val);
+                  setWhiteLabelForm({
+                    ...whiteLabelForm,
+                    industry: val,
+                    subIndustry: preset?.defaultSub || "General",
+                  });
+                }}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Select Industry" />
+                </SelectTrigger>
+                <SelectContent>
+                  {WHITE_LABEL_INDUSTRIES.map((opt) => (
+                    <SelectItem key={opt.id} value={opt.id}>
+                      {opt.icon} {opt.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Sub-Speciality / Category</Label>
+              <Input
+                placeholder="e.g. Dermatology & Skin Clinic or Residential Apartments"
+                value={whiteLabelForm.subIndustry}
+                onChange={(e) => setWhiteLabelForm({ ...whiteLabelForm, subIndustry: e.target.value })}
+                className="h-9 text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Custom Domain (Optional)</Label>
+              <Input
+                placeholder="crm.clientdomain.com"
+                value={whiteLabelForm.customDomain}
+                onChange={(e) => setWhiteLabelForm({ ...whiteLabelForm, customDomain: e.target.value })}
+                className="h-9 text-xs font-mono"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Optional custom domain mapped to this client's workspace.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+            <Button variant="outline" size="sm" onClick={() => setWhiteLabelDialogOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (!whiteLabelUser) return;
+                saveWhiteLabelMutation.mutate({
+                  userId: whiteLabelUser.id,
+                  data: whiteLabelForm,
+                });
+              }}
+              disabled={saveWhiteLabelMutation.isPending || !whiteLabelForm.businessName}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-semibold"
+            >
+              {saveWhiteLabelMutation.isPending ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-2" /> Save White-Label Settings
+                </>
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
