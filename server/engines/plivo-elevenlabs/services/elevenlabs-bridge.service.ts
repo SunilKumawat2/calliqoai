@@ -391,6 +391,10 @@ export class ElevenLabsBridgeService {
         logger.info(`ElevenLabs WebSocket closed: ${code} ${reason?.toString() || ''}`, undefined, 'PlivoElevenLabsBridge');
         session.status = 'disconnected';
         session.endedAt = new Date();
+        // Immediately disconnect Plivo carrier line so customer's phone does not stay connected in silence!
+        ElevenLabsBridgeService.hangupCall(session.callUuid, 'elevenlabs_ws_closed').catch(err => {
+          logger.warn(`Error in hangupCall on ws close: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge');
+        });
       });
       
       setTimeout(() => {
@@ -506,12 +510,18 @@ export class ElevenLabsBridgeService {
             } else if (toolName === 'end_call' || toolName === 'hangup' || toolName === 'end_conversation') {
               const isVoicemail = params.reason === 'voicemail_detected' || params.reason === 'voicemail';
               logger.info(`[ElevenLabs Tool Call] Agent invoked ${toolName} (reason: ${params.reason || 'normal'}) for ${session.callUuid}`, undefined, 'PlivoElevenLabsBridge');
-              this.handleVoicemailDetected(
-                session,
-                isVoicemail ? 'Agent end_call: voicemail_detected' : 'Agent end_call: call concluded'
-              ).catch(err => {
-                logger.error(`Error in handleVoicemailDetected from end_call: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge');
-              });
+              if (isVoicemail) {
+                this.handleVoicemailDetected(
+                  session,
+                  'Agent end_call: voicemail_detected'
+                ).catch(err => {
+                  logger.error(`Error in handleVoicemailDetected from end_call: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge');
+                });
+              } else {
+                this.hangupCall(session.callUuid, 'elevenlabs_agent_end_call').catch(err => {
+                  logger.error(`Error in hangupCall from end_call: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge');
+                });
+              }
             }
           }
           break;
@@ -684,9 +694,12 @@ export class ElevenLabsBridgeService {
     const oldKey = this.getSessionKey(oldUuid);
     const session = this.activeSessions.get(oldKey);
     if (session) {
+      if (!newUuid.startsWith('plivo-el-')) {
+        session.realPlivoCallUuid = newUuid;
+      }
       const newKey = this.getSessionKey(newUuid);
       this.activeSessions.set(newKey, session);
-      logger.info(`Aliased bridge session ${oldUuid} -> ${newUuid}`, undefined, 'PlivoElevenLabsBridge');
+      logger.info(`Aliased bridge session ${oldUuid} -> ${newUuid} (realPlivoCallUuid: ${session.realPlivoCallUuid || 'none'})`, undefined, 'PlivoElevenLabsBridge');
     }
   }
 
@@ -698,6 +711,187 @@ export class ElevenLabsBridgeService {
     return this.activeSessions.has(sessionKey);
   }
   
+  /**
+   * Helper to get initialized Plivo client instance with fallbacks
+   */
+  private static async getPlivoClient(): Promise<any | null> {
+    try {
+      let authId = process.env.PLIVO_AUTH_ID;
+      let authToken = process.env.PLIVO_AUTH_TOKEN;
+
+      if (!authId || !authToken) {
+        const [cred] = await db
+          .select()
+          .from(plivoCredentials)
+          .where(eq(plivoCredentials.isActive, true))
+          .limit(1);
+
+        if (cred) {
+          authId = cred.authId;
+          authToken = cred.authToken;
+        }
+      }
+
+      if (!authId || !authToken) {
+        const { storage } = await import('../../../storage');
+        const plivoSetting = await storage.getGlobalSetting('plivo_credentials');
+        const plivoCreds = (plivoSetting?.value as any) || {};
+        authId = plivoCreds.auth_id;
+        authToken = plivoCreds.auth_token;
+      }
+
+      if (authId && authToken) {
+        const plivo = (await import('plivo')).default || (await import('plivo'));
+        return new (plivo as any).Client(authId, authToken);
+      }
+    } catch (err: any) {
+      logger.warn(`Failed to get Plivo client: ${err?.message || err}`, undefined, 'PlivoElevenLabsBridge');
+    }
+    return null;
+  }
+
+  /**
+   * Hang up the Plivo carrier call via REST API and disconnect bridge session
+   */
+  static async hangupCall(callUuid: string, reason: string = 'normal'): Promise<{ success: boolean; error?: string }> {
+    if (!callUuid) return { success: false, error: 'No callUuid provided' };
+
+    const sessionKey = this.getSessionKey(callUuid);
+    let session = this.activeSessions.get(sessionKey) || this.activeSessions.get(callUuid);
+    if (!session) {
+      for (const [k, s] of this.activeSessions.entries()) {
+        if (s.callUuid === callUuid || s.streamSid === callUuid || k.includes(callUuid)) {
+          session = s;
+          break;
+        }
+      }
+    }
+
+    if (session?.isEnding && session.status === 'disconnected') {
+      return { success: true };
+    }
+    if (session) {
+      session.isEnding = true;
+      session.status = 'disconnected';
+      session.endedAt = new Date();
+    }
+
+    logger.info(`[PlivoElevenLabsBridge] Initiating carrier hangup for ${callUuid} (reason: ${reason})`, undefined, 'PlivoElevenLabsBridge');
+
+    // 1. Immediately close ElevenLabs WebSocket so agent ceases talking
+    if (session?.elevenLabsWs) {
+      try {
+        const readyState = (session.elevenLabsWs as any).readyState;
+        if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) {
+          (session.elevenLabsWs as any).close();
+          logger.info(`[PlivoElevenLabsBridge] Closed ElevenLabs WS on hangup for ${callUuid}`, undefined, 'PlivoElevenLabsBridge');
+        }
+      } catch (_) {}
+    }
+
+    // 2. Immediately close Plivo WebSocket
+    if (session?.plivoWs) {
+      try {
+        if ((session.plivoWs as any).readyState === WebSocket.OPEN) {
+          (session.plivoWs as any).close(1000, reason);
+          logger.info(`[PlivoElevenLabsBridge] Closed Plivo WS on hangup for ${callUuid}`, undefined, 'PlivoElevenLabsBridge');
+        }
+      } catch (_) {}
+    }
+
+    // 3. Find target Plivo carrier Call UUID
+    let targetPlivoUuid: string | undefined = session?.realPlivoCallUuid;
+    if (!targetPlivoUuid && session?.callUuid && !session.callUuid.startsWith('plivo-el-')) {
+      targetPlivoUuid = session.callUuid;
+    }
+    if (!targetPlivoUuid && !callUuid.startsWith('plivo-el-')) {
+      targetPlivoUuid = callUuid;
+    }
+
+    // Lookup in database if needed
+    if (!targetPlivoUuid || targetPlivoUuid.startsWith('plivo-el-')) {
+      try {
+        const [callRow] = await db
+          .select({
+            id: plivoCalls.id,
+            plivoCallUuid: plivoCalls.plivoCallUuid,
+            metadata: plivoCalls.metadata,
+          })
+          .from(plivoCalls)
+          .where(
+            or(
+              eq(plivoCalls.id, callUuid),
+              eq(plivoCalls.plivoCallUuid, callUuid),
+              sql`${plivoCalls.metadata}->>'internalId' = ${callUuid}`,
+              sql`${plivoCalls.metadata}->>'requestUuid' = ${callUuid}`
+            )
+          )
+          .limit(1);
+
+        if (callRow?.plivoCallUuid && !callRow.plivoCallUuid.startsWith('plivo-el-')) {
+          targetPlivoUuid = callRow.plivoCallUuid;
+        } else if ((callRow?.metadata as any)?.requestUuid && !(callRow?.metadata as any)?.requestUuid.startsWith('plivo-el-')) {
+          targetPlivoUuid = (callRow?.metadata as any)?.requestUuid;
+        }
+      } catch (dbErr: any) {
+        logger.warn(`[PlivoElevenLabsBridge] DB lookup error for hangup: ${dbErr?.message || dbErr}`, undefined, 'PlivoElevenLabsBridge');
+      }
+    }
+
+    // 4. Update DB record to completed (or no-answer if voicemail)
+    const isVoicemail = reason.includes('voicemail');
+    const finalStatus = isVoicemail ? 'no-answer' : 'completed';
+    try {
+      await db
+        .update(plivoCalls)
+        .set({
+          status: finalStatus,
+          endedAt: new Date(),
+          metadata: sql`COALESCE(${plivoCalls.metadata}, '{}'::jsonb) || ${JSON.stringify({
+            hangupReason: reason,
+            hangupInitiatedBy: 'PlivoElevenLabsBridge.hangupCall',
+          })}::jsonb`,
+        })
+        .where(
+          or(
+            eq(plivoCalls.id, callUuid),
+            eq(plivoCalls.plivoCallUuid, callUuid),
+            sql`${plivoCalls.metadata}->>'internalId' = ${callUuid}`,
+            ...(targetPlivoUuid ? [eq(plivoCalls.plivoCallUuid, targetPlivoUuid)] : [])
+          )
+        );
+    } catch (_) {}
+
+    // 5. Hang up Plivo carrier line via REST API
+    let hangupSuccess = false;
+    let hangupError: string | undefined;
+
+    if (targetPlivoUuid && !targetPlivoUuid.startsWith('plivo-el-')) {
+      try {
+        const client = await this.getPlivoClient();
+        if (client) {
+          await client.calls.hangup(targetPlivoUuid);
+          logger.info(`[PlivoElevenLabsBridge] ✅ Plivo carrier hangup executed successfully for ${targetPlivoUuid}`, undefined, 'PlivoElevenLabsBridge');
+          hangupSuccess = true;
+        } else {
+          hangupError = 'Missing Plivo credentials';
+          logger.warn(`[PlivoElevenLabsBridge] ⚠️ Plivo credentials not found for hangup`, undefined, 'PlivoElevenLabsBridge');
+        }
+      } catch (pErr: any) {
+        hangupError = pErr?.message || String(pErr);
+        logger.warn(`[PlivoElevenLabsBridge] Plivo hangup notice for ${targetPlivoUuid}: ${hangupError}`, undefined, 'PlivoElevenLabsBridge');
+      }
+    } else {
+      hangupError = `No valid Plivo carrier CallUUID found (targetPlivoUuid=${targetPlivoUuid})`;
+      logger.warn(`[PlivoElevenLabsBridge] ⚠️ ${hangupError}`, undefined, 'PlivoElevenLabsBridge');
+    }
+
+    // 6. Clean up session maps
+    await this.endSession(callUuid);
+
+    return { success: hangupSuccess, error: hangupError };
+  }
+
   /**
    * End a bridge session
    */

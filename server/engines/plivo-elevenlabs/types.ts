@@ -33,6 +33,7 @@ export interface ElevenLabsAgentConfig {
 
 export interface CallSession {
   callUuid: string;
+  realPlivoCallUuid?: string;
   streamSid: string;
   elevenLabsWs: WebSocket | null;
   plivoWs: WebSocket | null;

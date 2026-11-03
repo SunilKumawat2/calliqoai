@@ -357,6 +357,218 @@ salesTeamRouter.put('/site-visits/:id/status', async (req: Request, res: Respons
   }
 });
 
+
+// ── 7a. PUT /api/sales-team/site-visits/:id/confirm ────────────
+salesTeamRouter.put('/site-visits/:id/confirm', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { id } = req.params;
+    const [updatedAppointment] = await db
+      .update(appointments)
+      .set({
+        status: 'confirmed',
+        updatedAt: new Date(),
+      })
+      .where(and(eq(appointments.id, id), eq(appointments.userId, userId)))
+      .returning();
+
+    if (!updatedAppointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    if (updatedAppointment.googleCalendarEventId) {
+      updateCalendarEvent(userId, updatedAppointment.googleCalendarEventId, {
+        id: updatedAppointment.id,
+        contactName: updatedAppointment.contactName,
+        contactPhone: updatedAppointment.contactPhone,
+        contactEmail: updatedAppointment.contactEmail,
+        appointmentDate: String(updatedAppointment.appointmentDate),
+        appointmentTime: String(updatedAppointment.appointmentTime),
+        duration: updatedAppointment.duration || 30,
+        serviceName: updatedAppointment.serviceName,
+        notes: updatedAppointment.notes,
+        status: 'confirmed',
+        assignedStaffName: updatedAppointment.assignedStaffName,
+        assignedStaffPhone: updatedAppointment.assignedStaffPhone,
+      }).catch(() => {});
+    } else {
+      createCalendarEvent(userId, {
+        id: updatedAppointment.id,
+        contactName: updatedAppointment.contactName,
+        contactPhone: updatedAppointment.contactPhone,
+        contactEmail: updatedAppointment.contactEmail,
+        appointmentDate: String(updatedAppointment.appointmentDate),
+        appointmentTime: String(updatedAppointment.appointmentTime),
+        duration: updatedAppointment.duration || 30,
+        serviceName: updatedAppointment.serviceName,
+        notes: updatedAppointment.notes,
+        status: 'confirmed',
+        assignedStaffName: updatedAppointment.assignedStaffName,
+        assignedStaffPhone: updatedAppointment.assignedStaffPhone,
+      }).then(async (gEventId) => {
+        if (gEventId) {
+          await db.update(appointments).set({ googleCalendarEventId: gEventId }).where(eq(appointments.id, updatedAppointment.id));
+          console.log(`📅 [SalesTeam] Confirmed visit pushed to Google Calendar: ${gEventId}`);
+        }
+      }).catch(() => {});
+    }
+
+    res.json(updatedAppointment);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error confirming visit: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 7b. PUT /api/sales-team/site-visits/:id/cancel ─────────────
+salesTeamRouter.put('/site-visits/:id/cancel', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const [updatedAppointment] = await db
+      .update(appointments)
+      .set({
+        status: 'cancelled',
+        statusReason: reason ? String(reason).trim() : 'Cancelled by user',
+        updatedAt: new Date(),
+      })
+      .where(and(eq(appointments.id, id), eq(appointments.userId, userId)))
+      .returning();
+
+    if (!updatedAppointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    if (updatedAppointment.googleCalendarEventId) {
+      updateCalendarEvent(userId, updatedAppointment.googleCalendarEventId, {
+        id: updatedAppointment.id,
+        contactName: updatedAppointment.contactName,
+        contactPhone: updatedAppointment.contactPhone,
+        contactEmail: updatedAppointment.contactEmail,
+        appointmentDate: String(updatedAppointment.appointmentDate),
+        appointmentTime: String(updatedAppointment.appointmentTime),
+        duration: updatedAppointment.duration || 30,
+        serviceName: updatedAppointment.serviceName,
+        notes: updatedAppointment.notes,
+        status: 'cancelled',
+        statusReason: updatedAppointment.statusReason,
+        assignedStaffName: updatedAppointment.assignedStaffName,
+        assignedStaffPhone: updatedAppointment.assignedStaffPhone,
+      }).catch(() => {});
+    }
+
+    res.json(updatedAppointment);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error cancelling visit: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 7c. PUT /api/sales-team/site-visits/:id/reschedule ─────────
+salesTeamRouter.put('/site-visits/:id/reschedule', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { id } = req.params;
+    const { appointmentDate, appointmentTime, notes } = req.body;
+
+    if (!appointmentDate || !appointmentTime) {
+      return res.status(400).json({ error: 'Date and time are required for rescheduling' });
+    }
+
+    const [updatedAppointment] = await db
+      .update(appointments)
+      .set({
+        appointmentDate: String(appointmentDate).trim(),
+        appointmentTime: String(appointmentTime).trim(),
+        status: 'rescheduled',
+        notes: notes !== undefined ? (notes ? String(notes).trim() : null) : undefined,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(appointments.id, id), eq(appointments.userId, userId)))
+      .returning();
+
+    if (!updatedAppointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    if (updatedAppointment.googleCalendarEventId) {
+      updateCalendarEvent(userId, updatedAppointment.googleCalendarEventId, {
+        id: updatedAppointment.id,
+        contactName: updatedAppointment.contactName,
+        contactPhone: updatedAppointment.contactPhone,
+        contactEmail: updatedAppointment.contactEmail,
+        appointmentDate: String(updatedAppointment.appointmentDate),
+        appointmentTime: String(updatedAppointment.appointmentTime),
+        duration: updatedAppointment.duration || 30,
+        serviceName: updatedAppointment.serviceName,
+        notes: updatedAppointment.notes,
+        status: 'rescheduled',
+        assignedStaffName: updatedAppointment.assignedStaffName,
+        assignedStaffPhone: updatedAppointment.assignedStaffPhone,
+      }).catch(() => {});
+    }
+
+    res.json(updatedAppointment);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error rescheduling visit: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// ── 7d. POST /api/sales-team/site-visits/:id/push-calendar ─────
+salesTeamRouter.post('/site-visits/:id/push-calendar', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { id } = req.params;
+    const [apt] = await db
+      .select()
+      .from(appointments)
+      .where(and(eq(appointments.id, id), eq(appointments.userId, userId)))
+      .limit(1);
+
+    if (!apt) return res.status(404).json({ error: 'Appointment not found' });
+
+    let gEventId = apt.googleCalendarEventId;
+    if (!gEventId) {
+      gEventId = await createCalendarEvent(userId, {
+        id: apt.id,
+        contactName: apt.contactName,
+        contactPhone: apt.contactPhone,
+        contactEmail: apt.contactEmail,
+        appointmentDate: String(apt.appointmentDate),
+        appointmentTime: String(apt.appointmentTime),
+        duration: apt.duration || 30,
+        serviceName: apt.serviceName,
+        notes: apt.notes,
+        status: apt.status,
+        assignedStaffName: apt.assignedStaffName,
+        assignedStaffPhone: apt.assignedStaffPhone,
+      });
+
+      if (gEventId) {
+        await db.update(appointments).set({ googleCalendarEventId: gEventId }).where(eq(appointments.id, apt.id));
+        console.log(`📅 [SalesTeam] Manually pushed appointment ${apt.id} to Google Calendar: ${gEventId}`);
+      }
+    }
+
+    res.json({ success: true, googleCalendarEventId: gEventId });
+  } catch (err: any) {
+    logger.error(`[SalesTeam] Error pushing to Google Calendar: ${err.message}`, err, 'SalesTeam');
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── 8. POST /api/sales-team/site-visits (Create & Appoint Site Visit Manually) ───
 salesTeamRouter.post('/site-visits', async (req: Request, res: Response) => {
   const userId = getUserId(req);

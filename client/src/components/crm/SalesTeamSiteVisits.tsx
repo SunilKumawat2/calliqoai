@@ -4,40 +4,61 @@ import {
   Users, UserCheck, CalendarDays, Phone, Mail, MapPin, Building, 
   Plus, RefreshCw, MessageSquare, CheckCircle2, Clock, Check, 
   Trash2, Edit, AlertCircle, Sparkles, Send, Filter, Search, MoreHorizontal,
-  Bell, UserPlus, FileText, CheckSquare, ShieldCheck, ArrowRight
+  Bell, UserPlus, FileText, CheckSquare, ShieldCheck, ArrowRight,
+  XCircle, CalendarClock, CalendarCheck, HelpCircle, X, ExternalLink,
+  ChevronRight, Calendar as CalendarIcon, UserX
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CompanyEmailSettingsDialog } from "./CompanyEmailSettingsDialog";
 import { EmailNotificationManager } from "./EmailNotificationManager";
 
-export interface SalesStaff {
+interface SalesStaff {
   id: string;
+  userId: string;
   name: string;
   phone: string;
   email: string | null;
   role: string;
   city: string | null;
   assignedProjects: string[];
-  isActive: boolean;
   totalVisitsCount: number;
+  isActive: boolean;
   notes: string | null;
   createdAt: string;
 }
 
-export interface SiteVisit {
+interface SiteVisit {
   id: string;
+  userId: string;
   contactName: string;
   contactPhone: string;
   contactEmail: string | null;
@@ -46,7 +67,7 @@ export interface SiteVisit {
   duration: number;
   serviceName: string | null;
   notes: string | null;
-  status: string;
+  status: string; // 'new' | 'scheduled' | 'confirmed' | 'completed_visited' | 'deal_won' | 'interested_followup' | 'cancelled' | 'rescheduled'
   statusReason: string | null;
   googleCalendarEventId: string | null;
   assignedStaffId: string | null;
@@ -61,7 +82,7 @@ export function SalesTeamSiteVisits() {
 
   const [activeSubTab, setActiveSubTab] = useState<"visits" | "team" | "email">("visits");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "new" | "confirmed" | "upcoming" | "past" | "cancelled" | "unassigned">("all");
 
   // Staff Dialog
   const [staffDialogOpen, setStaffDialogOpen] = useState(false);
@@ -70,13 +91,13 @@ export function SalesTeamSiteVisits() {
     name: "",
     phone: "",
     email: "",
-    role: "Sales Executive",
-    city: "Gurugram",
-    assignedProjects: "DLF Cyber Heights, Golf Course Ext",
+    role: "",
+    city: "",
+    assignedProjects: "",
     notes: "",
   });
 
-  // Appoint Consultant Dialog (for an existing site visit)
+  // Appoint Staff Dialog (for an existing visit)
   const [appointDialogOpen, setAppointDialogOpen] = useState(false);
   const [selectedVisitForAppoint, setSelectedVisitForAppoint] = useState<SiteVisit | null>(null);
   const [appointForm, setAppointForm] = useState({
@@ -89,19 +110,39 @@ export function SalesTeamSiteVisits() {
     notifyClientWhatsApp: true,
   });
 
-  // Manual New Site Visit Creation Dialog
+  // Manual New Appointment Creation Dialog
   const [createVisitDialogOpen, setCreateVisitDialogOpen] = useState(false);
   const [createVisitForm, setCreateVisitForm] = useState({
     contactName: "",
     contactPhone: "",
     contactEmail: "",
-    serviceName: "DLF Cyber Heights Luxury Residences",
+    serviceName: "",
     appointmentDate: new Date().toISOString().split("T")[0],
-    appointmentTime: "11:00",
+    appointmentTime: "",
     staffId: "",
-    notes: "Site visit booked for 3BHK unit",
+    notes: "",
     notifyWhatsApp: true,
   });
+
+  // Cancel Dialog
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [selectedVisitForCancel, setSelectedVisitForCancel] = useState<SiteVisit | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+
+  // Reschedule Dialog
+  const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
+  const [selectedVisitForReschedule, setSelectedVisitForReschedule] = useState<SiteVisit | null>(null);
+  const [rescheduleForm, setRescheduleForm] = useState({
+    appointmentDate: "",
+    appointmentTime: "",
+    notes: "",
+  });
+
+  // Mark Completed / Outcome Dialog
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [selectedVisitForComplete, setSelectedVisitForComplete] = useState<SiteVisit | null>(null);
+  const [completeOutcome, setCompleteOutcome] = useState("completed_visited");
+  const [completeNotes, setCompleteNotes] = useState("");
 
   // Queries
   const { data: staffList = [], isLoading: staffLoading } = useQuery<SalesStaff[]>({
@@ -110,12 +151,20 @@ export function SalesTeamSiteVisits() {
 
   const { data: visitsList = [], isLoading: visitsLoading, refetch: refetchVisits } = useQuery<SiteVisit[]>({
     queryKey: ["/api/sales-team/site-visits/all"],
-    refetchInterval: 15000, // auto refetch every 15s to catch new incoming visits live
+    refetchInterval: 15000,
+  });
+
+  // Google Calendar Connection Status
+  const { data: gcalStatus, refetch: refetchGCalStatus } = useQuery<{
+    connected: boolean;
+    email?: string;
+  }>({
+    queryKey: ["/api/google-calendar/status"],
   });
 
   // Company Custom SMTP Settings
   const [emailSettingsOpen, setEmailSettingsOpen] = useState(false);
-  const { data: smtpData, refetch: refetchSmtp } = useQuery<{
+  const { data: smtpData } = useQuery<{
     configured: boolean;
     settings: {
       fromEmail: string;
@@ -126,7 +175,9 @@ export function SalesTeamSiteVisits() {
     queryKey: ["/api/crm/smtp-settings"],
   });
 
-  // Mutations
+  // ── MUTATIONS ──
+
+  // 1. Staff CRUD Mutations
   const createStaffMutation = useMutation({
     mutationFn: async (data: typeof staffForm) => {
       const projects = data.assignedProjects
@@ -140,7 +191,7 @@ export function SalesTeamSiteVisits() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team"] });
       setStaffDialogOpen(false);
       resetStaffForm();
-      toast({ title: "Staff Member Added", description: "New sales executive added successfully." });
+      toast({ title: "Staff Member Added", description: "New staff member added successfully." });
     },
     onError: (err: any) => {
       toast({ title: "Failed to Add Staff", description: err.message, variant: "destructive" });
@@ -156,7 +207,7 @@ export function SalesTeamSiteVisits() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team"] });
       setStaffDialogOpen(false);
       resetStaffForm();
-      toast({ title: "Staff Updated", description: "Sales executive updated successfully." });
+      toast({ title: "Staff Updated", description: "Staff member updated successfully." });
     },
     onError: (err: any) => {
       toast({ title: "Update Failed", description: err.message, variant: "destructive" });
@@ -170,11 +221,11 @@ export function SalesTeamSiteVisits() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team"] });
-      toast({ title: "Staff Removed", description: "Sales executive removed." });
+      toast({ title: "Staff Removed", description: "Staff member removed." });
     },
   });
 
-  // Assign / Appoint Mutation
+  // 2. Assign / Appoint Staff Mutation
   const assignVisitMutation = useMutation({
     mutationFn: async ({
       visitId,
@@ -206,11 +257,10 @@ export function SalesTeamSiteVisits() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
 
       toast({
-        title: "✅ Executive Appointed Successfully",
-        description: `${updatedAppointment.assignedStaffName || 'Executive'} is now assigned to ${updatedAppointment.contactName}'s site visit.`,
+        title: "✅ Staff Appointed Successfully",
+        description: `${updatedAppointment.assignedStaffName || 'Staff'} assigned to ${updatedAppointment.contactName}'s appointment.`,
       });
 
-      // Handle WhatsApp notifications if selected
       if (selectedVisitForAppoint) {
         const mergedVisit: SiteVisit = {
           ...selectedVisitForAppoint,
@@ -234,7 +284,147 @@ export function SalesTeamSiteVisits() {
     },
   });
 
-  // Manual Site Visit Creation Mutation
+  // 3. Confirm Appointment Mutation
+  const confirmAppointmentMutation = useMutation({
+    mutationFn: async (visitId: string) => {
+      const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/confirm`);
+      return res.json();
+    },
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      toast({
+        title: "✅ Appointment Confirmed",
+        description: `Appointment for ${updated.contactName} is now confirmed and synced.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Confirmation Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // 4. Cancel Appointment Mutation
+  const cancelAppointmentMutation = useMutation({
+    mutationFn: async ({ visitId, reason }: { visitId: string; reason: string }) => {
+      const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/cancel`, { reason });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      setCancelDialogOpen(false);
+      setSelectedVisitForCancel(null);
+      setCancelReason("");
+      toast({
+        title: "Appointment Cancelled",
+        description: "The appointment has been moved to Cancelled.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Cancellation Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // 5. Reschedule Appointment Mutation
+  const rescheduleAppointmentMutation = useMutation({
+    mutationFn: async ({
+      visitId,
+      appointmentDate,
+      appointmentTime,
+      notes,
+    }: {
+      visitId: string;
+      appointmentDate: string;
+      appointmentTime: string;
+      notes?: string;
+    }) => {
+      const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/reschedule`, {
+        appointmentDate,
+        appointmentTime,
+        notes,
+      });
+      return res.json();
+    },
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      setRescheduleDialogOpen(false);
+      setSelectedVisitForReschedule(null);
+      toast({
+        title: "✅ Appointment Rescheduled",
+        description: `New schedule set for ${updated.appointmentDate} at ${updated.appointmentTime}.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Reschedule Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // 6. Complete / Mark Visited Mutation
+  const completeAppointmentMutation = useMutation({
+    mutationFn: async ({
+      visitId,
+      status,
+      statusReason,
+    }: {
+      visitId: string;
+      status: string;
+      statusReason: string;
+    }) => {
+      const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/status`, {
+        status,
+        statusReason,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      setCompleteDialogOpen(false);
+      setSelectedVisitForComplete(null);
+      setCompleteNotes("");
+      toast({
+        title: "✅ Appointment Outcome Saved",
+        description: "Status and notes recorded into historical records.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Update Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Push Single Appointment to Google Calendar Mutation
+  const pushToCalendarMutation = useMutation({
+    mutationFn: async (visitId: string) => {
+      const res = await apiRequest("POST", `/api/sales-team/site-visits/${visitId}/push-calendar`);
+      return res.json();
+    },
+    onSuccess: (data, visitId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      if (data.googleCalendarEventId) {
+        toast({
+          title: "📅 Synced to Google Calendar",
+          description: "Appointment synced! Opening in Google Calendar...",
+        });
+        const calendarEmail = gcalStatus?.email || "primary";
+        const raw = `${data.googleCalendarEventId} ${calendarEmail}`;
+        const eid = btoa(raw).replace(/=/g, "");
+        window.open(`https://www.google.com/calendar/event?eid=${eid}`, "_blank");
+      } else {
+        toast({
+          title: "Google Calendar",
+          description: "Could not sync. Please ensure Google Calendar is connected.",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Sync Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // 7. Manual Booking Mutation
   const createVisitMutation = useMutation({
     mutationFn: async (data: typeof createVisitForm) => {
       const res = await apiRequest("POST", "/api/sales-team/site-visits", data);
@@ -246,8 +436,8 @@ export function SalesTeamSiteVisits() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
 
       toast({
-        title: "✅ Site Visit Booked & Appointed",
-        description: `Visit scheduled for ${newVisit.contactName} on ${newVisit.appointmentDate} at ${newVisit.appointmentTime}.`,
+        title: "✅ Appointment Booked",
+        description: `Appointment scheduled for ${newVisit.contactName} on ${newVisit.appointmentDate} at ${newVisit.appointmentTime}.`,
       });
 
       if (createVisitForm.notifyWhatsApp && newVisit.assignedStaffPhone) {
@@ -259,9 +449,9 @@ export function SalesTeamSiteVisits() {
         contactName: "",
         contactPhone: "",
         contactEmail: "",
-        serviceName: "DLF Cyber Heights Luxury Residences",
+        serviceName: "",
         appointmentDate: new Date().toISOString().split("T")[0],
-        appointmentTime: "11:00",
+        appointmentTime: "",
         staffId: "",
         notes: "",
         notifyWhatsApp: true,
@@ -272,18 +462,7 @@ export function SalesTeamSiteVisits() {
     },
   });
 
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ visitId, status }: { visitId: string; status: string }) => {
-      const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/status`, { status });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
-      toast({ title: "✅ Status Updated", description: "Visit outcome updated & live synced with Google Calendar." });
-    },
-  });
-
-  // Google Calendar Sync Mutation
+  // 8. Google Calendar Sync Mutation
   const syncCalendarMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/sales-team/sync-calendar");
@@ -292,10 +471,11 @@ export function SalesTeamSiteVisits() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      refetchGCalStatus();
       if (data.synced) {
         toast({
           title: "📅 Google Calendar Synced",
-          description: `Checked ${data.total} calendar events. Imported ${data.imported} new visits, updated ${data.updated}.`,
+          description: `Checked ${data.total} calendar events. Synced ${data.imported} new appointments, updated ${data.updated}.`,
         });
       } else {
         toast({
@@ -314,7 +494,7 @@ export function SalesTeamSiteVisits() {
     },
   });
 
-  // Unassign Staff Mutation
+  // 9. Unassign Staff Mutation
   const unassignVisitMutation = useMutation({
     mutationFn: async (visitId: string) => {
       const res = await apiRequest("PUT", `/api/sales-team/site-visits/${visitId}/unassign`);
@@ -324,8 +504,8 @@ export function SalesTeamSiteVisits() {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
       toast({
-        title: "Visit Unassigned",
-        description: "Sent back to 'Needs Staff Appointment' queue.",
+        title: "Staff Unassigned",
+        description: "Sent back to 'Needs Staff Assignment' queue.",
       });
     },
     onError: (err: any) => {
@@ -333,14 +513,15 @@ export function SalesTeamSiteVisits() {
     },
   });
 
+  // Helpers
   const resetStaffForm = () => {
     setEditingStaff(null);
     setStaffForm({
       name: "",
       phone: "",
       email: "",
-      role: "Sales Executive",
-      city: "Gurugram",
+      role: "",
+      city: "",
       assignedProjects: "",
       notes: "",
     });
@@ -352,7 +533,7 @@ export function SalesTeamSiteVisits() {
       name: staff.name,
       phone: staff.phone,
       email: staff.email || "",
-      role: staff.role || "Sales Executive",
+      role: staff.role || "Consultant",
       city: staff.city || "",
       assignedProjects: Array.isArray(staff.assignedProjects) ? staff.assignedProjects.join(", ") : "",
       notes: staff.notes || "",
@@ -374,7 +555,30 @@ export function SalesTeamSiteVisits() {
     setAppointDialogOpen(true);
   };
 
-  // WhatsApp Notification Helpers
+  const openRescheduleModal = (visit: SiteVisit) => {
+    setSelectedVisitForReschedule(visit);
+    setRescheduleForm({
+      appointmentDate: visit.appointmentDate,
+      appointmentTime: visit.appointmentTime ? visit.appointmentTime.substring(0, 5) : "11:00",
+      notes: visit.notes || "",
+    });
+    setRescheduleDialogOpen(true);
+  };
+
+  const openCancelModal = (visit: SiteVisit) => {
+    setSelectedVisitForCancel(visit);
+    setCancelReason("");
+    setCancelDialogOpen(true);
+  };
+
+  const openCompleteModal = (visit: SiteVisit) => {
+    setSelectedVisitForComplete(visit);
+    setCompleteOutcome("completed_visited");
+    setCompleteNotes(visit.statusReason || "");
+    setCompleteDialogOpen(true);
+  };
+
+  // WhatsApp Helpers
   const sendStaffWhatsApp = (visit: SiteVisit) => {
     const staffPhone = visit.assignedStaffPhone || "";
     const cleanPhone = staffPhone.replace(/\D/g, "");
@@ -383,7 +587,7 @@ export function SalesTeamSiteVisits() {
       return;
     }
 
-    const message = `*Namaste ${visit.assignedStaffName || 'Team'}!* 🏢\n\n*New Site Visit Assigned via Calliqo AI:*\n• *Client:* ${visit.contactName}\n• *Phone:* ${visit.contactPhone}\n• *Service/Project:* ${visit.serviceName || 'Property Site Visit'}\n• *Date & Time:* ${visit.appointmentDate} at ${visit.appointmentTime}\n• *Customer Request / Notes:* ${visit.notes || 'Interested buyer'}\n\nPlease reach out to the customer and coordinate the visit!`;
+    const message = `*Namaste ${visit.assignedStaffName || 'Team'}!* 🏢\n\n*New Appointment Assigned via Calliqo AI:*\n• *Client:* ${visit.contactName}\n• *Phone:* ${visit.contactPhone}\n• *Service / Purpose:* ${visit.serviceName || 'Scheduled Appointment'}\n• *Date & Time:* ${visit.appointmentDate} at ${visit.appointmentTime}\n• *Notes:* ${visit.notes || 'Appointment Booking'}\n\nPlease coordinate with the customer for this appointment!`;
     const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
     window.open(url, "_blank");
   };
@@ -396,62 +600,142 @@ export function SalesTeamSiteVisits() {
     }
 
     const consultantText = visit.assignedStaffName 
-      ? `Hamare property consultant *${visit.assignedStaffName}* (${visit.assignedStaffPhone || ''}) aapko site par attend karenge.`
-      : `Hamari sales team aapse jald hi sampark karegi.`;
+      ? `Hamare staff member *${visit.assignedStaffName}* (${visit.assignedStaffPhone || ''}) aapko attend karenge.`
+      : `Hamari team aapse jald hi sampark karegi.`;
 
-    const message = `*Namaste ${visit.contactName} ji!* 🙏\n\nAapki *${visit.serviceName || 'Property Site Visit'}* confirm ho gayi hai:\n\n📅 *Date:* ${visit.appointmentDate}\n⏰ *Time:* ${visit.appointmentTime}\n\n${consultantText}\n\nKisi bhi sahayata ke liye aap hume is number par reply kar sakte hain. Aapka din shubh rahe!`;
+    const message = `*Namaste ${visit.contactName} ji!* 🙏\n\nAapki appointment *${visit.serviceName || 'Scheduled Booking'}* confirm ho gayi hai:\n\n📅 *Date:* ${visit.appointmentDate}\n⏰ *Time:* ${visit.appointmentTime}\n\n${consultantText}\n\nKisi bhi sahayata ke liye aap hume is number par reply kar sakte hain. Aapka din shubh rahe!`;
     const url = `https://api.whatsapp.com/send?phone=${clientPhone}&text=${encodeURIComponent(message)}`;
     window.open(url, "_blank");
   };
 
-  // Unassigned visits calculation
-  const unassignedVisits = visitsList.filter(
-    (v) => !v.assignedStaffId || v.assignedStaffId === "unassigned" || v.assignedStaffId === ""
-  );
+  // ── DATE & LIFECYCLE CLASSIFICATION ──
+  const todayStr = new Date().toISOString().split("T")[0];
 
-  // Filtered visits
+  const isCancelled = (v: SiteVisit) => v.status === "cancelled";
+  const isCompleted = (v: SiteVisit) => ["completed", "completed_visited", "deal_won"].includes(v.status);
+  const isPast = (v: SiteVisit) => (v.appointmentDate < todayStr && !isCancelled(v)) || isCompleted(v);
+  const isConfirmed = (v: SiteVisit) => v.status === "confirmed" && !isPast(v) && !isCancelled(v);
+  const isNew = (v: SiteVisit) => !isCancelled(v) && !isCompleted(v) && !isConfirmed(v) && v.appointmentDate >= todayStr;
+  const isUpcoming = (v: SiteVisit) => v.appointmentDate >= todayStr && !isCancelled(v) && !isCompleted(v);
+  const isUnassigned = (v: SiteVisit) => !v.assignedStaffId || v.assignedStaffId === "unassigned" || v.assignedStaffId === "";
+
+  // Filtered arrays
+  const newVisits = visitsList.filter(isNew);
+  const confirmedVisits = visitsList.filter(isConfirmed);
+  const upcomingVisits = visitsList.filter(isUpcoming);
+  const pastVisits = visitsList.filter(isPast);
+  const cancelledVisits = visitsList.filter(isCancelled);
+  const unassignedVisits = visitsList.filter(isUnassigned);
+
+  // Active Filter Applied
   const filteredVisits = visitsList.filter((v) => {
+    // 1. Search term match
     const matchSearch =
       v.contactName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.contactPhone.includes(searchTerm) ||
+      v.contactPhone.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (v.assignedStaffName && v.assignedStaffName.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (v.serviceName && v.serviceName.toLowerCase().includes(searchTerm.toLowerCase()));
+    if (!matchSearch) return false;
 
-    if (statusFilter === "unassigned") {
-      const isUnassigned = !v.assignedStaffId || v.assignedStaffId === "unassigned" || v.assignedStaffId === "";
-      return matchSearch && isUnassigned;
-    }
-
-    const matchStatus = statusFilter === "all" || v.status === statusFilter;
-    return matchSearch && matchStatus;
+    // 2. Status category match
+    if (statusFilter === "new") return isNew(v);
+    if (statusFilter === "confirmed") return isConfirmed(v);
+    if (statusFilter === "upcoming") return isUpcoming(v);
+    if (statusFilter === "past") return isPast(v);
+    if (statusFilter === "cancelled") return isCancelled(v);
+    if (statusFilter === "unassigned") return isUnassigned(v);
+    return true; // "all"
   });
 
-  // KPI counts
-  const totalVisits = visitsList.length;
-  const completedVisits = visitsList.filter((v) => v.status === "completed_visited" || v.status === "deal_won").length;
-  const scheduledVisits = visitsList.filter((v) => v.status === "scheduled").length;
-  const activeStaffCount = staffList.filter((s) => s.isActive).length;
+  // Google Calendar Direct Event URL Generator
+  const getGoogleCalendarUrl = (visit: SiteVisit) => {
+    if (visit.googleCalendarEventId) {
+      const calendarEmail = gcalStatus?.email || "primary";
+      try {
+        const raw = `${visit.googleCalendarEventId} ${calendarEmail}`;
+        const eid = btoa(raw).replace(/=/g, "");
+        return `https://www.google.com/calendar/event?eid=${eid}`;
+      } catch (e) {
+        return `https://calendar.google.com/calendar/u/0/r/search?q=${encodeURIComponent(visit.contactName)}`;
+      }
+    }
+
+    if (visit.appointmentDate) {
+      const [y, m, d] = visit.appointmentDate.split("-");
+      if (y && m && d) {
+        return `https://calendar.google.com/calendar/u/0/r/day/${y}/${m}/${d}`;
+      }
+    }
+
+    return "https://calendar.google.com/calendar/u/0/r";
+  };
+
+  // Relative Date Helper
+  const getRelativeDateInfo = (dateStr: string, timeStr?: string) => {
+    if (!dateStr) return { label: "", badgeClass: "" };
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const aptDate = new Date(y, m - 1, d);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const diffDays = Math.round((aptDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const timeFormatted = timeStr ? ` ${timeStr.substring(0, 5)}` : "";
+
+    if (diffDays === 0) {
+      return {
+        label: `Today ${timeFormatted}`,
+        badgeClass: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 font-bold",
+        isToday: true,
+      };
+    }
+    if (diffDays === 1) {
+      return {
+        label: `Tomorrow ${timeFormatted}`,
+        badgeClass: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/40 font-semibold",
+        isTomorrow: true,
+      };
+    }
+    if (diffDays > 1) {
+      return {
+        label: `In ${diffDays} days (${dateStr}${timeFormatted})`,
+        badgeClass: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30",
+        isUpcoming: true,
+      };
+    }
+    if (diffDays === -1) {
+      return {
+        label: `Yesterday ${timeFormatted}`,
+        badgeClass: "bg-muted text-muted-foreground border-border",
+        isPast: true,
+      };
+    }
+    return {
+      label: `${Math.abs(diffDays)} days ago (${dateStr})`,
+      badgeClass: "bg-muted text-muted-foreground border-border",
+      isPast: true,
+    };
+  };
 
   return (
     <div className="space-y-6">
-      {/* ── TOP NOTIFICATION BANNER IF UNASSIGNED VISITS EXIST ── */}
+      {/* ── UNASSIGNED APPOINTMENTS TOP BANNER ── */}
       {unassignedVisits.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border border-amber-500/40 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-in fade-in duration-300">
-          <div className="flex items-start sm:items-center gap-3">
-            <div className="p-2.5 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl shrink-0 mt-0.5 sm:mt-0">
-              <Bell className="w-5 h-5 animate-bounce" />
+        <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent border border-amber-500/30 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-amber-500/20 text-amber-600 rounded-lg shrink-0 animate-pulse">
+              <AlertCircle className="w-5 h-5 text-amber-600" />
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h4 className="text-sm font-bold text-foreground">
-                  🚨 New Site Visit Notification: {unassignedVisits.length} Visit{unassignedVisits.length > 1 ? "s" : ""} Awaiting Staff Appointment!
-                </h4>
-                <Badge className="bg-amber-500 text-white border-none text-[10px] px-1.5 py-0 font-semibold">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm text-foreground">
+                  New Appointment Notification: {unassignedVisits.length} Appointment(s) Awaiting Staff Assignment!
+                </span>
+                <Badge className="bg-amber-500 text-white border-none text-[10px] px-1.5 py-0 font-bold">
                   Action Required
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Latest: <strong className="text-foreground">{unassignedVisits[0]?.contactName}</strong> ({unassignedVisits[0]?.contactPhone}) — {unassignedVisits[0]?.serviceName || "Site Visit"} scheduled for {unassignedVisits[0]?.appointmentDate} at {unassignedVisits[0]?.appointmentTime}.
+                Latest: <strong className="text-foreground">{unassignedVisits[0]?.contactName}</strong> ({unassignedVisits[0]?.contactPhone}) — {unassignedVisits[0]?.serviceName || "Appointment"} scheduled for {unassignedVisits[0]?.appointmentDate} at {unassignedVisits[0]?.appointmentTime}.
               </p>
             </div>
           </div>
@@ -463,7 +747,7 @@ export function SalesTeamSiteVisits() {
               className="h-8 text-xs gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-sm"
             >
               <UserCheck className="w-3.5 h-3.5" />
-              Appoint Staff Now
+              Assign Staff Now
             </Button>
             <Button
               variant="outline"
@@ -474,32 +758,34 @@ export function SalesTeamSiteVisits() {
               }}
               className="h-8 text-xs border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40"
             >
-              View All ({unassignedVisits.length})
+              View Unassigned ({unassignedVisits.length})
             </Button>
           </div>
         </div>
       )}
 
-      {/* Top Banner / Actions */}
+      {/* ── TOP HEADER & CONTROLS ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b">
         <div>
           <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-600" />
-            Sales Team & Site Visit Assignment
+            Staff & Appointments Management
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Real-time site visit alerts, executive auto-assignment, and instant 1-click WhatsApp briefings.
+            Real-time appointment alerts, staff assignment, Google Calendar sync, and instant WhatsApp briefings.
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {/* Refresh Button */}
           <Button
             variant="outline"
             size="sm"
             onClick={() => {
               refetchVisits();
               queryClient.invalidateQueries({ queryKey: ["/api/sales-team"] });
-              toast({ title: "Refreshed", description: "Checked for new visits and staff updates." });
+              refetchGCalStatus();
+              toast({ title: "Refreshed", description: "Checked for new appointments and staff updates." });
             }}
             className="h-8 gap-1.5 text-xs"
           >
@@ -507,27 +793,49 @@ export function SalesTeamSiteVisits() {
             Refresh
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => syncCalendarMutation.mutate()}
-            disabled={syncCalendarMutation.isPending}
-            title="Google Calendar auto-syncs in background every 30s. Click to force check now."
-            className="h-8 gap-1.5 text-xs border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium shadow-sm"
-          >
-            <span className="relative flex h-2 w-2 mr-0.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <CalendarDays className={`w-3.5 h-3.5 text-indigo-600 ${syncCalendarMutation.isPending ? "animate-spin" : ""}`} />
-            {syncCalendarMutation.isPending ? "Syncing..." : "Google Calendar (Auto-Syncing)"}
-          </Button>
+          {/* Google Calendar Status & 1-Click Sync */}
+          {gcalStatus?.connected ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => syncCalendarMutation.mutate()}
+              disabled={syncCalendarMutation.isPending}
+              title={`Connected as ${gcalStatus.email || 'Google User'}. Click to force sync now.`}
+              className="h-8 gap-1.5 text-xs border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 font-medium shadow-xs"
+            >
+              <span className="relative flex h-2 w-2 mr-0.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <CalendarDays className={`w-3.5 h-3.5 text-emerald-600 ${syncCalendarMutation.isPending ? "animate-spin" : ""}`} />
+              {syncCalendarMutation.isPending ? "Syncing..." : `Google Calendar (${gcalStatus.email?.split('@')[0] || 'Synced'})`}
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  const res = await apiRequest("GET", "/api/google-calendar/auth");
+                  const data = await res.json();
+                  if (data.url) window.location.href = data.url;
+                } catch (err: any) {
+                  toast({ title: "Connection Error", description: err.message, variant: "destructive" });
+                }
+              }}
+              className="h-8 gap-1.5 text-xs border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium"
+            >
+              <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+              Connect Google Calendar
+            </Button>
+          )}
 
+          {/* Company Email Setup */}
           <Button
             variant="outline"
             size="sm"
             onClick={() => setActiveSubTab("email")}
-            title={smtpData?.configured ? `Connected: ${smtpData.settings?.fromEmail}` : "Setup your company's own email gateway for site visits and briefings"}
+            title={smtpData?.configured ? `Connected: ${smtpData.settings?.fromEmail}` : "Setup company email gateway for briefings"}
             className={`h-8 gap-1.5 text-xs font-medium shadow-xs ${
               smtpData?.configured
                 ? "border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40"
@@ -545,187 +853,283 @@ export function SalesTeamSiteVisits() {
             )}
           </Button>
 
+          {/* Book New Appointment Button */}
           <Button
             size="sm"
             variant="outline"
-            onClick={() => setCreateVisitDialogOpen(true)}
-            className="h-8 gap-1.5 text-xs border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 font-medium"
+            onClick={() => {
+              setCreateVisitForm({
+                contactName: "",
+                contactPhone: "",
+                contactEmail: "",
+                serviceName: "",
+                appointmentDate: new Date().toISOString().split("T")[0],
+                appointmentTime: "",
+                staffId: "",
+                notes: "",
+                notifyWhatsApp: true,
+              });
+              setCreateVisitDialogOpen(true);
+            }}
+            className="h-8 gap-1.5 text-xs border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50 font-medium"
           >
-            <UserPlus className="w-3.5 h-3.5 text-blue-600" />
-            + Appoint New Visit
+            <Plus className="w-3.5 h-3.5 text-blue-600" />
+            + Book New Appointment
           </Button>
 
+          {/* Add Staff Button */}
           <Button
             size="sm"
             onClick={() => {
               resetStaffForm();
               setStaffDialogOpen(true);
             }}
-            className="h-8 gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm"
+            className="h-8 gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-xs"
           >
-            <Plus className="w-3.5 h-3.5" />
-            Add Sales Consultant
+            <UserPlus className="w-3.5 h-3.5" />
+            Add Staff Member
           </Button>
         </div>
       </div>
 
-      {/* KPI Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-blue-500/5 to-blue-500/10 border-blue-200/50">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">Total Site Visits</p>
-              <h3 className="text-2xl font-bold text-foreground mt-0.5">{totalVisits}</h3>
-            </div>
-            <div className="p-2.5 bg-blue-500/15 rounded-xl text-blue-600">
-              <CalendarDays className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
-
+      {/* ── ENTERPRISE STATS OVERVIEW CARDS ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* Total Appointments */}
         <Card 
-          onClick={() => {
-            setActiveSubTab("visits");
-            setStatusFilter("unassigned");
-          }}
-          className={`cursor-pointer transition-all ${
-            unassignedVisits.length > 0
-              ? "bg-gradient-to-br from-amber-500/10 to-orange-500/15 border-amber-300 dark:border-amber-600 shadow-sm ring-1 ring-amber-400/50"
-              : "bg-gradient-to-br from-amber-500/5 to-amber-500/10 border-amber-200/50"
-          }`}
+          onClick={() => { setActiveSubTab("visits"); setStatusFilter("all"); }}
+          className={`cursor-pointer transition-all hover:shadow-xs ${statusFilter === "all" ? "ring-2 ring-blue-500 bg-blue-500/5" : ""}`}
         >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-[11px] font-medium text-muted-foreground">Needs Staff Appointment</p>
-                {unassignedVisits.length > 0 && (
-                  <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-ping" />
-                )}
-              </div>
-              <h3 className="text-2xl font-bold text-amber-600 mt-0.5 flex items-center gap-1.5">
-                {unassignedVisits.length}
-                {unassignedVisits.length > 0 && (
-                  <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
-                    Pending
-                  </span>
-                )}
-              </h3>
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Total</span>
+              <CalendarDays className="w-4 h-4 text-blue-500" />
             </div>
-            <div className="p-2.5 bg-amber-500/15 rounded-xl text-amber-600">
-              <Clock className="w-5 h-5" />
-            </div>
+            <div className="text-xl font-bold mt-1 text-foreground">{visitsList.length}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">All Bookings</div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-emerald-500/5 to-emerald-500/10 border-emerald-200/50">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">Visits Completed / Won</p>
-              <h3 className="text-2xl font-bold text-emerald-600 mt-0.5">{completedVisits}</h3>
-            </div>
-            <div className="p-2.5 bg-emerald-500/15 rounded-xl text-emerald-600">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-purple-500/5 to-purple-500/10 border-purple-200/50">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">Active Consultants</p>
-              <h3 className="text-2xl font-bold text-purple-600 mt-0.5">{activeStaffCount}</h3>
-            </div>
-            <div className="p-2.5 bg-purple-500/15 rounded-xl text-purple-600">
-              <UserCheck className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Sub-Tab Navigation */}
-      <div className="flex border-b border-border/80">
-        <button
-          onClick={() => setActiveSubTab("visits")}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold border-b-2 transition-all ${
-            activeSubTab === "visits"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
+        {/* New / Pending */}
+        <Card 
+          onClick={() => { setActiveSubTab("visits"); setStatusFilter("new"); }}
+          className={`cursor-pointer transition-all hover:shadow-xs ${statusFilter === "new" ? "ring-2 ring-sky-500 bg-sky-500/5" : ""}`}
         >
-          <CalendarDays className="w-4 h-4" />
-          Site Visits & Appointments ({visitsList.length})
-          {unassignedVisits.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-bold ml-1">
-              {unassignedVisits.length}
-            </span>
-          )}
-        </button>
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-sky-700 dark:text-sky-400 uppercase tracking-wider">New</span>
+              <Clock className="w-4 h-4 text-sky-500" />
+            </div>
+            <div className="text-xl font-bold mt-1 text-sky-600 dark:text-sky-400">{newVisits.length}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">Awaiting Review</div>
+          </CardContent>
+        </Card>
 
-        <button
+        {/* Confirmed */}
+        <Card 
+          onClick={() => { setActiveSubTab("visits"); setStatusFilter("confirmed"); }}
+          className={`cursor-pointer transition-all hover:shadow-xs ${statusFilter === "confirmed" ? "ring-2 ring-emerald-500 bg-emerald-500/5" : ""}`}
+        >
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Confirmed</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            </div>
+            <div className="text-xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">{confirmedVisits.length}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">Ready to Attend</div>
+          </CardContent>
+        </Card>
+
+        {/* Upcoming (Today & Future) */}
+        <Card 
+          onClick={() => { setActiveSubTab("visits"); setStatusFilter("upcoming"); }}
+          className={`cursor-pointer transition-all hover:shadow-xs ${statusFilter === "upcoming" ? "ring-2 ring-indigo-500 bg-indigo-500/5" : ""}`}
+        >
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">Upcoming</span>
+              <CalendarClock className="w-4 h-4 text-indigo-500" />
+            </div>
+            <div className="text-xl font-bold mt-1 text-indigo-600 dark:text-indigo-400">{upcomingVisits.length}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">Today & Future</div>
+          </CardContent>
+        </Card>
+
+        {/* Past & Completed */}
+        <Card 
+          onClick={() => { setActiveSubTab("visits"); setStatusFilter("past"); }}
+          className={`cursor-pointer transition-all hover:shadow-xs ${statusFilter === "past" ? "ring-2 ring-purple-500 bg-purple-500/5" : ""}`}
+        >
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-purple-700 dark:text-purple-400 uppercase tracking-wider">Past</span>
+              <CalendarCheck className="w-4 h-4 text-purple-500" />
+            </div>
+            <div className="text-xl font-bold mt-1 text-purple-600 dark:text-purple-400">{pastVisits.length}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">Attended History</div>
+          </CardContent>
+        </Card>
+
+        {/* Active Staff */}
+        <Card 
           onClick={() => setActiveSubTab("team")}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold border-b-2 transition-all ${
-            activeSubTab === "team"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
+          className={`cursor-pointer transition-all hover:shadow-xs ${activeSubTab === "team" ? "ring-2 ring-blue-500 bg-blue-500/5" : ""}`}
         >
-          <Users className="w-4 h-4" />
-          Sales Executives & Field Team ({staffList.length})
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab("email")}
-          className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold border-b-2 transition-all ${
-            activeSubTab === "email"
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Mail className="w-4 h-4" />
-          Email Notifications &amp; Templates (SMTP)
-          {smtpData?.configured ? (
-            <span className="w-2 h-2 rounded-full bg-emerald-500 ml-1" title="Connected" />
-          ) : (
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-bold ml-1">
-              Setup
-            </span>
-          )}
-        </button>
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Staff</span>
+              <Users className="w-4 h-4 text-blue-500" />
+            </div>
+            <div className="text-xl font-bold mt-1 text-foreground">{staffList.filter(s => s.isActive).length}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">Active Team Members</div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* ── TAB 1: SITE VISITS & APPOINTMENTS ── */}
+      {/* ── MAIN SUB-TABS NAVIGATION ── */}
+      <div className="flex items-center justify-between border-b pb-1 gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Button
+            variant={activeSubTab === "visits" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveSubTab("visits")}
+            className="h-8 text-xs font-semibold gap-1.5"
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            Appointments & Bookings ({visitsList.length})
+          </Button>
+
+          <Button
+            variant={activeSubTab === "team" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveSubTab("team")}
+            className="h-8 text-xs font-semibold gap-1.5"
+          >
+            <Users className="w-3.5 h-3.5" />
+            Staff & Team Members ({staffList.length})
+          </Button>
+
+          <Button
+            variant={activeSubTab === "email" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveSubTab("email")}
+            className="h-8 text-xs font-semibold gap-1.5"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            Email Setup & Templates
+          </Button>
+        </div>
+      </div>
+
+      {/* ── TAB 1: APPOINTMENTS & BOOKINGS ── */}
       {activeSubTab === "visits" && (
         <div className="space-y-4">
-          {/* Search & Filter Bar + Quick Status Tabs */}
-          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-            <div className="relative w-full sm:w-72">
+          {/* Search Bar + Lifecycle Stage Filters */}
+          <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+            {/* Search Input */}
+            <div className="relative w-full lg:w-72">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search client, phone, consultant, project..."
+                placeholder="Search client, phone, staff, service..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9 h-8 text-xs"
               />
             </div>
 
-            {/* Quick Filter Buttons */}
-            <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto">
+            {/* Lifecycle Filter Buttons */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* New & Incoming */}
               <Button
-                variant={statusFilter === "all" ? "secondary" : "ghost"}
+                variant={statusFilter === "new" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setStatusFilter("all")}
-                className="h-7 text-xs px-2.5"
+                onClick={() => setStatusFilter("new")}
+                className={`h-7 text-xs px-2.5 gap-1.5 ${
+                  statusFilter === "new"
+                    ? "bg-sky-600 hover:bg-sky-700 text-white"
+                    : newVisits.length > 0
+                    ? "border-sky-500/40 text-sky-700 dark:text-sky-300 font-semibold"
+                    : ""
+                }`}
               >
-                All ({visitsList.length})
+                <Clock className="w-3 h-3 text-sky-500" />
+                New & Incoming
+                <Badge className="ml-1 bg-sky-500/20 text-sky-800 dark:text-sky-200 border-none text-[10px] px-1 py-0 font-bold">
+                  {newVisits.length}
+                </Badge>
               </Button>
 
+              {/* Confirmed */}
               <Button
-                variant={statusFilter === "unassigned" ? "secondary" : "ghost"}
+                variant={statusFilter === "confirmed" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setStatusFilter("confirmed")}
+                className={`h-7 text-xs px-2.5 gap-1.5 ${
+                  statusFilter === "confirmed"
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : "border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                Confirmed ({confirmedVisits.length})
+              </Button>
+
+              {/* Upcoming */}
+              <Button
+                variant={statusFilter === "upcoming" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setStatusFilter("upcoming")}
+                className={`h-7 text-xs px-2.5 gap-1.5 ${
+                  statusFilter === "upcoming"
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                    : "border-indigo-500/30 text-indigo-700 dark:text-indigo-300"
+                }`}
+              >
+                <CalendarClock className="w-3 h-3 text-indigo-500" />
+                Upcoming ({upcomingVisits.length})
+              </Button>
+
+              {/* Past Appointments */}
+              <Button
+                variant={statusFilter === "past" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setStatusFilter("past")}
+                className={`h-7 text-xs px-2.5 gap-1.5 ${
+                  statusFilter === "past"
+                    ? "bg-purple-600 hover:bg-purple-700 text-white"
+                    : "border-purple-500/30 text-purple-700 dark:text-purple-300"
+                }`}
+              >
+                <CalendarCheck className="w-3 h-3 text-purple-500" />
+                Past Appointments ({pastVisits.length})
+              </Button>
+
+              {/* Cancelled */}
+              <Button
+                variant={statusFilter === "cancelled" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setStatusFilter("cancelled")}
+                className={`h-7 text-xs px-2.5 gap-1.5 ${
+                  statusFilter === "cancelled"
+                    ? "bg-red-600 hover:bg-red-700 text-white"
+                    : cancelledVisits.length > 0
+                    ? "border-red-500/30 text-red-700 dark:text-red-300"
+                    : ""
+                }`}
+              >
+                <XCircle className="w-3 h-3 text-red-500" />
+                Cancelled ({cancelledVisits.length})
+              </Button>
+
+              {/* Needs Staff Filter */}
+              <Button
+                variant={statusFilter === "unassigned" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setStatusFilter("unassigned")}
-                className={`h-7 text-xs px-2.5 gap-1 ${
-                  unassignedVisits.length > 0
-                    ? "text-amber-600 font-semibold hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                className={`h-7 text-xs px-2.5 gap-1.5 ${
+                  statusFilter === "unassigned"
+                    ? "bg-amber-600 hover:bg-amber-700 text-white"
+                    : unassignedVisits.length > 0
+                    ? "border-amber-500/40 text-amber-700 dark:text-amber-400 font-semibold"
                     : ""
                 }`}
               >
@@ -733,35 +1137,37 @@ export function SalesTeamSiteVisits() {
                 Needs Staff ({unassignedVisits.length})
               </Button>
 
+              {/* All */}
               <Button
-                variant={statusFilter === "scheduled" ? "secondary" : "ghost"}
+                variant={statusFilter === "all" ? "secondary" : "ghost"}
                 size="sm"
-                onClick={() => setStatusFilter("scheduled")}
-                className="h-7 text-xs px-2.5"
+                onClick={() => setStatusFilter("all")}
+                className="h-7 text-xs px-2"
               >
-                Scheduled ({scheduledVisits})
-              </Button>
-
-              <Button
-                variant={statusFilter === "completed_visited" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setStatusFilter("completed_visited")}
-                className="h-7 text-xs px-2.5"
-              >
-                Visited ({completedVisits})
+                All ({visitsList.length})
               </Button>
             </div>
           </div>
 
-          {/* Visits Table / List */}
+          {/* Appointments List */}
           {filteredVisits.length === 0 ? (
             <Card className="border-dashed p-8 text-center text-muted-foreground">
-              <CalendarDays className="w-8 h-8 mx-auto text-muted-foreground/60 mb-2" />
-              <p className="text-sm font-medium">No site visits found matching criteria.</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {statusFilter === "unassigned"
-                  ? "Great job! All site visits currently have dedicated sales consultants appointed."
-                  : "When AI agents book site visits with callers, they will automatically appear here with assigned field consultants."}
+              <CalendarDays className="w-9 h-9 mx-auto text-muted-foreground/60 mb-2" />
+              <p className="text-sm font-semibold text-foreground">No appointments found in this category.</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                {statusFilter === "new"
+                  ? "No pending new appointments! All incoming bookings have been confirmed or attended."
+                  : statusFilter === "confirmed"
+                  ? "No confirmed appointments right now. Confirm appointments from the 'New & Incoming' queue."
+                  : statusFilter === "upcoming"
+                  ? "No upcoming appointments scheduled for today or upcoming dates."
+                  : statusFilter === "past"
+                  ? "No past appointments found in records."
+                  : statusFilter === "cancelled"
+                  ? "No cancelled appointments recorded."
+                  : statusFilter === "unassigned"
+                  ? "Great! All appointments currently have dedicated staff members assigned."
+                  : "When callers book appointments via AI voice calls or Google Calendar, they will automatically appear here."}
               </p>
               <Button
                 size="sm"
@@ -769,166 +1175,366 @@ export function SalesTeamSiteVisits() {
                 onClick={() => setCreateVisitDialogOpen(true)}
                 className="mt-3 text-xs gap-1.5"
               >
-                <Plus className="w-3.5 h-3.5" /> Book & Appoint Site Visit Manually
+                <Plus className="w-3.5 h-3.5" /> Book New Appointment
               </Button>
             </Card>
           ) : (
             <div className="space-y-3">
               {filteredVisits.map((visit) => {
-                const isUnassigned =
-                  !visit.assignedStaffId ||
-                  visit.assignedStaffId === "unassigned" ||
-                  visit.assignedStaffId === "";
+                const unassigned = isUnassigned(visit);
+                const confirmed = isConfirmed(visit);
+                const completed = isCompleted(visit);
+                const cancelled = isCancelled(visit);
+                const past = isPast(visit);
+                const relDate = getRelativeDateInfo(visit.appointmentDate, visit.appointmentTime);
 
                 return (
                   <Card 
                     key={visit.id} 
-                    className={`transition-all border-border/70 hover:shadow-sm ${
-                      isUnassigned 
-                        ? "border-l-4 border-l-amber-500 bg-amber-500/[0.02]" 
-                        : "hover:border-blue-500/30"
+                    className={`transition-all border hover:shadow-xs ${
+                      cancelled
+                        ? "border-l-4 border-l-red-500 bg-red-500/[0.02] opacity-85"
+                        : confirmed
+                        ? "border-l-4 border-l-emerald-500 bg-emerald-500/[0.02]"
+                        : completed
+                        ? "border-l-4 border-l-purple-500 bg-purple-500/[0.02]"
+                        : unassigned
+                        ? "border-l-4 border-l-amber-500 bg-amber-500/[0.02]"
+                        : "border-l-4 border-l-blue-500 hover:border-blue-500/40"
                     }`}
                   >
-                    <CardContent className="p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-                      {/* Left: Customer & Date Info */}
-                      <div className="space-y-1 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-foreground">{visit.contactName}</span>
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Phone className="w-3 h-3 text-muted-foreground/80" />
-                            {visit.contactPhone}
-                          </span>
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-                            {visit.serviceName || "Property Site Visit"}
-                          </Badge>
-                          {visit.googleCalendarEventId && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal border-blue-500/40 text-blue-600 dark:text-blue-400 gap-1">
-                              <CalendarDays className="w-2.5 h-2.5" />
-                              Google Calendar
-                            </Badge>
-                          )}
-                          {isUnassigned && (
-                            <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] px-1.5 py-0 font-semibold gap-1">
-                              <AlertCircle className="w-2.5 h-2.5 text-amber-500" />
-                              Awaiting Appointment
-                            </Badge>
-                          )}
+                    <CardContent className="p-4 space-y-3">
+                      {/* Top Row: Client Info, Relative Timing, and Status Badge */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                        {/* Client Identity & Contact */}
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          {/* Avatar Initials */}
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                            completed 
+                              ? "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300"
+                              : confirmed
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                              : cancelled
+                              ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+                              : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                          }`}>
+                            {visit.contactName ? visit.contactName.slice(0, 2).toUpperCase() : "AP"}
+                          </div>
+
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-foreground">{visit.contactName}</span>
+                              
+                              <Badge variant="outline" className={`text-[10px] px-2 py-0.5 border ${relDate.badgeClass}`}>
+                                <Clock className="w-2.5 h-2.5 mr-1" />
+                                {relDate.label}
+                              </Badge>
+
+                              {/* Google Calendar Direct Link Badge */}
+                              {visit.googleCalendarEventId ? (
+                                <a
+                                  href={getGoogleCalendarUrl(visit)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border border-indigo-500/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-500 transition-all cursor-pointer group shadow-2xs"
+                                  title="Click to open this exact booking in Google Calendar in a new tab"
+                                >
+                                  <CalendarDays className="w-3 h-3 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
+                                  <span>Google Calendar</span>
+                                  <ExternalLink className="w-2.5 h-2.5 text-indigo-500" />
+                                </a>
+                              ) : gcalStatus?.connected ? (
+                                <button
+                                  type="button"
+                                  onClick={() => pushToCalendarMutation.mutate(visit.id)}
+                                  disabled={pushToCalendarMutation.isPending}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border border-indigo-500/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors cursor-pointer"
+                                  title="Sync this appointment to Google Calendar"
+                                >
+                                  <CalendarDays className="w-3 h-3 text-indigo-500" />
+                                  <span>+ Sync to Google Calendar</span>
+                                </button>
+                              ) : null}
+                            </div>
+
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap mt-0.5">
+                              <a 
+                                href={`tel:${visit.contactPhone}`} 
+                                className="flex items-center gap-1 hover:text-foreground font-medium transition-colors"
+                              >
+                                <Phone className="w-3 h-3 text-muted-foreground" />
+                                {visit.contactPhone}
+                              </a>
+                              {visit.contactEmail && (
+                                <a 
+                                  href={`mailto:${visit.contactEmail}`}
+                                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                                >
+                                  <Mail className="w-3 h-3 text-muted-foreground" />
+                                  {visit.contactEmail}
+                                </a>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap pt-0.5">
-                          <span className="flex items-center gap-1 font-medium text-foreground/90">
-                            <CalendarDays className="w-3.5 h-3.5 text-blue-500" />
-                            {visit.appointmentDate} at {visit.appointmentTime}
-                          </span>
-                          {visit.notes && (
-                            <span className="truncate max-w-md text-[11px] text-muted-foreground">
-                              • {visit.notes}
-                            </span>
+                        {/* Status Badge */}
+                        <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
+                          {cancelled ? (
+                            <Badge className="bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 text-xs gap-1 py-1 px-2.5 font-semibold">
+                              <XCircle className="w-3.5 h-3.5 text-red-600" />
+                              Cancelled
+                            </Badge>
+                          ) : completed ? (
+                            <Badge className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 text-xs gap-1 py-1 px-2.5 font-semibold">
+                              <CalendarCheck className="w-3.5 h-3.5 text-purple-600" />
+                              {visit.status === "deal_won" ? "Deal Won / Converted" : "Completed / Attended"}
+                            </Badge>
+                          ) : confirmed ? (
+                            <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs gap-1 py-1 px-2.5 font-semibold">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              Confirmed
+                            </Badge>
+                          ) : unassigned ? (
+                            <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs gap-1 py-1 px-2.5 font-semibold">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                              Awaiting Staff
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 text-xs gap-1 py-1 px-2.5 font-semibold">
+                              <Clock className="w-3.5 h-3.5 text-sky-600" />
+                              New / Scheduled
+                            </Badge>
                           )}
                         </div>
                       </div>
 
-                      {/* Middle: Consultant Assignment Card & Status */}
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                        {/* Assigned Consultant Info or Appoint Button */}
-                        <div className="text-left">
-                          <Label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">
-                            Assigned Consultant
-                          </Label>
+                      {/* Middle Details Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-2.5 rounded-lg bg-muted/40 border text-xs">
+                        {/* Service & Purpose */}
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                            Service / Purpose
+                          </span>
+                          <div className="font-semibold text-foreground flex items-center gap-1.5">
+                            <Building className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                            <span>{visit.serviceName || "Scheduled Appointment"}</span>
+                          </div>
+                          <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+                            <CalendarDays className="w-3 h-3 text-muted-foreground" />
+                            <span>{visit.appointmentDate} at {visit.appointmentTime} ({visit.duration || 30} mins)</span>
+                          </div>
+                        </div>
 
-                          {isUnassigned ? (
-                            <Button
-                              size="sm"
-                              onClick={() => openAppointModal(visit)}
-                              className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white font-medium gap-1.5 shadow-sm"
-                            >
-                              <UserCheck className="w-3.5 h-3.5" />
-                              Appoint Staff
-                            </Button>
-                          ) : (
-                            <div className="flex items-center gap-1.5 bg-blue-500/10 dark:bg-blue-950/40 border border-blue-500/20 px-2.5 py-1 rounded-md">
-                              <UserCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                              <div className="text-xs">
-                                <span className="font-semibold text-foreground">{visit.assignedStaffName}</span>
-                                {visit.assignedStaffPhone && (
-                                  <span className="text-[10px] text-muted-foreground ml-1">
-                                    ({visit.assignedStaffPhone})
-                                  </span>
-                                )}
-                              </div>
+                        {/* Assigned Staff Member */}
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                            Assigned Staff Member
+                          </span>
+                          {unassigned ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-amber-600 dark:text-amber-400 font-medium text-xs">
+                                No staff assigned yet
+                              </span>
                               <Button
-                                variant="ghost"
                                 size="sm"
                                 onClick={() => openAppointModal(visit)}
-                                title="Change Consultant"
-                                className="h-5 px-1.5 text-[10px] text-blue-600 hover:text-blue-700 hover:bg-blue-500/15"
+                                className="h-6 text-[11px] px-2 bg-amber-600 hover:bg-amber-700 text-white font-medium"
                               >
-                                Change
+                                + Appoint Staff
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  if (confirm(`Unassign staff for ${visit.contactName}? This will move the visit to 'Needs Staff Appointment'.`)) {
-                                    unassignVisitMutation.mutate(visit.id);
-                                  }
-                                }}
-                                title="Unassign Consultant"
-                                className="h-5 px-1.5 text-[10px] text-amber-600 hover:text-amber-700 hover:bg-amber-500/15"
-                              >
-                                Unassign
-                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <div>
+                                  <span className="font-semibold text-foreground">{visit.assignedStaffName}</span>
+                                  {visit.assignedStaffPhone && (
+                                    <span className="text-[11px] text-muted-foreground ml-1">
+                                      ({visit.assignedStaffPhone})
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => openAppointModal(visit)}
+                                  className="h-5 px-1.5 text-[10px] text-blue-600 hover:text-blue-700"
+                                >
+                                  Change
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    if (confirm(`Unassign staff for ${visit.contactName}?`)) {
+                                      unassignVisitMutation.mutate(visit.id);
+                                    }
+                                  }}
+                                  className="h-5 px-1.5 text-[10px] text-amber-600 hover:text-amber-700"
+                                >
+                                  Unassign
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </div>
 
-                        {/* Status Dropdown */}
-                        <div>
-                          <Label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">
-                            Visit Status
-                          </Label>
-                          <Select
-                            value={visit.status}
-                            onValueChange={(val) => updateStatusMutation.mutate({ visitId: visit.id, status: val })}
-                          >
-                            <SelectTrigger className="h-7 text-xs w-36 font-medium">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="scheduled">Scheduled</SelectItem>
-                              <SelectItem value="completed_visited">Visited</SelectItem>
-                              <SelectItem value="interested_followup">Interested</SelectItem>
-                              <SelectItem value="deal_won">Deal Won</SelectItem>
-                              <SelectItem value="cancelled">Cancelled</SelectItem>
-                            </SelectContent>
-                          </Select>
+                        {/* Booking Notes / Call Transcript Summary */}
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                            Booking Notes & Requirements
+                          </span>
+                          <p className="text-[11px] text-muted-foreground line-clamp-2">
+                            {visit.notes || "Standard appointment booking."}
+                          </p>
                         </div>
                       </div>
 
-                      {/* Right: WhatsApp 1-Click Dispatch Buttons */}
-                      <div className="flex items-center gap-1.5 self-end lg:self-center shrink-0">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => sendStaffWhatsApp(visit)}
-                          disabled={isUnassigned}
-                          title={isUnassigned ? "Appoint a consultant first to notify staff" : "Notify Assigned Sales Executive on WhatsApp"}
-                          className="h-8 text-xs gap-1.5 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 disabled:opacity-50"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                          Notify Staff
-                        </Button>
+                      {/* Cancellation Reason or Completion Outcome Banner */}
+                      {cancelled && visit.statusReason && (
+                        <div className="p-2 rounded-md bg-red-500/10 border border-red-500/20 text-xs text-red-700 dark:text-red-300 flex items-start gap-2">
+                          <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="font-semibold">Cancellation Reason:</strong> {visit.statusReason}
+                          </div>
+                        </div>
+                      )}
 
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => sendClientWhatsApp(visit)}
-                          title="Send Confirmation & Consultant Details to Client on WhatsApp"
-                          className="h-8 text-xs gap-1.5 border-blue-500/30 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                        >
-                          <Send className="w-3.5 h-3.5 text-blue-600" />
-                          Notify Client
-                        </Button>
+                      {completed && (
+                        <div className="p-2 rounded-md bg-purple-500/10 border border-purple-500/20 text-xs text-purple-700 dark:text-purple-300 flex items-start gap-2">
+                          <CalendarCheck className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="font-semibold">Meeting Outcome:</strong> {visit.statusReason || "Appointment completed successfully."}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Bottom Action Controls Toolbar */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t">
+                        {/* Left Actions: Lifecycle status updates */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* Confirm Button (for New/Scheduled) */}
+                          {!confirmed && !completed && !cancelled && (
+                            <Button
+                              size="sm"
+                              onClick={() => confirmAppointmentMutation.mutate(visit.id)}
+                              disabled={confirmAppointmentMutation.isPending}
+                              className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Confirm Appointment
+                            </Button>
+                          )}
+
+                          {/* Direct Google Calendar Button */}
+                          {visit.googleCalendarEventId ? (
+                            <a
+                              href={getGoogleCalendarUrl(visit)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="h-7 inline-flex items-center gap-1.5 px-2.5 rounded-md text-xs font-semibold border border-indigo-500/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-500/60 transition-all cursor-pointer shadow-2xs group"
+                              title="Click to open and view this exact booking in Google Calendar"
+                            >
+                              <CalendarDays className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
+                              <span>View in Google Calendar</span>
+                              <ExternalLink className="w-3 h-3 text-indigo-500" />
+                            </a>
+                          ) : gcalStatus?.connected ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => pushToCalendarMutation.mutate(visit.id)}
+                              disabled={pushToCalendarMutation.isPending}
+                              className="h-7 text-xs gap-1 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                              title="Push this booking to Google Calendar"
+                            >
+                              <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+                              {pushToCalendarMutation.isPending ? "Syncing..." : "Sync to Google Calendar"}
+                            </Button>
+                          ) : null}
+
+                          {/* Mark Completed Button */}
+                          {!completed && !cancelled && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openCompleteModal(visit)}
+                              className="h-7 text-xs gap-1 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40"
+                            >
+                              <CalendarCheck className="w-3.5 h-3.5 text-purple-600" />
+                              Mark Attended / Completed
+                            </Button>
+                          )}
+
+                          {/* Reschedule Button */}
+                          {!completed && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openRescheduleModal(visit)}
+                              className="h-7 text-xs gap-1 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                            >
+                              <CalendarClock className="w-3.5 h-3.5 text-indigo-600" />
+                              Reschedule
+                            </Button>
+                          )}
+
+                          {/* Cancel Button */}
+                          {!cancelled && !completed && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openCancelModal(visit)}
+                              className="h-7 text-xs gap-1 border-red-500/30 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
+                            >
+                              <XCircle className="w-3.5 h-3.5 text-red-500" />
+                              Cancel
+                            </Button>
+                          )}
+
+                          {/* Reopen Button for Cancelled */}
+                          {cancelled && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openRescheduleModal(visit)}
+                              className="h-7 text-xs gap-1 border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
+                              Reopen & Reschedule
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* Right Actions: 1-Click WhatsApp Dispatches */}
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => sendStaffWhatsApp(visit)}
+                            disabled={unassigned}
+                            title={unassigned ? "Assign staff first to notify" : "Send WhatsApp briefing to assigned staff"}
+                            className="h-7 text-xs gap-1.5 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 disabled:opacity-40"
+                          >
+                            <MessageSquare className="w-3 h-3 text-emerald-600" />
+                            Notify Staff
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => sendClientWhatsApp(visit)}
+                            title="Send WhatsApp confirmation & staff details to client"
+                            className="h-7 text-xs gap-1.5 border-blue-500/30 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                          >
+                            <Send className="w-3 h-3 text-blue-600" />
+                            Notify Client
+                          </Button>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -939,15 +1545,15 @@ export function SalesTeamSiteVisits() {
         </div>
       )}
 
-      {/* ── TAB 2: SALES EXECUTIVES & FIELD TEAM ── */}
+      {/* ── TAB 2: STAFF & TEAM MEMBERS ── */}
       {activeSubTab === "team" && (
         <div className="space-y-4">
           {staffList.length === 0 ? (
             <Card className="border-dashed p-8 text-center text-muted-foreground">
               <Users className="w-8 h-8 mx-auto text-muted-foreground/60 mb-2" />
-              <p className="text-sm font-medium">No sales consultants added yet.</p>
+              <p className="text-sm font-medium">No staff members added yet.</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Add your field executives to automatically assign them to incoming customer site visits.
+                Add your team members, doctors, or consultants to assign them to incoming customer appointments.
               </p>
               <Button
                 size="sm"
@@ -957,7 +1563,7 @@ export function SalesTeamSiteVisits() {
                 }}
                 className="mt-3 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
               >
-                <Plus className="w-3.5 h-3.5" /> Add First Executive
+                <Plus className="w-3.5 h-3.5" /> Add First Staff Member
               </Button>
             </Card>
           ) : (
@@ -969,7 +1575,7 @@ export function SalesTeamSiteVisits() {
                       <div className="flex items-center gap-2">
                         <CardTitle className="text-base font-semibold">{staff.name}</CardTitle>
                         {staff.isActive ? (
-                          <Badge className="bg-emerald-500/15 text-emerald-600 border-none text-[10px] px-1.5 py-0">
+                          <Badge className="bg-emerald-500/15 text-emerald-600 border-none text-[10px] px-1.5 py-0 font-semibold">
                             Active
                           </Badge>
                         ) : (
@@ -1033,10 +1639,10 @@ export function SalesTeamSiteVisits() {
                       )}
                     </div>
 
-                    {/* Assigned Projects */}
+                    {/* Assigned Services/Projects */}
                     {Array.isArray(staff.assignedProjects) && staff.assignedProjects.length > 0 && (
                       <div className="pt-1">
-                        <p className="text-[10px] text-muted-foreground uppercase font-medium mb-1">Assigned Projects</p>
+                        <p className="text-[10px] text-muted-foreground uppercase font-medium mb-1">Specialties & Services</p>
                         <div className="flex flex-wrap gap-1">
                           {staff.assignedProjects.map((proj, idx) => (
                             <Badge key={idx} variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
@@ -1049,8 +1655,8 @@ export function SalesTeamSiteVisits() {
 
                     {/* Bottom Stats */}
                     <div className="pt-2 border-t flex items-center justify-between text-[11px]">
-                      <span className="text-muted-foreground">Assigned Site Visits:</span>
-                      <span className="font-semibold text-blue-600">{staff.totalVisitsCount || 0} Visits</span>
+                      <span className="text-muted-foreground">Assigned Appointments:</span>
+                      <span className="font-semibold text-blue-600">{staff.totalVisitsCount || 0}</span>
                     </div>
                   </CardContent>
                 </Card>
@@ -1060,34 +1666,36 @@ export function SalesTeamSiteVisits() {
         </div>
       )}
 
-      {/* ── TAB 3: EMAIL NOTIFICATIONS & DYNAMIC TEMPLATES (SMTP) ── */}
+      {/* ── TAB 3: EMAIL SETUP & TEMPLATES ── */}
       {activeSubTab === "email" && (
         <EmailNotificationManager />
       )}
 
-      {/* ── APPOINT CONSULTANT DIALOG MODAL ── */}
+      {/* ════════════════════════════════════════════════════════════
+          DIALOG 1: APPOINT / REASSIGN STAFF MEMBER
+      ════════════════════════════════════════════════════════════ */}
       <Dialog open={appointDialogOpen} onOpenChange={setAppointDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold flex items-center gap-2">
-              <UserCheck className="w-5 h-5 text-blue-600" />
-              Appoint Sales Consultant to Site Visit
+              <UserCheck className="w-4 h-4 text-blue-600" />
+              Assign Staff Member
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Assign an on-ground property consultant to coordinate this client's site visit and send instant briefings.
+              Assign a staff member, doctor, or consultant to attend this customer's appointment.
             </DialogDescription>
           </DialogHeader>
 
           {selectedVisitForAppoint && (
             <div className="space-y-4 py-2 text-xs">
-              {/* Visit Summary Box */}
+              {/* Summary Box */}
               <div className="p-3 rounded-lg bg-muted/60 border space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-foreground text-sm">
                     {selectedVisitForAppoint.contactName}
                   </span>
                   <Badge variant="outline" className="text-[10px] font-normal">
-                    {selectedVisitForAppoint.serviceName || "Site Visit"}
+                    {selectedVisitForAppoint.serviceName || "Appointment"}
                   </Badge>
                 </div>
                 <div className="flex items-center gap-4 text-muted-foreground flex-wrap">
@@ -1095,220 +1703,84 @@ export function SalesTeamSiteVisits() {
                     <Phone className="w-3 h-3 text-muted-foreground" />
                     {selectedVisitForAppoint.contactPhone}
                   </span>
-                  <span className="flex items-center gap-1 font-medium text-foreground">
+                  <span className="flex items-center gap-1">
                     <CalendarDays className="w-3 h-3 text-blue-500" />
                     {selectedVisitForAppoint.appointmentDate} at {selectedVisitForAppoint.appointmentTime}
                   </span>
                 </div>
-                {selectedVisitForAppoint.notes && (
-                  <p className="text-[11px] text-muted-foreground pt-1 border-t mt-1">
-                    <strong>Customer Request:</strong> {selectedVisitForAppoint.notes}
-                  </p>
-                )}
               </div>
 
-              {/* Staff Selection */}
-              <div>
-                <Label className="text-[11px] font-semibold">Select Consultant to Appoint *</Label>
-                <div className="mt-1.5 space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {/* Option to Leave Unassigned */}
-                  <div
-                    onClick={() => setAppointForm({ ...appointForm, staffId: "unassigned" })}
-                    className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
-                      appointForm.staffId === "unassigned"
-                        ? "border-amber-600 bg-amber-500/10 ring-1 ring-amber-500/40"
-                        : "border-border hover:border-amber-500/30"
-                    }`}
-                  >
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground text-xs">⚠️ Leave Unassigned</span>
-                        <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-none text-[9px] px-1 py-0 font-medium">
-                          Needs Staff Queue
-                        </Badge>
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        Keep in Needs Staff queue so an executive can be assigned manually later.
-                      </div>
-                    </div>
-
-                    <div className="shrink-0 pl-2">
-                      {appointForm.staffId === "unassigned" ? (
-                        <div className="h-4 w-4 rounded-full bg-amber-600 text-white flex items-center justify-center">
-                          <Check className="w-2.5 h-2.5" />
-                        </div>
-                      ) : (
-                        <div className="h-4 w-4 rounded-full border border-muted-foreground/40" />
-                      )}
-                    </div>
-                  </div>
-                  {staffList
-                    .filter((s) => s.isActive)
-                    .map((staff) => {
-                      const isSelected = appointForm.staffId === staff.id;
-                      const visitText = `${selectedVisitForAppoint.serviceName || ""} ${selectedVisitForAppoint.notes || ""}`.toLowerCase();
-                      const projectMatch =
-                        Array.isArray(staff.assignedProjects) &&
-                        staff.assignedProjects.some((p) => visitText.includes(p.toLowerCase()));
-
-                      return (
-                        <div
-                          key={staff.id}
-                          onClick={() => setAppointForm({ ...appointForm, staffId: staff.id })}
-                          className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
-                            isSelected
-                              ? "border-blue-600 bg-blue-500/10 ring-1 ring-blue-500/40"
-                              : "border-border hover:border-blue-500/30"
-                          }`}
-                        >
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-foreground text-xs">{staff.name}</span>
-                              <span className="text-[10px] text-muted-foreground">({staff.role})</span>
-                              {projectMatch && (
-                                <Badge className="bg-emerald-500/15 text-emerald-600 border-none text-[9px] px-1 py-0 font-medium">
-                                  🎯 Project Match
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground flex items-center gap-2">
-                              <span>📞 {staff.phone}</span>
-                              {staff.city && <span>📍 {staff.city}</span>}
-                              <span>• {staff.totalVisitsCount || 0} visits completed</span>
-                            </div>
-                          </div>
-
-                          <div className="shrink-0 pl-2">
-                            {isSelected ? (
-                              <div className="h-4 w-4 rounded-full bg-blue-600 text-white flex items-center justify-center">
-                                <Check className="w-2.5 h-2.5" />
-                              </div>
-                            ) : (
-                              <div className="h-4 w-4 rounded-full border border-muted-foreground/40" />
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                  {staffList.filter((s) => s.isActive).length === 0 && (
-                    <div className="p-4 border border-dashed rounded-lg text-center text-muted-foreground">
-                      No active consultants available. Please add a consultant first.
-                    </div>
-                  )}
-                </div>
+              {/* Staff Select */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Select Staff Member *</Label>
+                <Select
+                  value={appointForm.staffId}
+                  onValueChange={(val) => setAppointForm({ ...appointForm, staffId: val })}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="-- Select Staff Member --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned" className="text-amber-600 font-medium">
+                      -- Assign Later (Unassigned) --
+                    </SelectItem>
+                    {staffList
+                      .filter((s) => s.isActive)
+                      .map((staff) => (
+                        <SelectItem key={staff.id} value={staff.id}>
+                          {staff.name} — {staff.role} ({staff.phone})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              {/* Customer Email Input */}
-              <div>
-                <Label className="text-[11px] font-semibold flex items-center justify-between">
-                  <span>Customer Email Address (For Confirmation Email)</span>
-                  {selectedVisitForAppoint.contactEmail && (
-                    <Badge variant="outline" className="text-[9px] font-normal text-emerald-600 border-emerald-500/30">
-                      Auto-detected
-                    </Badge>
-                  )}
-                </Label>
+              {/* Client Email for Confirmation */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Customer Email Address</Label>
                 <Input
                   type="email"
                   placeholder="customer@example.com"
                   value={appointForm.clientEmail}
                   onChange={(e) => setAppointForm({ ...appointForm, clientEmail: e.target.value })}
-                  className="h-8 mt-1 text-xs"
+                  className="h-8 text-xs"
                 />
               </div>
 
-              {/* Special Instructions / Notes */}
-              <div>
-                <Label className="text-[11px] font-semibold">Instructions for Sales Executive (Optional)</Label>
+              {/* Admin Instructions / Notes */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Instructions for Assigned Staff</Label>
                 <Textarea
-                  placeholder="e.g. Client is interested in 3BHK tower A, high floor. Keep brochure and pricing sheet ready..."
+                  placeholder="Special instructions, patient history, client budget, or meeting agenda..."
                   value={appointForm.notes}
                   onChange={(e) => setAppointForm({ ...appointForm, notes: e.target.value })}
-                  className="text-xs h-16 resize-none mt-1"
+                  rows={3}
+                  className="text-xs resize-none"
                 />
               </div>
 
-              {/* Automated Email Notifications */}
-              {(() => {
-                const selectedStaffObj = staffList.find((s) => s.id === appointForm.staffId);
-                return (
-                  <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 space-y-2">
-                    <span className="text-[11px] font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
-                      <Mail className="w-3.5 h-3.5 text-blue-600" />
-                      Automated Email Dispatches (Live SMTP)
-                    </span>
-
-                    <div className="flex items-center space-x-2 pt-0.5">
-                      <Checkbox
-                        id="sendEmailToStaff"
-                        checked={appointForm.sendEmailToStaff}
-                        onCheckedChange={(checked) =>
-                          setAppointForm({ ...appointForm, sendEmailToStaff: Boolean(checked) })
-                        }
-                      />
-                      <label htmlFor="sendEmailToStaff" className="text-[11px] text-foreground cursor-pointer font-medium">
-                        Send briefing email to Executive{" "}
-                        {selectedStaffObj?.email ? (
-                          <span className="text-blue-600 dark:text-blue-400 font-semibold">({selectedStaffObj.email})</span>
-                        ) : (
-                          <span className="text-amber-600 dark:text-amber-400 font-normal">(No email in profile)</span>
-                        )}
-                      </label>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="sendEmailToClient"
-                        checked={appointForm.sendEmailToClient}
-                        onCheckedChange={(checked) =>
-                          setAppointForm({ ...appointForm, sendEmailToClient: Boolean(checked) })
-                        }
-                      />
-                      <label htmlFor="sendEmailToClient" className="text-[11px] text-foreground cursor-pointer font-medium">
-                        Send confirmation email to Customer{" "}
-                        {appointForm.clientEmail?.trim() ? (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">({appointForm.clientEmail.trim()})</span>
-                        ) : (
-                          <span className="text-amber-600 dark:text-amber-400 font-normal">(Enter email above)</span>
-                        )}
-                      </label>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Instant WhatsApp Alerts Checkboxes */}
-              <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 space-y-2">
-                <span className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                  Instant 1-Click WhatsApp Dispatches
-                </span>
-
-                <div className="flex items-center space-x-2 pt-0.5">
-                  <Checkbox
-                    id="notifyStaff"
-                    checked={appointForm.notifyStaffWhatsApp}
-                    onCheckedChange={(checked) =>
-                      setAppointForm({ ...appointForm, notifyStaffWhatsApp: Boolean(checked) })
-                    }
+              {/* Notification Toggles */}
+              <div className="pt-2 border-t space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs">Send Email Confirmation to Customer</span>
+                  <Switch
+                    checked={appointForm.sendEmailToClient}
+                    onCheckedChange={(checked) => setAppointForm({ ...appointForm, sendEmailToClient: checked })}
                   />
-                  <label htmlFor="notifyStaff" className="text-[11px] text-foreground cursor-pointer font-medium">
-                    Send briefing with client phone & site details to Executive on WhatsApp
-                  </label>
                 </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="notifyClient"
-                    checked={appointForm.notifyClientWhatsApp}
-                    onCheckedChange={(checked) =>
-                      setAppointForm({ ...appointForm, notifyClientWhatsApp: Boolean(checked) })
-                    }
+                <div className="flex items-center justify-between">
+                  <span className="text-xs">Send Email Briefing to Assigned Staff</span>
+                  <Switch
+                    checked={appointForm.sendEmailToStaff}
+                    onCheckedChange={(checked) => setAppointForm({ ...appointForm, sendEmailToStaff: checked })}
                   />
-                  <label htmlFor="notifyClient" className="text-[11px] text-foreground cursor-pointer font-medium">
-                    Send confirmation with assigned Executive's name & phone to Customer
-                  </label>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs">Auto-Open WhatsApp Briefing for Staff</span>
+                  <Switch
+                    checked={appointForm.notifyStaffWhatsApp}
+                    onCheckedChange={(checked) => setAppointForm({ ...appointForm, notifyStaffWhatsApp: checked })}
+                  />
                 </div>
               </div>
             </div>
@@ -1320,7 +1792,7 @@ export function SalesTeamSiteVisits() {
             </Button>
             <Button
               size="sm"
-              disabled={!appointForm.staffId || assignVisitMutation.isPending}
+              disabled={assignVisitMutation.isPending}
               onClick={() => {
                 if (selectedVisitForAppoint) {
                   assignVisitMutation.mutate({
@@ -1333,135 +1805,341 @@ export function SalesTeamSiteVisits() {
                   });
                 }
               }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+              className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
             >
-              {assignVisitMutation.isPending ? "Appointing..." : "Confirm & Appoint Staff"}
+              <UserCheck className="w-3.5 h-3.5" />
+              {assignVisitMutation.isPending ? "Assigning..." : "Confirm & Save Assignment"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── MANUAL NEW SITE VISIT CREATION DIALOG ── */}
-      <Dialog open={createVisitDialogOpen} onOpenChange={setCreateVisitDialogOpen}>
+      {/* ════════════════════════════════════════════════════════════
+          DIALOG 2: RESCHEDULE APPOINTMENT
+      ════════════════════════════════════════════════════════════ */}
+      <Dialog open={rescheduleDialogOpen} onOpenChange={setRescheduleDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold flex items-center gap-2">
-              <CalendarDays className="w-5 h-5 text-blue-600" />
-              Book & Appoint New Site Visit
+              <CalendarClock className="w-4 h-4 text-indigo-600" />
+              Reschedule Appointment
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Manually schedule a customer property visit and assign a sales executive.
+              Change the scheduled date and time for {selectedVisitForReschedule?.contactName}.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-2 text-xs">
-            <div>
-              <Label className="text-[11px]">Customer Full Name *</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">New Date *</Label>
+                <Input
+                  type="date"
+                  value={rescheduleForm.appointmentDate}
+                  onChange={(e) => setRescheduleForm({ ...rescheduleForm, appointmentDate: e.target.value })}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">New Time *</Label>
+                <Input
+                  type="time"
+                  value={rescheduleForm.appointmentTime}
+                  onChange={(e) => setRescheduleForm({ ...rescheduleForm, appointmentTime: e.target.value })}
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Reason / Reschedule Notes</Label>
+              <Textarea
+                placeholder="Reason for rescheduling or customer preference..."
+                value={rescheduleForm.notes}
+                onChange={(e) => setRescheduleForm({ ...rescheduleForm, notes: e.target.value })}
+                rows={3}
+                className="text-xs resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setRescheduleDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={rescheduleAppointmentMutation.isPending}
+              onClick={() => {
+                if (selectedVisitForReschedule) {
+                  rescheduleAppointmentMutation.mutate({
+                    visitId: selectedVisitForReschedule.id,
+                    appointmentDate: rescheduleForm.appointmentDate,
+                    appointmentTime: rescheduleForm.appointmentTime,
+                    notes: rescheduleForm.notes,
+                  });
+                }
+              }}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              {rescheduleAppointmentMutation.isPending ? "Rescheduling..." : "Save New Schedule"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ════════════════════════════════════════════════════════════
+          DIALOG 3: CANCEL APPOINTMENT
+      ════════════════════════════════════════════════════════════ */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold flex items-center gap-2 text-red-600">
+              <XCircle className="w-4 h-4 text-red-600" />
+              Cancel Appointment
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Are you sure you want to cancel the appointment for{" "}
+              <strong className="text-foreground">{selectedVisitForCancel?.contactName}</strong>?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Select or Enter Reason for Cancellation</Label>
+              <Select onValueChange={(val) => setCancelReason(val)}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="-- Quick Reasons --" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Customer requested cancellation">Customer requested cancellation</SelectItem>
+                  <SelectItem value="Customer not reachable / no answer">Customer not reachable / no answer</SelectItem>
+                  <SelectItem value="Customer no longer interested">Customer no longer interested</SelectItem>
+                  <SelectItem value="Staff unavailable / scheduling conflict">Staff unavailable / scheduling conflict</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Detailed Cancellation Notes</Label>
+              <Textarea
+                placeholder="Enter cancellation reason or feedback..."
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={3}
+                className="text-xs resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setCancelDialogOpen(false)}>
+              Keep Appointment
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={cancelAppointmentMutation.isPending}
+              onClick={() => {
+                if (selectedVisitForCancel) {
+                  cancelAppointmentMutation.mutate({
+                    visitId: selectedVisitForCancel.id,
+                    reason: cancelReason || "Cancelled by user",
+                  });
+                }
+              }}
+            >
+              {cancelAppointmentMutation.isPending ? "Cancelling..." : "Confirm Cancellation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ════════════════════════════════════════════════════════════
+          DIALOG 4: MARK COMPLETED / ATTENDED OUTCOME
+      ════════════════════════════════════════════════════════════ */}
+      <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold flex items-center gap-2 text-purple-700 dark:text-purple-300">
+              <CalendarCheck className="w-4 h-4 text-purple-600" />
+              Record Appointment Outcome
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Mark appointment as attended/completed and save notes to historical records.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Outcome Status *</Label>
+              <Select value={completeOutcome} onValueChange={setCompleteOutcome}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="completed_visited">Attended & Completed</SelectItem>
+                  <SelectItem value="deal_won">Deal Won / Converted</SelectItem>
+                  <SelectItem value="interested_followup">Interested - Follow-up Needed</SelectItem>
+                  <SelectItem value="no_show">Client Did Not Attend (No-show)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Meeting Notes & Summary</Label>
+              <Textarea
+                placeholder="What happened during the meeting? Any follow-up tasks or feedback..."
+                value={completeNotes}
+                onChange={(e) => setCompleteNotes(e.target.value)}
+                rows={3}
+                className="text-xs resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setCompleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={completeAppointmentMutation.isPending}
+              onClick={() => {
+                if (selectedVisitForComplete) {
+                  completeAppointmentMutation.mutate({
+                    visitId: selectedVisitForComplete.id,
+                    status: completeOutcome,
+                    statusReason: completeNotes,
+                  });
+                }
+              }}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              {completeAppointmentMutation.isPending ? "Saving..." : "Save Outcome"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ════════════════════════════════════════════════════════════
+          DIALOG 5: MANUAL BOOK NEW APPOINTMENT
+      ════════════════════════════════════════════════════════════ */}
+      <Dialog open={createVisitDialogOpen} onOpenChange={setCreateVisitDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold flex items-center gap-2">
+              <CalendarDays className="w-4 h-4 text-blue-600" />
+              Book & Schedule New Appointment
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Manually schedule a customer appointment and assign a staff member.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Customer Full Name *</Label>
               <Input
-                placeholder="e.g. Vikas Sharma"
+                placeholder="e.g. John Doe / Amit Sharma"
                 value={createVisitForm.contactName}
                 onChange={(e) => setCreateVisitForm({ ...createVisitForm, contactName: e.target.value })}
-                className="h-8 mt-1"
+                className="h-8 text-xs"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-[11px]">Customer Mobile *</Label>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Phone Number *</Label>
                 <Input
-                  placeholder="+91 9876543210"
+                  placeholder="e.g. +91 98765 43210"
                   value={createVisitForm.contactPhone}
                   onChange={(e) => setCreateVisitForm({ ...createVisitForm, contactPhone: e.target.value })}
-                  className="h-8 mt-1"
+                  className="h-8 text-xs"
                 />
               </div>
-
-              <div>
-                <Label className="text-[11px]">Customer Email (Optional)</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Email Address</Label>
                 <Input
-                  placeholder="vikas@example.com"
+                  type="email"
+                  placeholder="e.g. client@example.com"
                   value={createVisitForm.contactEmail}
                   onChange={(e) => setCreateVisitForm({ ...createVisitForm, contactEmail: e.target.value })}
-                  className="h-8 mt-1"
+                  className="h-8 text-xs"
                 />
               </div>
             </div>
 
-            <div>
-              <Label className="text-[11px]">Project / Property Name *</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Service / Purpose / Specialty</Label>
               <Input
-                placeholder="DLF Cyber Heights Luxury Residences"
+                placeholder="e.g. Consultation / Checkup / Property Visit"
                 value={createVisitForm.serviceName}
                 onChange={(e) => setCreateVisitForm({ ...createVisitForm, serviceName: e.target.value })}
-                className="h-8 mt-1"
+                className="h-8 text-xs"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-[11px]">Visit Date *</Label>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Appointment Date *</Label>
                 <Input
                   type="date"
                   value={createVisitForm.appointmentDate}
                   onChange={(e) => setCreateVisitForm({ ...createVisitForm, appointmentDate: e.target.value })}
-                  className="h-8 mt-1"
+                  className="h-8 text-xs"
                 />
               </div>
-
-              <div>
-                <Label className="text-[11px]">Visit Time *</Label>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Appointment Time *</Label>
                 <Input
                   type="time"
                   value={createVisitForm.appointmentTime}
                   onChange={(e) => setCreateVisitForm({ ...createVisitForm, appointmentTime: e.target.value })}
-                  className="h-8 mt-1"
+                  className="h-8 text-xs"
                 />
               </div>
             </div>
 
-            <div>
-              <Label className="text-[11px]">Assign Sales Consultant</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Assign Staff Member</Label>
               <Select
-                value={createVisitForm.staffId || "unassigned"}
-                onValueChange={(val) => setCreateVisitForm({ ...createVisitForm, staffId: val === "unassigned" ? "" : val })}
+                value={createVisitForm.staffId}
+                onValueChange={(val) => setCreateVisitForm({ ...createVisitForm, staffId: val })}
               >
-                <SelectTrigger className="h-8 mt-1 text-xs">
-                  <SelectValue placeholder="-- Select Sales Consultant --" />
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="-- Select Staff (or Assign Later) --" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">-- Assign Later (Unassigned) --</SelectItem>
                   {staffList
                     .filter((s) => s.isActive)
-                    .map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name} ({s.city || "Field"} - {s.role})
+                    .map((staff) => (
+                      <SelectItem key={staff.id} value={staff.id}>
+                        {staff.name} — {staff.role}
                       </SelectItem>
                     ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div>
-              <Label className="text-[11px]">Visit Notes / Preference</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Special Notes / Requirements</Label>
               <Textarea
-                placeholder="Client looking for 3BHK high-rise, budget 1.5 Cr..."
+                placeholder="Enter client requirements or meeting agenda..."
                 value={createVisitForm.notes}
                 onChange={(e) => setCreateVisitForm({ ...createVisitForm, notes: e.target.value })}
-                className="text-xs h-14 resize-none mt-1"
+                rows={2}
+                className="text-xs resize-none"
               />
             </div>
 
-            <div className="flex items-center space-x-2 pt-1">
-              <Checkbox
-                id="notifyWhatsAppManual"
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs text-muted-foreground">Auto-Open WhatsApp Briefing</span>
+              <Switch
                 checked={createVisitForm.notifyWhatsApp}
-                onCheckedChange={(checked) =>
-                  setCreateVisitForm({ ...createVisitForm, notifyWhatsApp: Boolean(checked) })
-                }
+                onCheckedChange={(checked) => setCreateVisitForm({ ...createVisitForm, notifyWhatsApp: checked })}
               />
-              <label htmlFor="notifyWhatsAppManual" className="text-[11px] text-foreground cursor-pointer font-medium">
-                Notify assigned consultant on WhatsApp immediately upon saving
-              </label>
             </div>
           </div>
 
@@ -1472,108 +2150,107 @@ export function SalesTeamSiteVisits() {
             <Button
               size="sm"
               disabled={
-                !createVisitForm.contactName ||
-                !createVisitForm.contactPhone ||
+                createVisitMutation.isPending ||
+                !createVisitForm.contactName.trim() ||
+                !createVisitForm.contactPhone.trim() ||
                 !createVisitForm.appointmentDate ||
-                !createVisitForm.appointmentTime ||
-                createVisitMutation.isPending
+                !createVisitForm.appointmentTime
               }
               onClick={() => createVisitMutation.mutate(createVisitForm)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
-              {createVisitMutation.isPending ? "Booking..." : "Book & Appoint"}
+              {createVisitMutation.isPending ? "Booking..." : "Book & Confirm"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── ADD / EDIT STAFF MODAL ── */}
+      {/* ════════════════════════════════════════════════════════════
+          DIALOG 6: ADD / EDIT STAFF MEMBER
+      ════════════════════════════════════════════════════════════ */}
       <Dialog open={staffDialogOpen} onOpenChange={setStaffDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">
-              {editingStaff ? "Edit Sales Consultant" : "Add New Sales Consultant"}
+              {editingStaff ? "Edit Staff Member" : "Add Staff Member"}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Provide consultant details for auto-assignment and site visit coordination.
+              Staff members will receive automated appointment alerts and briefings.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-2 text-xs">
-            <div>
-              <Label className="text-[11px]">Full Name *</Label>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Full Name *</Label>
               <Input
-                placeholder="e.g. Rahul Verma"
+                placeholder="e.g. Dr. Ramesh Gupta / Rahul Verma"
                 value={staffForm.name}
                 onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })}
-                className="h-8"
+                className="h-8 text-xs"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-[11px]">Mobile / WhatsApp *</Label>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">WhatsApp / Phone *</Label>
                 <Input
-                  placeholder="+91 9876543210"
+                  placeholder="e.g. +91 98765 43210"
                   value={staffForm.phone}
                   onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })}
-                  className="h-8"
+                  className="h-8 text-xs"
                 />
               </div>
-
-              <div>
-                <Label className="text-[11px]">Email Address</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Email Address</Label>
                 <Input
-                  placeholder="rahul@example.com"
+                  type="email"
+                  placeholder="e.g. staff@example.com"
                   value={staffForm.email}
                   onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })}
-                  className="h-8"
+                  className="h-8 text-xs"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-[11px]">Role / Designation</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Role / Title</Label>
                 <Input
-                  placeholder="e.g. Senior Consultant"
+                  placeholder="e.g. Doctor, Specialist, Consultant, Executive"
                   value={staffForm.role}
                   onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
-                  className="h-8"
+                  className="h-8 text-xs"
                 />
               </div>
-
-              <div>
-                <Label className="text-[11px]">City / Region</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">City / Branch</Label>
                 <Input
-                  placeholder="e.g. Gurugram, Mohali"
+                  placeholder="e.g. Mumbai, Delhi, Branch A"
                   value={staffForm.city}
                   onChange={(e) => setStaffForm({ ...staffForm, city: e.target.value })}
-                  className="h-8"
+                  className="h-8 text-xs"
                 />
               </div>
             </div>
 
-            <div>
-              <Label className="text-[11px]">Assigned Projects (comma separated)</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Specialties / Assigned Services (comma separated)</Label>
               <Input
-                placeholder="DLF Cyber Heights, Golf Course Ext, 3BHK"
+                placeholder="e.g. Cardiology, OPD, Consultation, General"
                 value={staffForm.assignedProjects}
                 onChange={(e) => setStaffForm({ ...staffForm, assignedProjects: e.target.value })}
-                className="h-8"
+                className="h-8 text-xs"
               />
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                AI uses these project tags to auto-assign incoming visits to this consultant.
-              </p>
             </div>
 
-            <div>
-              <Label className="text-[11px]">Notes / Specialization</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Internal Notes</Label>
               <Textarea
-                placeholder="Handles luxury properties, available weekends..."
+                placeholder="Internal notes or shift timings..."
                 value={staffForm.notes}
                 onChange={(e) => setStaffForm({ ...staffForm, notes: e.target.value })}
-                className="text-xs h-16 resize-none"
+                rows={2}
+                className="text-xs resize-none"
               />
             </div>
           </div>
@@ -1584,7 +2261,7 @@ export function SalesTeamSiteVisits() {
             </Button>
             <Button
               size="sm"
-              disabled={!staffForm.name || !staffForm.phone}
+              disabled={createStaffMutation.isPending || updateStaffMutation.isPending || !staffForm.name.trim() || !staffForm.phone.trim()}
               onClick={() => {
                 if (editingStaff) {
                   const projects = staffForm.assignedProjects
@@ -1593,15 +2270,7 @@ export function SalesTeamSiteVisits() {
                     .filter(Boolean);
                   updateStaffMutation.mutate({
                     id: editingStaff.id,
-                    data: {
-                      name: staffForm.name,
-                      phone: staffForm.phone,
-                      email: staffForm.email || null,
-                      role: staffForm.role,
-                      city: staffForm.city || null,
-                      assignedProjects: projects,
-                      notes: staffForm.notes || null,
-                    },
+                    data: { ...staffForm, assignedProjects: projects },
                   });
                 } else {
                   createStaffMutation.mutate(staffForm);
@@ -1609,17 +2278,15 @@ export function SalesTeamSiteVisits() {
               }}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
-              {editingStaff ? "Save Changes" : "Add Consultant"}
+              {createStaffMutation.isPending || updateStaffMutation.isPending
+                ? "Saving..."
+                : editingStaff
+                ? "Save Changes"
+                : "Add Staff Member"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Company Email & SMTP Settings Modal */}
-      <CompanyEmailSettingsDialog
-        open={emailSettingsOpen}
-        onOpenChange={setEmailSettingsOpen}
-      />
     </div>
   );
 }

@@ -263,7 +263,7 @@ export function CompanyEmailSettingsDialog({ open, onOpenChange }: CompanyEmailS
                   <Sparkles className="w-4 h-4 text-amber-500" />
                 </DialogTitle>
                 <DialogDescription className="text-xs">
-                  Connect your company's own email gateway so site visits, staff briefings, and client confirmations are sent from your brand.
+                  Connect your company's own email gateway so appointments, staff briefings, and client confirmations are sent from your brand.
                 </DialogDescription>
               </div>
             </div>
@@ -323,7 +323,7 @@ export function CompanyEmailSettingsDialog({ open, onOpenChange }: CompanyEmailS
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Company / Sender Display Name</Label>
                   <Input
-                    placeholder="e.g. DLF Realty Sales Team"
+                    placeholder="e.g. Calliqo Appointments Team"
                     value={fromName}
                     onChange={(e) => setFromName(e.target.value)}
                     className="h-9 text-xs"

@@ -429,32 +429,25 @@ export async function syncGoogleCalendarEvents(userId: string): Promise<{
     return { synced: false, imported: 0, updated: 0, total: 0, error: "Google Calendar is not connected. Please connect Google Calendar first." };
   }
 
-  // 1. Purge any past appointments or birthday/holiday events mistakenly imported earlier
+  // 1. Purge only unwanted personal holiday/birthday events mistakenly imported
   try {
     await db.execute(sql`
       DELETE FROM appointments 
       WHERE user_id = ${userId}
       AND (
-        google_calendar_event_id IS NOT NULL 
-        OR notes ILIKE '%birthday%'
+        notes ILIKE '%birthday%'
         OR contact_name ILIKE '%birthday%'
         OR service_name ILIKE '%birthday%'
-      )
-      AND (
-        appointment_date < CURRENT_DATE
-        OR contact_name ILIKE '%birthday%'
-        OR notes ILIKE '%birthday%'
-        OR service_name ILIKE '%birthday%'
+        OR notes ILIKE '%anniversary%'
       )
     `);
   } catch (_) {}
 
-  // 2. STRICTLY UPCOMING EVENTS ONLY: start from today 00:00:00 onwards
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const timeMin = today.toISOString();
+  // 2. Fetch past 30 days and upcoming 180 days of events
+  const past30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const timeMin = past30Days.toISOString();
   const timeMax = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
-  const todayDateStr = today.toISOString().split("T")[0];
+  const todayDateStr = new Date().toISOString().split("T")[0];
 
   const doFetch = (t: string) =>
     fetch(
@@ -517,10 +510,7 @@ export async function syncGoogleCalendarEvents(userId: string): Promise<{
         appointmentDate = startDateTimeStr; // "YYYY-MM-DD"
       }
 
-      // STRICT CHECK: Skip any past dates
-      if (appointmentDate < todayDateStr) {
-        continue;
-      }
+      // If past date, we still import so historical appointments show in Past tab
 
       const eventId = item.id;
 
@@ -573,7 +563,7 @@ export async function syncGoogleCalendarEvents(userId: string): Promise<{
       }
 
       // Service / Project name
-      let serviceName = "Property Site Visit";
+      let serviceName = "General Appointment";
       if (cleanSummary.includes("—") || cleanSummary.includes("-")) {
         const parts = cleanSummary.split(/[—\-]/);
         if (parts.length > 1) {

@@ -266,7 +266,7 @@ export function EmailNotificationManager() {
                     Sending via <strong className="text-slate-200">{smtpData?.settings?.fromName}</strong> &lt;{smtpData?.settings?.fromEmail}&gt; on <code className="text-blue-400">{smtpData?.settings?.host}:{smtpData?.settings?.port}</code>
                   </span>
                 ) : (
-                  "Connect your company email (Gmail, Google Workspace, Zoho, or Custom Domain) to send branded site visit & lead emails from your own domain."
+                  "Connect your company email (Gmail, Google Workspace, Zoho, or Custom Domain) to send branded appointment & lead emails from your own domain."
                 )}
               </p>
             </div>
@@ -287,7 +287,7 @@ export function EmailNotificationManager() {
         <div className="p-4 bg-slate-950/40 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-300">
           <div className="flex items-center gap-2 p-2 rounded-lg bg-slate-900/60 border border-slate-800/60">
             <UserCheck className="h-4 w-4 text-blue-400 shrink-0" />
-            <span><strong>Sales Staff Alert:</strong> Auto-briefing on site visit deploy</span>
+            <span><strong>Staff Alert:</strong> Auto-briefing on appointment assignment</span>
           </div>
           <div className="flex items-center gap-2 p-2 rounded-lg bg-slate-900/60 border border-slate-800/60">
             <Users className="h-4 w-4 text-emerald-400 shrink-0" />
@@ -443,7 +443,7 @@ export function EmailNotificationManager() {
                     }));
                   }}
                   className="bg-slate-950 border-slate-800 text-white font-mono text-xs focus:border-blue-500 h-9"
-                  placeholder="e.g. New Site Visit Assigned: {{client_name}} - {{project_name}}"
+                  placeholder="e.g. New Appointment Assigned: {{client_name}} - {{service_name}}"
                 />
               </div>
 

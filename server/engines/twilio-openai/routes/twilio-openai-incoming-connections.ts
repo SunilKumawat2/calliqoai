@@ -66,7 +66,6 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response) => {
       .where(
         and(
           eq(phoneNumbers.userId, userId),
-          eq(phoneNumbers.isSystemPool, false),
           inArray(phoneNumbers.status, ["active", "assigned"])
         )
       );
@@ -188,8 +187,7 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response) => {
       .where(
         and(
           eq(phoneNumbers.id, phoneNumberId),
-          eq(phoneNumbers.userId, userId),
-          eq(phoneNumbers.isSystemPool, false)
+          eq(phoneNumbers.userId, userId)
         )
       )
       .limit(1);

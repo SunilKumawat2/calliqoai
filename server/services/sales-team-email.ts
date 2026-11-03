@@ -1,13 +1,13 @@
 'use strict';
 /**
  * ============================================================
- * Calliqo AI - Sales Team & Site Visit Email Notification Service
+ * Calliqo AI - Multi-Vertical Appointment & Staff Email Notification Service
  * 
  * Supports:
  * 1. Dynamic email templates customizable from Admin CRM panel
- * 2. Automatic variable interpolation ({{client_name}}, {{project_name}}, etc.)
+ * 2. Automatic variable interpolation ({{client_name}}, {{service_name}}, etc.)
  * 3. Tenant custom SMTP support via emailService
- * 4. Separate templates for Sales Executive (Staff) and Customer (Client)
+ * 4. Universal templates for Healthcare, Real Estate, Consultations & Client Appointments
  * ============================================================
  */
 
@@ -46,10 +46,10 @@ export interface ClientConfirmationEmailParams {
 export const DEFAULT_EMAIL_TEMPLATES = {
   staff_site_visit_assignment: {
     key: 'staff_site_visit_assignment',
-    name: 'Sales Executive Briefing (Field Team)',
-    description: 'Sent automatically to the assigned Sales Executive when a property site visit is deployed or booked.',
-    recipientType: 'Assigned Sales Executive (Staff)',
-    subject: '🏢 New Site Visit Assigned: {{client_name}} - {{project_name}} ({{visit_date}} at {{visit_time}})',
+    name: 'Staff Appointment Briefing',
+    description: 'Sent automatically to the assigned specialist or staff member when an appointment is scheduled.',
+    recipientType: 'Assigned Staff / Specialist',
+    subject: '📋 New Appointment Assigned: {{client_name}} - {{service_name}} ({{visit_date}} at {{visit_time}})',
     variables: [
       'client_name',
       'client_phone',
@@ -93,23 +93,23 @@ export const DEFAULT_EMAIL_TEMPLATES = {
 <body>
   <div class="container">
     <div class="header">
-      <h1>🏢 New Site Visit Assigned</h1>
-      <div class="badge">ACTION REQUIRED • FIELD COORDINATION</div>
+      <h1>📋 New Appointment Assigned</h1>
+      <div class="badge">APPOINTMENT SCHEDULED • ACTION REQUIRED</div>
     </div>
     <div class="content">
       <div class="greeting">
-        Namaste <strong>{{staff_name}}</strong>,<br>
-        A new customer property site visit has been booked and assigned to you via <strong>{{company_name}}</strong>. Please review the visit schedule and client requirements below.
+        Hello <strong>{{staff_name}}</strong>,<br>
+        A new appointment has been scheduled and assigned to you via <strong>{{company_name}}</strong>. Please review the appointment schedule and client details below.
       </div>
 
       <div class="card">
-        <div class="card-title blue">📍 Property & Schedule Details</div>
+        <div class="card-title blue">📅 Appointment & Schedule Details</div>
         <div class="row">
-          <span class="label">Project / Property:</span>
-          <span class="val">{{project_name}}</span>
+          <span class="label">Service / Purpose:</span>
+          <span class="val">{{service_name}}</span>
         </div>
         <div class="row">
-          <span class="label">Visit Date:</span>
+          <span class="label">Date:</span>
           <span class="val">📅 {{visit_date}}</span>
         </div>
         <div class="row">
@@ -119,9 +119,9 @@ export const DEFAULT_EMAIL_TEMPLATES = {
       </div>
 
       <div class="card">
-        <div class="card-title emerald">👤 Customer Information</div>
+        <div class="card-title emerald">👤 Customer / Client Information</div>
         <div class="row">
-          <span class="label">Client Name:</span>
+          <span class="label">Name:</span>
           <span class="val">{{client_name}}</span>
         </div>
         <div class="row">
@@ -129,27 +129,27 @@ export const DEFAULT_EMAIL_TEMPLATES = {
           <span class="val"><a href="tel:{{client_phone}}" style="color: #2563eb; text-decoration: none;">{{client_phone}}</a></span>
         </div>
         <div class="row">
-          <span class="label">Client Email:</span>
+          <span class="label">Email:</span>
           <span class="val">{{client_email}}</span>
         </div>
 
         <div class="notes-box">
-          <strong>Customer Preference / Requirement:</strong><br>
+          <strong>Requirements / Call Summary:</strong><br>
           {{notes}}
         </div>
       </div>
 
       <div class="instruction-box">
-        <strong>📝 Instructions from Admin / Management:</strong><br>
+        <strong>📌 Instructions from Management:</strong><br>
         {{admin_instructions}}
       </div>
 
       <div style="text-align: center; margin: 24px 0 10px;">
-        <a href="https://calliqoai.com/app/crm" class="btn">Open Site Visit in CRM</a>
+        <a href="https://calliqoai.com/app/crm" class="btn">Open Appointment in CRM</a>
       </div>
     </div>
     <div class="footer">
-      Sent automatically via {{company_name}} • Real Estate CRM
+      Sent automatically via {{company_name}} • Smart AI Appointments & CRM
     </div>
   </div>
 </body>
@@ -158,10 +158,10 @@ export const DEFAULT_EMAIL_TEMPLATES = {
 
   client_site_visit_confirmation: {
     key: 'client_site_visit_confirmation',
-    name: 'Customer Confirmation (Client)',
-    description: 'Sent automatically to the customer when their property visit is confirmed with consultant details.',
-    recipientType: 'Customer / Lead (Client)',
-    subject: '✅ Property Site Visit Confirmed: {{project_name}} ({{visit_date}} at {{visit_time}})',
+    name: 'Customer Appointment Confirmation',
+    description: 'Sent automatically to the customer / patient when their appointment is confirmed.',
+    recipientType: 'Customer / Patient (Client)',
+    subject: '✅ Appointment Confirmed: {{service_name}} ({{visit_date}} at {{visit_time}})',
     variables: [
       'client_name',
       'project_name',
@@ -200,20 +200,20 @@ export const DEFAULT_EMAIL_TEMPLATES = {
 <body>
   <div class="container">
     <div class="header">
-      <h1>✅ Property Site Visit Confirmed</h1>
+      <h1>✅ Appointment Confirmed</h1>
       <div class="badge">APPOINTMENT SCHEDULED</div>
     </div>
     <div class="content">
       <div class="greeting">
         Dear <strong>{{client_name}}</strong>,<br>
-        Thank you for your interest! Your property site visit has been successfully confirmed. Here are the details of your scheduled visit:
+        Thank you for connecting with us! Your appointment for <strong>{{service_name}}</strong> has been successfully confirmed. Here are the details of your scheduled booking:
       </div>
 
       <div class="card">
-        <div class="card-title">📅 Schedule & Property Information</div>
+        <div class="card-title">📅 Appointment Details</div>
         <div class="row">
-          <span class="label">Project / Property:</span>
-          <span class="val">{{project_name}}</span>
+          <span class="label">Service / Consultation:</span>
+          <span class="val">{{service_name}}</span>
         </div>
         <div class="row">
           <span class="label">Date:</span>
@@ -226,10 +226,10 @@ export const DEFAULT_EMAIL_TEMPLATES = {
       </div>
 
       <div class="consultant-card">
-        <div class="consultant-title">👤 Your Dedicated Property Consultant</div>
+        <div class="consultant-title">👤 Assigned Specialist / Representative</div>
         <div class="row">
-          <span class="label">Consultant Name:</span>
-          <span class="val">{{assigned_consultant_name}} ({{assigned_consultant_role}})</span>
+          <span class="label">Assigned To:</span>
+          <span class="val">{{assigned_consultant_name}}</span>
         </div>
         <div class="row">
           <span class="label">Direct Contact:</span>
@@ -238,11 +238,11 @@ export const DEFAULT_EMAIL_TEMPLATES = {
       </div>
 
       <p style="font-size: 13px; color: #64748b; line-height: 1.6; margin-top: 18px;">
-        Our property consultant will meet you at the site to show available unit options, floor plans, and discuss exclusive project offers. If you need any assistance or wish to reschedule, feel free to reply directly to this email.
+        Please make sure to arrive on time for your scheduled appointment. If you have any questions or wish to reschedule, feel free to reply directly to this email or call the contact number above.
       </p>
     </div>
     <div class="footer">
-      {{company_name}} • Real Estate Advisory • All rights reserved
+      {{company_name}} • Smart AI Appointments & CRM • All rights reserved
     </div>
   </div>
 </body>
@@ -304,7 +304,7 @@ export async function getActiveEmailTemplate(
 }
 
 /**
- * Send briefing email to assigned sales executive
+ * Send briefing email to assigned staff / specialist
  */
 export async function sendStaffAssignmentEmail(params: StaffAssignmentEmailParams): Promise<boolean> {
   if (!params.staffEmail || !params.staffEmail.includes('@')) {
@@ -316,17 +316,17 @@ export async function sendStaffAssignmentEmail(params: StaffAssignmentEmailParam
     const template = await getActiveEmailTemplate(params.userId, 'staff_site_visit_assignment');
 
     const vars = {
-      staff_name: params.staffName || 'Executive',
+      staff_name: params.staffName || 'Team Member',
       client_name: params.clientName || 'Valued Customer',
       client_phone: params.clientPhone || 'Not provided',
       client_email: params.clientEmail || 'Not provided',
-      project_name: params.serviceName || 'Property Site Visit',
-      service_name: params.serviceName || 'Property Site Visit',
+      project_name: params.serviceName || 'Consultation / Appointment',
+      service_name: params.serviceName || 'Consultation / Appointment',
       visit_date: params.appointmentDate,
       visit_time: params.appointmentTime,
       notes: params.notes || 'None provided',
-      admin_instructions: params.adminInstructions || 'Please arrive 15 minutes before the scheduled time and bring the project brochure.',
-      company_name: 'Calliqo AI Real Estate',
+      admin_instructions: params.adminInstructions || 'Please be prepared 10 minutes prior to the scheduled time.',
+      company_name: 'Calliqo AI',
     };
 
     const subject = interpolateVariables(template.subject, vars);
@@ -350,7 +350,7 @@ export async function sendStaffAssignmentEmail(params: StaffAssignmentEmailParam
 }
 
 /**
- * Send confirmation email to customer
+ * Send confirmation email to customer / patient
  */
 export async function sendClientConfirmationEmail(params: ClientConfirmationEmailParams): Promise<boolean> {
   if (!params.clientEmail || !params.clientEmail.includes('@')) {
@@ -362,14 +362,14 @@ export async function sendClientConfirmationEmail(params: ClientConfirmationEmai
 
     const vars = {
       client_name: params.clientName || 'Valued Customer',
-      project_name: params.serviceName || 'Property Site Visit',
-      service_name: params.serviceName || 'Property Site Visit',
+      project_name: params.serviceName || 'Consultation / Appointment',
+      service_name: params.serviceName || 'Consultation / Appointment',
       visit_date: params.appointmentDate,
       visit_time: params.appointmentTime,
-      assigned_consultant_name: params.staffName || 'Dedicated Property Consultant',
+      assigned_consultant_name: params.staffName || 'Representative / Specialist',
       assigned_consultant_phone: params.staffPhone || '',
-      assigned_consultant_role: params.staffRole || 'Property Consultant',
-      company_name: 'Calliqo AI Real Estate',
+      assigned_consultant_role: params.staffRole || 'Coordinator',
+      company_name: 'Calliqo AI',
     };
 
     const subject = interpolateVariables(template.subject, vars);

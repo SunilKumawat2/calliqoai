@@ -486,6 +486,10 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
       }
 
       if (CallUUID && callId) {
+        const activeSess = ElevenLabsBridgeService.getSession(callId);
+        if (activeSess) {
+          activeSess.realPlivoCallUuid = CallUUID;
+        }
         ElevenLabsBridgeService.aliasSession(callId, CallUUID);
         try {
           await db

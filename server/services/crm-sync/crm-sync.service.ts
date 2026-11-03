@@ -806,8 +806,8 @@ export class CrmSyncService {
         id: notifId,
         userId,
         type: 'site_visit',
-        title: `📅 Site Visit: ${data.contactName.trim()}`,
-        message: `${data.contactName.trim()} (${data.contactPhone}) scheduled for ${data.serviceName || 'Property Site Visit'} on ${data.appointmentDate} at ${data.appointmentTime}. Action required: Appoint a sales executive!`,
+        title: `📅 Appointment: ${data.contactName.trim()}`,
+        message: `${data.contactName.trim()} (${data.contactPhone}) scheduled for ${data.serviceName || 'Appointment / Consultation'} on ${data.appointmentDate} at ${data.appointmentTime}.`,
         link: '/app/crm',
         isRead: false,
       });
@@ -841,8 +841,8 @@ export class CrmSyncService {
         id: notifId,
         userId,
         type: 'site_visit',
-        title: `🚨 New Site Visit: ${data.contactName}`,
-        message: `${data.contactName} (${data.contactPhone}) booked a site visit for ${data.serviceName || 'Property'} on ${data.appointmentDate} at ${data.appointmentTime}. Assigned: ${assignedStaffName || 'Awaiting Staff Appointment'}.`,
+        title: `📅 New Appointment: ${data.contactName}`,
+        message: `${data.contactName} (${data.contactPhone}) booked an appointment for ${data.serviceName || 'Consultation / Appointment'} on ${data.appointmentDate} at ${data.appointmentTime}. Assigned: ${assignedStaffName || 'Awaiting Staff Appointment'}.`,
         link: '/app/crm',
         isRead: false,
       });
@@ -853,12 +853,13 @@ export class CrmSyncService {
     // ── Send Email to Assigned Sales Executive ──
     if (matchedStaff?.email) {
       sendStaffAssignmentEmail({
+        userId,
         staffEmail: matchedStaff.email,
         staffName: matchedStaff.name,
         clientName: data.contactName,
         clientPhone: data.contactPhone,
         clientEmail: data.contactEmail || null,
-        serviceName: data.serviceName || 'Property Site Visit',
+        serviceName: data.serviceName || 'Consultation / Appointment',
         appointmentDate: data.appointmentDate,
         appointmentTime: data.appointmentTime,
         notes: data.notes,
@@ -868,14 +869,15 @@ export class CrmSyncService {
     // ── Send Confirmation Email to Client / Customer ──
     if (data.contactEmail) {
       sendClientConfirmationEmail({
+        userId,
         clientEmail: data.contactEmail,
         clientName: data.contactName,
-        serviceName: data.serviceName || 'Property Site Visit',
+        serviceName: data.serviceName || 'Consultation / Appointment',
         appointmentDate: data.appointmentDate,
         appointmentTime: data.appointmentTime,
         staffName: assignedStaffName,
         staffPhone: assignedStaffPhone,
-        staffRole: matchedStaff ? matchedStaff.role : 'Property Consultant',
+        staffRole: matchedStaff ? matchedStaff.role : 'Specialist / Representative',
       }).catch(err => logger.warn(`[CrmSync] Client email error: ${err.message}`, undefined, 'CrmSync'));
     }
 

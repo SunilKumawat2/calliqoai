@@ -299,25 +299,18 @@ async function syncGoogleCalendarEvents(userId) {
       DELETE FROM appointments 
       WHERE user_id = ${userId}
       AND (
-        google_calendar_event_id IS NOT NULL 
-        OR notes ILIKE '%birthday%'
+        notes ILIKE '%birthday%'
         OR contact_name ILIKE '%birthday%'
         OR service_name ILIKE '%birthday%'
-      )
-      AND (
-        appointment_date < CURRENT_DATE
-        OR contact_name ILIKE '%birthday%'
-        OR notes ILIKE '%birthday%'
-        OR service_name ILIKE '%birthday%'
+        OR notes ILIKE '%anniversary%'
       )
     `);
   } catch (_) {
   }
-  const today = /* @__PURE__ */ new Date();
-  today.setHours(0, 0, 0, 0);
-  const timeMin = today.toISOString();
+  const past30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1e3);
+  const timeMin = past30Days.toISOString();
   const timeMax = new Date(Date.now() + 180 * 24 * 60 * 60 * 1e3).toISOString();
-  const todayDateStr = today.toISOString().split("T")[0];
+  const todayDateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
   const doFetch = (t) => fetch(
     `${GOOGLE_CALENDAR_API}/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&maxResults=250`,
     {
@@ -359,9 +352,6 @@ async function syncGoogleCalendarEvents(userId) {
       } else {
         appointmentDate = startDateTimeStr;
       }
-      if (appointmentDate < todayDateStr) {
-        continue;
-      }
       const eventId = item.id;
       const cleanSummary = summary.replace(/^\[[^\]]+\]\s*/, "").trim();
       let contactName = "";
@@ -398,7 +388,7 @@ async function syncGoogleCalendarEvents(userId) {
       if (!contactPhone) {
         contactPhone = "Google Calendar";
       }
-      let serviceName = "Property Site Visit";
+      let serviceName = "General Appointment";
       if (cleanSummary.includes("\u2014") || cleanSummary.includes("-")) {
         const parts = cleanSummary.split(/[—\-]/);
         if (parts.length > 1) {

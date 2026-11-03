@@ -2540,10 +2540,16 @@ export default function CRMPage() {
                 <span>All Campaigns & Sources</span>
               </div>
             </SelectItem>
+            <SelectItem value="incoming">
+              <div className="flex items-center gap-2">
+                <PhoneIncoming className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">📥 Inbound / Incoming Calls Only</span>
+              </div>
+            </SelectItem>
             <SelectItem value="all_campaigns">
               <div className="flex items-center gap-2">
                 <Megaphone className="w-3.5 h-3.5 text-blue-500" />
-                <span>All Campaigns ({campaigns.length})</span>
+                <span>All Outbound Campaigns ({campaigns.length})</span>
               </div>
             </SelectItem>
             {campaigns.length > 0 && (
@@ -2562,13 +2568,7 @@ export default function CRMPage() {
                 ))}
               </>
             )}
-            <Separator className="my-1" />
-            <SelectItem value="incoming">
-              <div className="flex items-center gap-2">
-                <PhoneIncoming className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Inbound Calls Only</span>
-              </div>
-            </SelectItem>
+
           </SelectContent>
         </Select>
 
@@ -2744,7 +2744,7 @@ export default function CRMPage() {
                 setSalesBannerDismissed(true);
               }}
               data-testid="view-sales-team"
-              title="Sales Team & Site Visit Assignment"
+              title="Staff & Appointments"
               className={`h-8 text-xs gap-1.5 px-3 font-medium transition-colors ${
                 viewMode === "sales_team" 
                   ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold border border-blue-500/30" 
@@ -2752,7 +2752,7 @@ export default function CRMPage() {
               }`}
             >
               <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Sales Team & Visits</span>
+              <span>Staff & Appointments</span>
               {unassignedVisitsCount > 0 && (
                 <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-bold animate-pulse">
                   {unassignedVisitsCount} New
@@ -2770,12 +2770,12 @@ export default function CRMPage() {
             <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-ping shrink-0" />
             <Bell className="w-4 h-4 text-amber-500 shrink-0" />
             <span className="font-bold text-foreground">
-              🚨 New Site Visit Alert:
+              🚨 New Appointment Alert:
             </span>
             <span className="text-muted-foreground">
-              <strong>{unassignedVisitsCount} site visit{unassignedVisitsCount > 1 ? 's' : ''}</strong> need sales consultant assignment!
+              <strong>{unassignedVisitsCount} appointment{unassignedVisitsCount > 1 ? 's' : ''}</strong> need staff assignment!
               {latestUnassignedVisit && (
-                <span> (Latest: <strong className="text-foreground">{latestUnassignedVisit.contactName}</strong> for {latestUnassignedVisit.serviceName || 'Site Visit'} on {latestUnassignedVisit.appointmentDate} at {latestUnassignedVisit.appointmentTime})</span>
+                <span> (Latest: <strong className="text-foreground">{latestUnassignedVisit.contactName}</strong> for {latestUnassignedVisit.serviceName || 'Appointment'} on {latestUnassignedVisit.appointmentDate} at {latestUnassignedVisit.appointmentTime})</span>
               )}
             </span>
           </div>
@@ -2785,7 +2785,7 @@ export default function CRMPage() {
               onClick={() => setViewMode("sales_team")}
               className="h-7 text-xs px-2.5 bg-amber-600 hover:bg-amber-700 text-white gap-1 font-medium shadow-sm"
             >
-              <UserCheck className="w-3.5 h-3.5" /> Appoint Staff Now
+              <UserCheck className="w-3.5 h-3.5" /> Assign Staff Now
             </Button>
             <button
               onClick={() => setSalesBannerDismissed(true)}

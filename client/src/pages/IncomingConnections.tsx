@@ -18,7 +18,9 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "wouter";
-import { Plus, Phone, Trash2, Link as LinkIcon, PhoneIncoming, Bot, ArrowRight, Mic } from "lucide-react";
+import { Plus, Phone, Trash2, Link as LinkIcon, PhoneIncoming, Bot, ArrowRight, Mic, Calendar, FileSpreadsheet, ExternalLink, Check } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { GoogleSheetsPicker } from "@/components/GoogleSheetsPicker";
 import { SiOpenai, SiTwilio } from "react-icons/si";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,7 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -105,6 +107,10 @@ type PlivoConnection = {
   friendlyName: string | null;
   country: string;
   agent: PlivoAgent | null;
+  syncToGoogleCalendar?: boolean;
+  googleSheetId?: string | null;
+  googleSheetName?: string | null;
+  googleSheetTitle?: string | null;
 };
 
 type PlivoAvailableNumber = {
@@ -164,7 +170,7 @@ type TwilioOpenaiIncomingConnectionsResponse = {
   stats: Stats;
 };
 
-type EngineTab = 'twilio-elevenlabs' | 'plivo-openai' | 'twilio-openai' | 'custom-voice';
+type EngineTab = 'twilio-elevenlabs' | 'custom-voice' | 'plivo-elevenlabs' | 'plivo-openai' | 'twilio-openai';
 
 type VoiceEngineSettings = {
   plivo_openai_engine_enabled: boolean;
@@ -186,6 +192,13 @@ export default function IncomingConnectionsPage() {
   const [plivoDeleteConnection, setPlivoDeleteConnection] = useState<PlivoConnection | null>(null);
   const [selectedPlivoAgentId, setSelectedPlivoAgentId] = useState("");
   const [selectedPlivoPhoneId, setSelectedPlivoPhoneId] = useState("");
+  const [plivoTargetEngine, setPlivoTargetEngine] = useState<'openai' | 'elevenlabs'>('openai');
+  const [plivoSyncCalendar, setPlivoSyncCalendar] = useState(false);
+  const [plivoSheetEnabled, setPlivoSheetEnabled] = useState(false);
+  const [plivoSheetId, setPlivoSheetId] = useState("");
+  const [plivoSheetName, setPlivoSheetName] = useState("Sheet1");
+  const [plivoSheetTitle, setPlivoSheetTitle] = useState("");
+  const [plivoSheetExpanded, setPlivoSheetExpanded] = useState(false);
 
   // Twilio + OpenAI state
   const [twilioOpenaiCreateDialogOpen, setTwilioOpenaiCreateDialogOpen] = useState(false);
@@ -210,6 +223,26 @@ export default function IncomingConnectionsPage() {
     queryKey: ["/api/plivo/incoming-connections"],
   });
 
+  // CRM connected Google Sheet mappings (same source as CRM > Integrations)
+  const { data: crmSheetConfigs = [] } = useQuery<Array<{
+    id: string;
+    spreadsheetId: string;
+    spreadsheetName: string;
+    sheetTabName: string;
+    status?: string;
+  }>>({
+    queryKey: ["/api/crm-sync/configs"],
+  });
+
+  // Google Drive sheets query for extra sheet selection
+  const { data: googleDriveStatus } = useQuery<{ connected: boolean; email?: string }>({
+    queryKey: ["/api/integrations/google/status"],
+  });
+  const { data: driveSheets = [] } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ["/api/integrations/google/sheets"],
+    enabled: googleDriveStatus?.connected === true,
+  });
+
   // Twilio + OpenAI incoming connections query
   const { data: twilioOpenaiData, isLoading: twilioOpenaiConnectionsLoading } = useQuery<TwilioOpenaiIncomingConnectionsResponse>({
     queryKey: ["/api/twilio-openai/incoming-connections"],
@@ -232,14 +265,16 @@ export default function IncomingConnectionsPage() {
   const enabledEngineCount = useMemo(() => {
     let count = 1; // Twilio + ElevenLabs is always enabled
     if (isCustomVoiceEngineEnabled) count++;
-    if (plivoEnabled) count++;
+    if (plivoEnabled) {
+      count += 2; // Plivo + ElevenLabs & Plivo + OpenAI
+    }
     if (twilioOpenaiEnabled) count++;
     return count;
   }, [isCustomVoiceEngineEnabled, plivoEnabled, twilioOpenaiEnabled]);
 
   // Reset activeTab to always-enabled engine if current tab becomes disabled
   useEffect(() => {
-    if (activeTab === 'plivo-openai' && !plivoEnabled) {
+    if ((activeTab === 'plivo-openai' || activeTab === 'plivo-elevenlabs') && !plivoEnabled) {
       setActiveTab('twilio-elevenlabs');
     }
     if (activeTab === 'twilio-openai' && !twilioOpenaiEnabled) {
@@ -363,15 +398,29 @@ export default function IncomingConnectionsPage() {
     });
   };
 
-  // Plivo mutations
-  const plivoConnections = plivoData?.connections || [];
+  // Plivo data extraction & engine filtering
+  const allPlivoConnections = plivoData?.connections || [];
   const plivoAvailablePhoneNumbers = plivoData?.availablePhoneNumbers || [];
-  const plivoAvailableAgents = plivoData?.availableAgents || [];
-  const plivoStats = {
-    totalConnections: plivoData?.stats?.totalConnections || 0,
-    availableNumbers: plivoData?.stats?.availableNumbers || 0,
-    totalAgents: plivoData?.stats?.totalAgents || 0,
-  };
+  const allPlivoAgents = plivoData?.availableAgents || [];
+
+  // Separate Plivo + ElevenLabs vs Plivo + OpenAI
+  const plivoElevenLabsConnections = useMemo(() => 
+    allPlivoConnections.filter(c => c.agent?.telephonyProvider === 'plivo_elevenlabs'),
+    [allPlivoConnections]
+  );
+  const plivoOpenAIConnections = useMemo(() => 
+    allPlivoConnections.filter(c => c.agent?.telephonyProvider !== 'plivo_elevenlabs'),
+    [allPlivoConnections]
+  );
+
+  const plivoElevenLabsAgents = useMemo(() => 
+    allPlivoAgents.filter(a => a.telephonyProvider === 'plivo_elevenlabs'),
+    [allPlivoAgents]
+  );
+  const plivoOpenAIAgents = useMemo(() => 
+    allPlivoAgents.filter(a => a.telephonyProvider !== 'plivo_elevenlabs'),
+    [allPlivoAgents]
+  );
 
   // Merge Twilio + Plivo numbers for Custom Voice selection
   const allAvailableNumbersForCve = useMemo(() => {
@@ -382,7 +431,14 @@ export default function IncomingConnectionsPage() {
   }, [availablePhoneNumbers, plivoAvailablePhoneNumbers]);
 
   const plivoCreateMutation = useMutation({
-    mutationFn: async (data: { agentId: string; phoneNumberId: string }) => {
+    mutationFn: async (data: {
+      agentId: string;
+      phoneNumberId: string;
+      syncToGoogleCalendar?: boolean;
+      googleSheetId?: string | null;
+      googleSheetName?: string | null;
+      googleSheetTitle?: string | null;
+    }) => {
       return apiRequest("POST", "/api/plivo/incoming-connections", data);
     },
     onSuccess: () => {
@@ -394,6 +450,12 @@ export default function IncomingConnectionsPage() {
       setPlivoCreateDialogOpen(false);
       setSelectedPlivoAgentId("");
       setSelectedPlivoPhoneId("");
+      setPlivoSyncCalendar(false);
+      setPlivoSheetEnabled(false);
+      setPlivoSheetId("");
+      setPlivoSheetName("Sheet1");
+      setPlivoSheetTitle("");
+      setPlivoSheetExpanded(false);
     },
     onError: (error: any) => {
       toast({
@@ -437,6 +499,10 @@ export default function IncomingConnectionsPage() {
     plivoCreateMutation.mutate({
       agentId: selectedPlivoAgentId,
       phoneNumberId: selectedPlivoPhoneId,
+      syncToGoogleCalendar: plivoSyncCalendar,
+      googleSheetId: plivoSheetEnabled ? plivoSheetId : null,
+      googleSheetName: plivoSheetEnabled ? plivoSheetName : null,
+      googleSheetTitle: plivoSheetEnabled ? plivoSheetTitle : null,
     });
   };
 
@@ -531,7 +597,12 @@ export default function IncomingConnectionsPage() {
       case 'twilio-elevenlabs':
         setCreateDialogOpen(true);
         break;
+      case 'plivo-elevenlabs':
+        setPlivoTargetEngine('elevenlabs');
+        setPlivoCreateDialogOpen(true);
+        break;
       case 'plivo-openai':
+        setPlivoTargetEngine('openai');
         setPlivoCreateDialogOpen(true);
         break;
       case 'twilio-openai':
@@ -544,7 +615,7 @@ export default function IncomingConnectionsPage() {
   };
 
   // Calculate total stats
-  const totalConnections = connections.length + plivoStats.totalConnections + twilioOpenaiStats.totalConnections;
+  const totalConnections = connections.length + allPlivoConnections.length + twilioOpenaiStats.totalConnections;
 
   return (
     <div className="space-y-6">
@@ -575,7 +646,8 @@ export default function IncomingConnectionsPage() {
           enabledEngineCount === 1 ? 'md:grid-cols-1' : 
           enabledEngineCount === 2 ? 'md:grid-cols-2' : 
           enabledEngineCount === 3 ? 'md:grid-cols-3' : 
-          'md:grid-cols-4'
+          enabledEngineCount === 4 ? 'md:grid-cols-4' : 
+          'md:grid-cols-5'
         }`}>
           {/* Twilio + ElevenLabs Summary - Always shown */}
           <div 
@@ -623,6 +695,31 @@ export default function IncomingConnectionsPage() {
             </div>
           )}
 
+          {/* Plivo + ElevenLabs Summary - Only shown when enabled */}
+          {plivoEnabled && (
+            <div 
+              className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                activeTab === 'plivo-elevenlabs' 
+                  ? 'border-violet-500 bg-violet-500/10 dark:bg-violet-500/20' 
+                  : 'border-border bg-background/50 hover:border-violet-300'
+              }`}
+              onClick={() => setActiveTab('plivo-elevenlabs')}
+              data-testid="engine-card-plivo-elevenlabs"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Phone className="h-4 w-4 text-green-600" />
+                <span className="font-medium text-sm">+</span>
+                <ElevenLabsIcon className="h-4 w-4 text-violet-600" />
+                <span className="font-semibold text-sm">Plivo + ElevenLabs</span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span><strong className="text-violet-600">{plivoElevenLabsConnections.length}</strong> active</span>
+                <span><strong>{plivoAvailablePhoneNumbers.length}</strong> available</span>
+                <span><strong>{plivoElevenLabsAgents.length}</strong> agents</span>
+              </div>
+            </div>
+          )}
+
           {/* Plivo + OpenAI Summary - Only shown when enabled */}
           {plivoEnabled && (
             <div 
@@ -641,9 +738,9 @@ export default function IncomingConnectionsPage() {
                 <span className="font-semibold text-sm">Plivo + OpenAI</span>
               </div>
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span><strong className="text-emerald-600">{plivoStats.totalConnections}</strong> active</span>
-                <span><strong>{plivoStats.availableNumbers}</strong> available</span>
-                <span><strong>{plivoStats.totalAgents}</strong> agents</span>
+                <span><strong className="text-emerald-600">{plivoOpenAIConnections.length}</strong> active</span>
+                <span><strong>{plivoAvailablePhoneNumbers.length}</strong> available</span>
+                <span><strong>{plivoOpenAIAgents.length}</strong> agents</span>
               </div>
             </div>
           )}
@@ -681,7 +778,8 @@ export default function IncomingConnectionsPage() {
           enabledEngineCount === 1 ? 'grid-cols-1' : 
           enabledEngineCount === 2 ? 'grid-cols-2' : 
           enabledEngineCount === 3 ? 'grid-cols-3' : 
-          'grid-cols-4'
+          enabledEngineCount === 4 ? 'grid-cols-4' : 
+          'grid-cols-5'
         }`}>
           <TabsTrigger value="twilio-elevenlabs" className="flex items-center gap-2" data-testid="tab-twilio-elevenlabs">
             <SiTwilio className="h-3.5 w-3.5 text-red-500" />
@@ -692,6 +790,13 @@ export default function IncomingConnectionsPage() {
             <TabsTrigger value="custom-voice" className="flex items-center gap-2" data-testid="tab-custom-voice">
               <Mic className="h-3.5 w-3.5 text-indigo-600" />
               <span className="hidden sm:inline">Custom Voice</span>
+            </TabsTrigger>
+          )}
+          {plivoEnabled && (
+            <TabsTrigger value="plivo-elevenlabs" className="flex items-center gap-2" data-testid="tab-plivo-elevenlabs">
+              <Phone className="h-3.5 w-3.5 text-green-600" />
+              <ElevenLabsIcon className="h-3.5 w-3.5 text-violet-600" />
+              <span className="hidden sm:inline">Plivo + ElevenLabs</span>
             </TabsTrigger>
           )}
           {plivoEnabled && (
@@ -842,6 +947,106 @@ export default function IncomingConnectionsPage() {
           </Card>
         </TabsContent>)}
 
+        {/* Plivo + ElevenLabs Content */}
+        {plivoEnabled && (
+        <TabsContent value="plivo-elevenlabs">
+          <Card>
+            <CardContent className="pt-6">
+              {plivoConnectionsLoading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+                  ))}
+                </div>
+              ) : plivoElevenLabsConnections.length === 0 && plivoAvailablePhoneNumbers.length === 0 ? (
+                <div className="text-center py-12" data-testid="plivo-el-empty-state">
+                  <Bot className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No Plivo Phone Numbers</h3>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Purchase Plivo phone numbers first to set up incoming connections with ElevenLabs agents.
+                  </p>
+                </div>
+              ) : plivoElevenLabsConnections.length === 0 ? (
+                <div className="text-center py-12" data-testid="plivo-el-no-connections">
+                  <LinkIcon className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No Connections Yet</h3>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Connect your Plivo phone numbers to ElevenLabs-powered Conversational AI agents.
+                  </p>
+                  <Button 
+                    onClick={() => {
+                      setPlivoTargetEngine('elevenlabs');
+                      setPlivoCreateDialogOpen(true);
+                    }}
+                    disabled={plivoAvailablePhoneNumbers.length === 0 || plivoElevenLabsAgents.length === 0}
+                    className="bg-violet-600 hover:bg-violet-700 text-white"
+                    data-testid="button-create-first-plivo-el-connection"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create First Connection
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {plivoElevenLabsConnections.map((connection) => (
+                    <div
+                      key={connection.phoneNumberId}
+                      className="flex items-center justify-between p-4 border rounded-lg hover-elevate bg-card"
+                      data-testid={`plivo-el-connection-card-${connection.phoneNumberId}`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <Badge variant="secondary" className="font-mono text-xs bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                          {connection.phoneNumber}
+                        </Badge>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <ElevenLabsIcon className="h-4 w-4 text-violet-600" />
+                            <span className="font-medium">{connection.agent?.name || 'Unknown Agent'}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {connection.friendlyName && `${connection.friendlyName} • `}
+                            Country: {connection.country}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            {connection.syncToGoogleCalendar && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                                <Calendar className="w-3 h-3" />
+                                Google Calendar Synced
+                              </span>
+                            )}
+                            {connection.googleSheetId ? (
+                              <a
+                                href={`https://docs.google.com/spreadsheets/d/${connection.googleSheetId}/edit`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                                title="Open connected Google Sheet"
+                              >
+                                <FileSpreadsheet className="w-3 h-3 text-emerald-500" />
+                                <span>{connection.googleSheetTitle || 'Google Sheet'} ({connection.googleSheetName || 'Sheet1'})</span>
+                                <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setPlivoDeleteConnection(connection)}
+                        data-testid={`button-delete-plivo-el-${connection.phoneNumberId}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>)}
+
         {/* Plivo + OpenAI Content */}
         {plivoEnabled && (
         <TabsContent value="plivo-openai">
@@ -853,7 +1058,7 @@ export default function IncomingConnectionsPage() {
                     <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
                   ))}
                 </div>
-              ) : plivoConnections.length === 0 && plivoAvailablePhoneNumbers.length === 0 ? (
+              ) : plivoOpenAIConnections.length === 0 && plivoAvailablePhoneNumbers.length === 0 ? (
                 <div className="text-center py-12" data-testid="plivo-empty-state">
                   <Bot className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                   <h3 className="text-lg font-semibold mb-2">No Plivo Phone Numbers</h3>
@@ -861,7 +1066,7 @@ export default function IncomingConnectionsPage() {
                     Purchase Plivo phone numbers first to set up incoming connections with OpenAI agents.
                   </p>
                 </div>
-              ) : plivoConnections.length === 0 ? (
+              ) : plivoOpenAIConnections.length === 0 ? (
                 <div className="text-center py-12" data-testid="plivo-no-connections">
                   <LinkIcon className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                   <h3 className="text-lg font-semibold mb-2">No Connections Yet</h3>
@@ -869,8 +1074,11 @@ export default function IncomingConnectionsPage() {
                     Connect your Plivo phone numbers to OpenAI-powered agents.
                   </p>
                   <Button 
-                    onClick={() => setPlivoCreateDialogOpen(true)}
-                    disabled={plivoAvailablePhoneNumbers.length === 0 || plivoAvailableAgents.length === 0}
+                    onClick={() => {
+                      setPlivoTargetEngine('openai');
+                      setPlivoCreateDialogOpen(true);
+                    }}
+                    disabled={plivoAvailablePhoneNumbers.length === 0 || plivoOpenAIAgents.length === 0}
                     className="bg-emerald-600 hover:bg-emerald-700"
                     data-testid="button-create-first-plivo-connection"
                   >
@@ -880,7 +1088,7 @@ export default function IncomingConnectionsPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {plivoConnections.map((connection) => (
+                  {plivoOpenAIConnections.map((connection) => (
                     <div
                       key={connection.phoneNumberId}
                       className="flex items-center justify-between p-4 border rounded-lg hover-elevate bg-card"
@@ -899,6 +1107,27 @@ export default function IncomingConnectionsPage() {
                           <div className="text-xs text-muted-foreground mt-0.5">
                             {connection.friendlyName && `${connection.friendlyName} • `}
                             Country: {connection.country}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            {connection.syncToGoogleCalendar && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                                <Calendar className="w-3 h-3" />
+                                Google Calendar Synced
+                              </span>
+                            )}
+                            {connection.googleSheetId ? (
+                              <a
+                                href={`https://docs.google.com/spreadsheets/d/${connection.googleSheetId}/edit`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                                title="Open connected Google Sheet"
+                              >
+                                <FileSpreadsheet className="w-3 h-3 text-emerald-500" />
+                                <span>{connection.googleSheetTitle || 'Google Sheet'} ({connection.googleSheetName || 'Sheet1'})</span>
+                                <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                              </a>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -1137,35 +1366,55 @@ export default function IncomingConnectionsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Plivo Create Connection Dialog */}
+      {/* Plivo Create Connection Dialog (supports both Plivo + ElevenLabs & Plivo + OpenAI) */}
       <Dialog open={plivoCreateDialogOpen} onOpenChange={setPlivoCreateDialogOpen}>
-        <DialogContent data-testid="dialog-create-plivo-connection">
+        <DialogContent data-testid="dialog-create-plivo-connection" className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Phone className="h-5 w-5 text-green-600" />
-              <SiOpenai className="h-5 w-5 text-emerald-600" />
-              Create Plivo + OpenAI Connection
+              {plivoTargetEngine === 'elevenlabs' ? (
+                <>
+                  <ElevenLabsIcon className="h-5 w-5 text-violet-600" />
+                  <span>Create Plivo + ElevenLabs Connection</span>
+                </>
+              ) : (
+                <>
+                  <SiOpenai className="h-5 w-5 text-emerald-600" />
+                  <span>Create Plivo + OpenAI Connection</span>
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
-              Connect a Plivo phone number to an OpenAI-powered agent for incoming calls.
+              {plivoTargetEngine === 'elevenlabs'
+                ? "Connect a Plivo phone number to an ElevenLabs Conversational AI agent for incoming calls."
+                : "Connect a Plivo phone number to an OpenAI-powered agent for incoming calls."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-1">
             <div className="space-y-2">
-              <Label htmlFor="plivo-agent">OpenAI Agent <span className="text-destructive">*</span></Label>
+              <Label htmlFor="plivo-agent">
+                {plivoTargetEngine === 'elevenlabs' ? 'ElevenLabs Agent' : 'OpenAI Agent'}{' '}
+                <span className="text-destructive">*</span>
+              </Label>
               <Select value={selectedPlivoAgentId} onValueChange={setSelectedPlivoAgentId}>
                 <SelectTrigger id="plivo-agent" data-testid="select-plivo-agent">
-                  <SelectValue placeholder="Select an OpenAI agent" />
+                  <SelectValue placeholder={plivoTargetEngine === 'elevenlabs' ? 'Select an ElevenLabs agent' : 'Select an OpenAI agent'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {plivoAvailableAgents.length === 0 ? (
-                    <div className="p-2 text-sm text-muted-foreground">No OpenAI agents available.</div>
+                  {(plivoTargetEngine === 'elevenlabs' ? plivoElevenLabsAgents : plivoOpenAIAgents).length === 0 ? (
+                    <div className="p-2 text-sm text-muted-foreground">
+                      No {plivoTargetEngine === 'elevenlabs' ? 'ElevenLabs' : 'OpenAI'} agents available.
+                    </div>
                   ) : (
-                    plivoAvailableAgents.map((agent) => (
+                    (plivoTargetEngine === 'elevenlabs' ? plivoElevenLabsAgents : plivoOpenAIAgents).map((agent) => (
                       <SelectItem key={agent.id} value={agent.id}>
                         <div className="flex items-center gap-2">
-                          <SiOpenai className="h-3 w-3 text-emerald-600" />
+                          {plivoTargetEngine === 'elevenlabs' ? (
+                            <ElevenLabsIcon className="h-3 w-3 text-violet-600" />
+                          ) : (
+                            <SiOpenai className="h-3 w-3 text-emerald-600" />
+                          )}
                           <span>{agent.name}</span>
                         </div>
                       </SelectItem>
@@ -1176,7 +1425,9 @@ export default function IncomingConnectionsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="plivo-phone">Plivo Phone Number <span className="text-destructive">*</span></Label>
+              <Label htmlFor="plivo-phone">
+                Plivo Phone Number <span className="text-destructive">*</span>
+              </Label>
               <Select value={selectedPlivoPhoneId} onValueChange={setSelectedPlivoPhoneId}>
                 <SelectTrigger id="plivo-phone" data-testid="select-plivo-phone">
                   <SelectValue placeholder="Select a Plivo phone number" />
@@ -1209,16 +1460,203 @@ export default function IncomingConnectionsPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Optional Integration: Google Calendar */}
+            <div className="p-3 rounded-lg border bg-muted/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-indigo-500" />
+                  <div>
+                    <Label htmlFor="plivo-sync-calendar" className="text-sm font-medium cursor-pointer">
+                      Sync Bookings to Google Calendar
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically create calendar events whenever an inbound caller books an appointment.
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="plivo-sync-calendar"
+                  checked={plivoSyncCalendar}
+                  onCheckedChange={setPlivoSyncCalendar}
+                />
+              </div>
+            </div>
+
+            {/* Optional Integration: Google Sheets */}
+            <div className="p-3 rounded-lg border bg-muted/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+                  <div>
+                    <Label htmlFor="plivo-sheet-toggle" className="text-sm font-medium cursor-pointer">
+                      Push Inbound Leads to Google Sheet
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Real-time export caller details, transcript summary & appointment outcome into a Google Sheet.
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="plivo-sheet-toggle"
+                  checked={plivoSheetEnabled}
+                  onCheckedChange={(val) => {
+                    setPlivoSheetEnabled(val);
+                    if (val && !plivoSheetId && crmSheetConfigs.length > 0) {
+                      setPlivoSheetId(crmSheetConfigs[0].spreadsheetId);
+                      setPlivoSheetTitle(crmSheetConfigs[0].spreadsheetName);
+                      setPlivoSheetName(crmSheetConfigs[0].sheetTabName || "Sheet1");
+                    }
+                  }}
+                />
+              </div>
+
+              {plivoSheetEnabled && (
+                <div className="pt-2 border-t border-border/50 space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Select Target Google Sheet</Label>
+                    <Select
+                      value={
+                        plivoSheetId
+                          ? (crmSheetConfigs.find(c => c.spreadsheetId === plivoSheetId)
+                              ? `crm:${crmSheetConfigs.find(c => c.spreadsheetId === plivoSheetId)!.id}`
+                              : `drive:${plivoSheetId}`)
+                          : "__none__"
+                      }
+                      onValueChange={(val) => {
+                        if (val === "__none__") {
+                          setPlivoSheetId("");
+                          setPlivoSheetTitle("");
+                          setPlivoSheetName("Sheet1");
+                          return;
+                        }
+                        if (val.startsWith("crm:")) {
+                          const cfgId = val.replace("crm:", "");
+                          const cfg = crmSheetConfigs.find(c => c.id === cfgId);
+                          if (cfg) {
+                            setPlivoSheetId(cfg.spreadsheetId);
+                            setPlivoSheetTitle(cfg.spreadsheetName);
+                            setPlivoSheetName(cfg.sheetTabName || "Sheet1");
+                          }
+                        } else if (val.startsWith("drive:")) {
+                          const sheetId = val.replace("drive:", "");
+                          const sheet = driveSheets.find(s => s.id === sheetId);
+                          if (sheet) {
+                            setPlivoSheetId(sheet.id);
+                            setPlivoSheetTitle(sheet.name);
+                            setPlivoSheetName("Sheet1");
+                          }
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-full bg-background" data-testid="select-target-google-sheet">
+                        <SelectValue placeholder="Choose a spreadsheet..." />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        {crmSheetConfigs.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 px-2 py-1.5">
+                              <FileSpreadsheet className="w-3.5 h-3.5" /> CRM Connected Spreadsheets
+                            </SelectLabel>
+                            {crmSheetConfigs.map((cfg) => (
+                              <SelectItem key={cfg.id} value={`crm:${cfg.id}`}>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-emerald-600 dark:text-emerald-400">📗</span>
+                                  <span className="font-medium">{cfg.spreadsheetName}</span>
+                                  <span className="text-xs text-muted-foreground">({cfg.sheetTabName || "Sheet1"})</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+
+                        {driveSheets.filter(d => !crmSheetConfigs.some(c => c.spreadsheetId === d.id)).length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel className="text-xs font-semibold text-muted-foreground px-2 py-1.5">
+                              Other Google Account Sheets
+                            </SelectLabel>
+                            {driveSheets
+                              .filter(d => !crmSheetConfigs.some(c => c.spreadsheetId === d.id))
+                              .map((sheet) => (
+                                <SelectItem key={sheet.id} value={`drive:${sheet.id}`}>
+                                  <div className="flex items-center gap-2">
+                                    <span>📄</span>
+                                    <span>{sheet.name}</span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                          </SelectGroup>
+                        )}
+
+                        <SelectItem value="__none__">
+                          <span className="text-muted-foreground">None (disabled)</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {plivoSheetId ? (
+                    <div className="p-3 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                          <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          <span>{plivoSheetTitle || "Sheet Connected"}</span>
+                        </span>
+                        <a
+                          href={`https://docs.google.com/spreadsheets/d/${plivoSheetId}/edit`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline inline-flex items-center gap-1 font-medium"
+                        >
+                          Open Sheet <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1 text-muted-foreground">
+                        <span className="text-xs">Tab Name:</span>
+                        <input
+                          type="text"
+                          value={plivoSheetName}
+                          onChange={(e) => setPlivoSheetName(e.target.value)}
+                          className="px-2 py-1 rounded border bg-background text-foreground font-mono text-xs w-32"
+                          placeholder="Sheet1"
+                        />
+                        <span className="text-[11px]">(Caller details & AI summaries export here)</span>
+                      </div>
+                    </div>
+                  ) : (
+                    crmSheetConfigs.length === 0 && !googleDriveStatus?.connected && (
+                      <p className="text-xs text-muted-foreground">
+                        No Google Sheets connected yet. Connect Google Sheets in CRM or Tools to sync leads.
+                      </p>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setPlivoCreateDialogOpen(false); setSelectedPlivoAgentId(""); setSelectedPlivoPhoneId(""); }}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPlivoCreateDialogOpen(false);
+                setSelectedPlivoAgentId("");
+                setSelectedPlivoPhoneId("");
+                setPlivoSyncCalendar(false);
+                setPlivoSheetEnabled(false);
+                setPlivoSheetId("");
+                setPlivoSheetName("Sheet1");
+                setPlivoSheetTitle("");
+                setPlivoSheetExpanded(false);
+              }}
+            >
               Cancel
             </Button>
             <Button
               onClick={handlePlivoCreate}
               disabled={plivoCreateMutation.isPending || !selectedPlivoAgentId || !selectedPlivoPhoneId}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className={plivoTargetEngine === 'elevenlabs' ? "bg-violet-600 hover:bg-violet-700 text-white" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
+              data-testid="button-confirm-create-plivo-connection"
             >
               {plivoCreateMutation.isPending ? "Creating..." : "Create Connection"}
             </Button>

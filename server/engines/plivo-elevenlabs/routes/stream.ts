@@ -98,6 +98,21 @@ function handleStreamConnection(ws: WebSocket, callUuid: string): void {
           
         case 'start':
           streamSid = (message.start as any)?.streamId || message.start?.streamSid || (message as any)?.streamId || message.streamSid || null;
+          const plivoCallId = (message.start as any)?.callId || (message as any)?.callUUID || (message as any)?.callId;
+          if (plivoCallId && !plivoCallId.startsWith('plivo-el-')) {
+            const s = ElevenLabsBridgeService.getSession(callUuid);
+            if (s) {
+              s.realPlivoCallUuid = plivoCallId;
+            }
+            ElevenLabsBridgeService.aliasSession(callUuid, plivoCallId);
+            db.update(plivoCalls)
+              .set({ plivoCallUuid: plivoCallId })
+              .where(or(
+                eq(plivoCalls.id, callUuid),
+                sql`${plivoCalls.metadata}->>'internalId' = ${callUuid}`
+              ))
+              .catch(() => {});
+          }
           console.log(`[Plivo-ElevenLabs Stream] Stream started: ${streamSid}`);
           if (message.start?.mediaFormat) {
             console.log(`[Plivo-ElevenLabs Stream] Media format: ${JSON.stringify(message.start.mediaFormat)}`);

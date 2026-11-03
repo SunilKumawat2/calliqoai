@@ -757,6 +757,100 @@ export function setupPlivoWebhooks(app: Express, baseUrl: string): void {
         return res.send(ivrXml);
       }
 
+      // ========================================
+      // PLIVO + ELEVENLABS AGENT INBOUND HANDLER
+      // If the assigned agent is a Plivo+ElevenLabs agent, bridge directly to ElevenLabs ConvAI
+      // ========================================
+      if (agent.telephonyProvider === 'plivo_elevenlabs' || (agent as any).telephonyProvider === 'elevenlabs-plivo') {
+        if (!agent.elevenLabsAgentId) {
+          logger.error(`Plivo+ElevenLabs agent ${agent.id} missing elevenLabsAgentId`, undefined, 'PlivoWebhook');
+          res.set('Content-Type', 'text/xml');
+          return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Speak>Sorry, agent configuration is incomplete. Goodbye.</Speak><Hangup/></Response>`);
+        }
+
+        const { ElevenLabsPoolService } = await import('../../../services/elevenlabs-pool');
+        const { ElevenLabsBridgeService } = await import('../../plivo-elevenlabs/services/elevenlabs-bridge.service');
+        const { getSipStreamUrl } = await import('../../plivo-elevenlabs/config/config');
+
+        let elevenLabsApiKey: string | undefined;
+        const credential = await ElevenLabsPoolService.getCredentialForAgent(agent.id);
+        if (credential?.apiKey) {
+          elevenLabsApiKey = credential.apiKey;
+        } else {
+          elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
+        }
+
+        if (!elevenLabsApiKey) {
+          logger.error('ElevenLabs API key not configured', undefined, 'PlivoWebhook');
+          res.set('Content-Type', 'text/xml');
+          return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Speak>Service configuration error. Goodbye.</Speak><Hangup/></Response>`);
+        }
+
+        await ElevenLabsBridgeService.createSession({
+          callUuid: CallUUID,
+          agentId: agent.elevenLabsAgentId,
+          elevenLabsApiKey,
+          agentConfig: {
+            agentId: agent.elevenLabsAgentId,
+            firstMessage: agent.firstMessage || undefined,
+            language: agent.language || 'en',
+            transferPhoneNumber: agent.transferPhoneNumber || undefined,
+            transferEnabled: agent.transferEnabled,
+            backgroundSound: agent.backgroundSound || undefined,
+          },
+          fromNumber: From,
+          toNumber: To,
+          direction: 'inbound',
+          dbAgentId: agent.id,
+          transferPhoneNumber: agent.transferPhoneNumber || undefined,
+          transferEnabled: agent.transferEnabled,
+        });
+
+        try {
+          const insertValues: InsertPlivoCall = {
+            userId: agent.userId,
+            agentId: agent.id,
+            plivoPhoneNumberId: phoneNumber?.id ?? null,
+            plivoCallUuid: CallUUID,
+            fromNumber: From,
+            toNumber: To,
+            status: 'in-progress',
+            callDirection: 'inbound',
+            startedAt: new Date(),
+            answeredAt: new Date(),
+            metadata: { engine: 'plivo-elevenlabs' },
+          };
+          await db.insert(plivoCalls).values(insertValues);
+        } catch (dbErr: any) {
+          logger.error(`Failed to insert inbound call record for ${CallUUID}: ${dbErr?.message || dbErr}`, dbErr, 'PlivoWebhook');
+        }
+
+        // Trigger inbound_call.answered webhook
+        try {
+          await webhookDeliveryService.triggerEvent(agent.userId, 'inbound_call.answered', {
+            callId: null,
+            callSid: CallUUID,
+            direction: 'inbound',
+            status: 'in-progress',
+            fromNumber: normalizedFrom,
+            toNumber: normalizedTo,
+            agentId: agent.id,
+            phoneNumberId: phoneNumber.id,
+          });
+        } catch (_) {}
+
+        const streamUrl = getSipStreamUrl(CallUUID);
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Stream bidirectional="true" keepCallAlive="true" audioTrack="inbound" noiseCancellation="true" contentType="audio/x-mulaw;rate=8000">
+    ${streamUrl}
+  </Stream>
+</Response>`;
+
+        res.set('Content-Type', 'text/xml');
+        return res.send(xml);
+      }
+
       // Reserve an OpenAI slot
       const tier = OpenAIPoolService.getModelTierForUser(user.planType);
       const openaiCredential = await OpenAIPoolService.reserveSlot(tier);

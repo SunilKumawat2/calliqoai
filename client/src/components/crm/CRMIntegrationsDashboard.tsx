@@ -115,13 +115,13 @@ export function CRMIntegrationsDashboard() {
   const [simulatorDialogOpen, setSimulatorDialogOpen] = useState(false);
   const [simulatorSource, setSimulatorSource] = useState<LeadSourceIntegration | null>(null);
   const [simulatorForm, setSimulatorForm] = useState({
-    name: "Sunil Kumawat",
+    name: "",
     phone: "",
-    email: "sunil@gmail.com",
-    project: "DLF Cyber Heights Luxury Residences",
-    budget: "2.0 - 3.5 Cr",
-    city: "Gurugram",
-    query: "Interested in 3BHK high-rise apartment. Please arrange a callback.",
+    email: "",
+    project: "",
+    budget: "",
+    city: "",
+    query: "",
     agentName: "Master Receptionist IVR 11labs",
   });
   const [isSubmittingSim, setIsSubmittingSim] = useState(false);
@@ -245,12 +245,16 @@ export function CRMIntegrationsDashboard() {
       const match = agentsList.find(a => a.id === source.agentId);
       if (match) initialAgentName = match.name;
     }
-    setSimulatorForm(prev => ({
-      ...prev,
+    setSimulatorForm({
+      name: "",
+      phone: "",
+      email: "",
+      project: "",
+      budget: "",
+      city: "",
+      query: "",
       agentName: initialAgentName,
-      project: source.portalConfig?.propertyName || prev.project,
-      city: source.portalConfig?.city || prev.city,
-    }));
+    });
     setSimulatorDialogOpen(true);
   };
 
@@ -796,7 +800,7 @@ export function CRMIntegrationsDashboard() {
                 </div>
                 <div>
                   <CardTitle className="text-base font-semibold">Google Calendar Real-Time Booking</CardTitle>
-                  <CardDescription className="text-xs">Live slot verification & site visits booking</CardDescription>
+                  <CardDescription className="text-xs">Live slot verification & appointment booking</CardDescription>
                 </div>
               </div>
               {statusData?.googleCalendar?.connected ? (
@@ -812,7 +816,7 @@ export function CRMIntegrationsDashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Allows your AI voice agents to query your Google Calendar in real time during a call to find free slots and book site visits or meetings directly onto your calendar with automatic attendee invites.
+              Allows your AI voice agents to query your Google Calendar in real time during a call to find free slots and book appointments or meetings directly onto your calendar with automatic attendee invites.
             </p>
 
             <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-1">
@@ -875,7 +879,7 @@ export function CRMIntegrationsDashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Connect your company's own email server (Gmail, Mailbux, Zoho, Outlook, SendGrid) so property site visit confirmations and staff briefings are sent from your brand.
+              Connect your company's own email server (Gmail, Mailbux, Zoho, Outlook, SendGrid) so appointment confirmations and staff briefings are sent from your brand.
             </p>
 
             <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-1">
@@ -935,7 +939,21 @@ export function CRMIntegrationsDashboard() {
                 <div key={cfg.id} className="py-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-foreground">{cfg.spreadsheetName}</span>
+                      {cfg.spreadsheetId ? (
+                        <a
+                          href={`https://docs.google.com/spreadsheets/d/${cfg.spreadsheetId}/edit`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-sm text-foreground hover:text-emerald-500 hover:underline inline-flex items-center gap-1.5 transition-colors"
+                          title="Open spreadsheet in Google Sheets"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+                          <span>{cfg.spreadsheetName}</span>
+                          <ExternalLink className="w-3 h-3 text-muted-foreground opacity-70" />
+                        </a>
+                      ) : (
+                        <span className="font-semibold text-sm text-foreground">{cfg.spreadsheetName}</span>
+                      )}
                       <Badge variant="outline" className="text-[10px] font-mono px-2 py-0">
                         {cfg.sheetTabName}
                       </Badge>
@@ -952,6 +970,23 @@ export function CRMIntegrationsDashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {cfg.spreadsheetId && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 hover:border-emerald-500/60"
+                        asChild
+                      >
+                        <a
+                          href={`https://docs.google.com/spreadsheets/d/${cfg.spreadsheetId}/edit`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Open Sheet
+                        </a>
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
@@ -1122,7 +1157,7 @@ export function CRMIntegrationsDashboard() {
                   Google Sheets 2-Way Sync & Google Calendar Booking
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Connect your Google account to auto-import prospects from spreadsheets, book calendar site visits, and write back AI call results.
+                  Connect your Google account to auto-import prospects from spreadsheets, book calendar appointments, and write back AI call results.
                 </p>
               </div>
             </div>
@@ -1602,7 +1637,7 @@ export function CRMIntegrationsDashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Simply point your website contact form's Webhook Action to Calliqo AI. When a visitor submits their name and phone number on your website, our AI agent calls them within 15 seconds to answer questions, qualify their interest, and book a site visit!
+                  Simply point your website contact form's Webhook Action to Calliqo AI. When a visitor submits their name and phone number on your website, our AI agent calls them within 15 seconds to answer questions, qualify their interest, and book an appointment!
                 </p>
                 <div className="flex items-center gap-2 pt-1">
                   <Button 
@@ -2159,7 +2194,7 @@ export function CRMIntegrationsDashboard() {
                   <DialogTitle>Live Lead Form Submission Simulator</DialogTitle>
                 </div>
                 <DialogDescription>
-                  Fill out this enquiry form as a buyer on <strong>{simulatorSource?.name}</strong> ({simulatorSource?.sourceType.toUpperCase()}). Clicking Submit will push the lead to the webhook in real time!
+                  Fill out this enquiry form on <strong>{simulatorSource?.name}</strong> ({simulatorSource?.sourceType.toUpperCase()}). Clicking Submit will push the lead to the webhook in real time!
                 </DialogDescription>
               </DialogHeader>
             </div>
@@ -2308,7 +2343,7 @@ export function CRMIntegrationsDashboard() {
                   disabled={isSubmittingSim || !simulatorForm.phone}
                 >
                   {isSubmittingSim ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  {isSubmittingSim ? "Submitting to Webhook..." : "Submit Form as Buyer 🚀"}
+                  {isSubmittingSim ? "Submitting..." : "Submit"}
                 </Button>
               </DialogFooter>
             </div>

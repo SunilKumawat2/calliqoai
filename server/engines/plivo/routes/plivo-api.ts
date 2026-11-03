@@ -841,6 +841,10 @@ export function createPlivoApiRoutes(): Router {
           region: plivoPhoneNumbers.region,
           status: plivoPhoneNumbers.status,
           assignedAgentId: plivoPhoneNumbers.assignedAgentId,
+          syncToGoogleCalendar: plivoPhoneNumbers.syncToGoogleCalendar,
+          googleSheetId: plivoPhoneNumbers.googleSheetId,
+          googleSheetName: plivoPhoneNumbers.googleSheetName,
+          googleSheetTitle: plivoPhoneNumbers.googleSheetTitle,
         })
         .from(plivoPhoneNumbers)
         .where(
@@ -925,6 +929,10 @@ export function createPlivoApiRoutes(): Router {
           friendlyName: pn.friendlyName,
           country: pn.country,
           agent: agentMap.get(pn.assignedAgentId!) || null,
+          syncToGoogleCalendar: pn.syncToGoogleCalendar || false,
+          googleSheetId: pn.googleSheetId || null,
+          googleSheetName: pn.googleSheetName || null,
+          googleSheetTitle: pn.googleSheetTitle || null,
         }));
 
       const availablePhoneNumbers = phoneNumbers
@@ -966,7 +974,7 @@ export function createPlivoApiRoutes(): Router {
    */
   router.post('/api/plivo/incoming-connections', requireAuth, async (req: AuthRequest, res: Response) => {
     try {
-      const { phoneNumberId, agentId } = req.body;
+      const { phoneNumberId, agentId, syncToGoogleCalendar, googleSheetId, googleSheetName, googleSheetTitle } = req.body;
       const { plivoPhoneNumbers, agents } = await import('@shared/schema');
       const { and } = await import('drizzle-orm');
 
@@ -1031,6 +1039,10 @@ export function createPlivoApiRoutes(): Router {
         .update(plivoPhoneNumbers)
         .set({ 
           assignedAgentId: agentId,
+          syncToGoogleCalendar: !!syncToGoogleCalendar,
+          googleSheetId: googleSheetId || null,
+          googleSheetName: googleSheetName || null,
+          googleSheetTitle: googleSheetTitle || null,
           updatedAt: new Date(),
         })
         .where(eq(plivoPhoneNumbers.id, phoneNumberId));
@@ -1109,6 +1121,10 @@ export function createPlivoApiRoutes(): Router {
         .update(plivoPhoneNumbers)
         .set({ 
           assignedAgentId: null,
+          syncToGoogleCalendar: false,
+          googleSheetId: null,
+          googleSheetName: null,
+          googleSheetTitle: null,
           updatedAt: new Date(),
         })
         .where(eq(plivoPhoneNumbers.id, phoneNumberId));

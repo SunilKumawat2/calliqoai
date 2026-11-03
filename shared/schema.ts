@@ -315,6 +315,10 @@ export const incomingConnections = pgTable("incoming_connections", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   agentId: varchar("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }), // Must be type='incoming'
   phoneNumberId: varchar("phone_number_id").notNull().references(() => phoneNumbers.id, { onDelete: "cascade" }).unique(), // One connection per phone number
+  syncToGoogleCalendar: boolean("sync_to_google_calendar").default(false),
+  googleSheetId: text("google_sheet_id"),
+  googleSheetName: text("google_sheet_name"),
+  googleSheetTitle: text("google_sheet_title"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -2186,6 +2190,10 @@ export const plivoPhoneNumbers = pgTable("plivo_phone_numbers", {
   
   // Incoming agent connection
   assignedAgentId: varchar("assigned_agent_id").references(() => agents.id, { onDelete: "set null" }),
+  syncToGoogleCalendar: boolean("sync_to_google_calendar").default(false),
+  googleSheetId: text("google_sheet_id"),
+  googleSheetName: text("google_sheet_name"),
+  googleSheetTitle: text("google_sheet_title"),
   
   purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),

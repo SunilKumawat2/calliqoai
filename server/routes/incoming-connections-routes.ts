@@ -177,7 +177,6 @@ router.get("/", authenticateHybrid, async (req: AuthRequest, res) => {
       .where(
         and(
           eq(phoneNumbers.userId, userId),
-          eq(phoneNumbers.isSystemPool, false),
           inArray(phoneNumbers.status, ["active", "assigned"])
         )
       );
@@ -431,8 +430,7 @@ router.post("/", authenticateHybrid, async (req: AuthRequest, res) => {
       .where(
         and(
           eq(phoneNumbers.id, phoneNumberId),
-          eq(phoneNumbers.userId, userId),
-          eq(phoneNumbers.isSystemPool, false)
+          eq(phoneNumbers.userId, userId)
         )
       )
       .limit(1);

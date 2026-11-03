@@ -1423,6 +1423,9 @@ ${allUrls.map(u => {
 
         const isPlivo = gatewayName.toLowerCase() === 'plivo';
         const callerIdVal = isPlivo ? callerId.replace(/^\+/, '') : callerId;
+        const wsHost = process.env.FREESWITCH_WS_HOST || '127.0.0.1';
+        const wsPort = process.env.PORT || '5000';
+        const wsUrl = `ws://${wsHost}:${wsPort}/voice-engine/ws/audio/${sessionUuid}`;
 
         const options: any = {
           origination_uuid: sessionUuid,
@@ -1431,8 +1434,9 @@ ${allUrls.map(u => {
           effective_caller_id_number: callerIdVal,
           effective_caller_id_name: callerIdVal,
           sip_from_uri: `sip:${callerIdVal}@${gatewayProxy}`,
-          ve_audio_ws_url: `ws://${containerIp}:${process.env.PORT || '5000'}/voice-engine/ws/audio/${sessionUuid}`,
+          ve_audio_ws_url: wsUrl,
           absolute_codec_string: 'PCMU,PCMA,telephone-event',
+          ignore_early_media: 'true',
         };
 
         if (isPlivo) {
@@ -1441,13 +1445,45 @@ ${allUrls.map(u => {
           options['sip_h_P-Asserted-Identity'] = `<sip:${callerIdVal}@${gatewayProxy}>`;
         }
 
-        await esl.originate(`sofia/gateway/${gatewayName}/${formattedToNumber}`, `${formattedToNumber} XML public`, options);
-        await esl.disconnect();
+        // Setup event handlers on ESL to attach audio fork on answer
+        esl.on('event:CHANNEL_ANSWER', async (event: any) => {
+          const uuid = event.headers?.['Unique-ID'];
+          const origUuid = event.headers?.['Variable_origination_uuid'] || event.headers?.['variable_origination_uuid'];
+          if (uuid === sessionUuid || origUuid === sessionUuid) {
+            try {
+              console.log(`[CVE Demo] CHANNEL_ANSWER received for sessionUuid=${sessionUuid}, starting audio_fork`);
+              await esl.api(`uuid_audio_fork ${uuid || sessionUuid} start ${wsUrl} mono 8k`);
+              await db.execute(sql`UPDATE ve_sessions SET status = 'active', answered_at = NOW(), updated_at = NOW() WHERE id = ${sessionUuid}`);
+              await db.execute(sql`UPDATE calls SET status = 'in-progress' WHERE id = ${sessionUuid}`);
+            } catch (e: any) {
+              console.error('[CVE Demo] audio_fork failed:', e.message);
+            }
+          }
+        });
+
+        esl.on('event:CHANNEL_DESTROY', async (event: any) => {
+          const uuid = event.headers?.['Unique-ID'];
+          const origUuid = event.headers?.['Variable_origination_uuid'] || event.headers?.['variable_origination_uuid'];
+          if (uuid === sessionUuid || origUuid === sessionUuid) {
+            console.log(`[CVE Demo] CHANNEL_DESTROY received for sessionUuid=${sessionUuid}`);
+            await db.execute(sql`UPDATE ve_sessions SET status = 'completed', ended_at = NOW(), end_reason = 'normal', updated_at = NOW() WHERE id = ${sessionUuid}`);
+            await db.execute(sql`UPDATE calls SET status = 'completed', ended_at = NOW() WHERE id = ${sessionUuid}`);
+            try { await esl.disconnect(); } catch (_) {}
+          }
+        });
+
+        // Use &park() so FreeSWITCH holds channel open for AI audio stream
+        await esl.originate(`sofia/gateway/${gatewayName}/${formattedToNumber}`, '&park()', options);
+        await db.execute(sql`UPDATE ve_sessions SET status = 'ringing', updated_at = NOW() WHERE id = ${sessionUuid}`);
+        await db.execute(sql`UPDATE calls SET status = 'ringing' WHERE id = ${sessionUuid}`);
 
         return res.json({
           success: true,
           message: "Demo call initiated successfully via Custom Voice Engine.",
           sessionId: sessionUuid,
+          callId: sessionUuid,
+          uuid: sessionUuid,
+          internalId: sessionUuid,
           provider: 'custom-voice-engine',
         });
       }
@@ -1657,31 +1693,45 @@ ${allUrls.map(u => {
       if (provider?.startsWith('plivo') || provider === 'plivo') {
         let plivoCarrierUuid: string | undefined = undefined;
 
-        // If callId is provided, look up the plivo_calls record
-        if (callId) {
-          try {
-            const { plivoCalls } = await import('@shared/schema');
+        // Look up the plivo_calls record by callId, uuid, or internalId
+        try {
+          const { plivoCalls } = await import('@shared/schema');
+          const conditions = [];
+          if (callId) conditions.push(eq(plivoCalls.id, callId));
+          if (uuid) {
+            conditions.push(eq(plivoCalls.plivoCallUuid, uuid));
+            conditions.push(sql`${plivoCalls.metadata}->>'internalId' = ${uuid}`);
+          }
+          if (internalId) {
+            conditions.push(sql`${plivoCalls.metadata}->>'internalId' = ${internalId}`);
+          }
+
+          if (conditions.length > 0) {
             const [pCall] = await db
               .select()
               .from(plivoCalls)
-              .where(eq(plivoCalls.id, callId))
+              .where(or(...conditions))
               .limit(1);
 
             if (pCall) {
-              if (pCall.plivoCallUuid) plivoCarrierUuid = pCall.plivoCallUuid;
+              if (pCall.plivoCallUuid && !pCall.plivoCallUuid.startsWith('plivo-el-')) {
+                plivoCarrierUuid = pCall.plivoCallUuid;
+              }
               const meta = (pCall.metadata as any) || {};
-              if (!plivoCarrierUuid && meta.requestUuid) plivoCarrierUuid = meta.requestUuid;
+              if (!plivoCarrierUuid && meta.requestUuid && !meta.requestUuid.startsWith('plivo-el-')) {
+                plivoCarrierUuid = meta.requestUuid;
+              }
               
               // Update call status in DB
               await db
                 .update(plivoCalls)
                 .set({ status: 'completed', endedAt: new Date() })
-                .where(eq(plivoCalls.id, callId))
+                .where(eq(plivoCalls.id, pCall.id))
                 .catch(() => {});
             }
-          } catch (dbErr: any) {
-            console.warn(`[DemoCall] DB lookup warning for call ${callId}: ${dbErr.message}`);
           }
+        } catch (dbErr: any) {
+          console.warn(`[DemoCall] DB lookup warning: ${dbErr.message}`);
         }
 
         if (!plivoCarrierUuid && uuid && !uuid.startsWith('plivo-el-')) {
@@ -1727,13 +1777,13 @@ ${allUrls.map(u => {
           // Expected if not AudioBridge session
         }
 
-        // Also clean up ElevenLabsBridge session if Plivo+ElevenLabs
+        // Also clean up and hang up ElevenLabsBridge session if Plivo+ElevenLabs
         try {
           const { ElevenLabsBridgeService } = await import('../engines/plivo-elevenlabs/services/elevenlabs-bridge.service');
-          const bridgeId = internalId || (uuid?.startsWith('plivo-el-') ? uuid : undefined);
+          const bridgeId = internalId || (uuid?.startsWith('plivo-el-') ? uuid : undefined) || uuid || callId;
           if (bridgeId) {
-            await ElevenLabsBridgeService.endSession(bridgeId);
-            console.log(`[DemoCall] ElevenLabsBridge session ended for: ${bridgeId}`);
+            await ElevenLabsBridgeService.hangupCall(bridgeId, 'demo_hangup_button');
+            console.log(`[DemoCall] ElevenLabsBridge carrier hangupCall executed for: ${bridgeId}`);
           }
         } catch (e: any) {
           // Expected if not ElevenLabsBridge session
@@ -1880,6 +1930,26 @@ ${allUrls.map(u => {
       let isEnded = false;
       let rawStatus: string | null = null;
       let discoveredTwilioSid: string | null = twilioSid || null;
+
+      // 0. Check Custom Voice Engine Calls
+      if (provider === 'custom-voice-engine' || provider === 'cve') {
+        const targetId = callId || uuid;
+        if (targetId) {
+          const [session] = await db
+            .select({ status: calls.status })
+            .from(calls)
+            .where(eq(calls.id, targetId))
+            .limit(1);
+          if (session) {
+            rawStatus = session.status;
+            if (['in-progress', 'in_progress', 'answered', 'active'].includes(session.status)) {
+              isAnswered = true;
+            } else if (['completed', 'failed', 'busy', 'no-answer', 'canceled', 'cancelled', 'rejected'].includes(session.status)) {
+              isEnded = true;
+            }
+          }
+        }
+      }
 
       // 1. Check Plivo Calls (Plivo+OpenAI and Plivo+ElevenLabs)
       if (provider?.startsWith('plivo') || provider === 'plivo') {

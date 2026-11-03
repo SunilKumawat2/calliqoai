@@ -24,9 +24,9 @@
  */
 
 import { db } from '../../db';
-import { leads, calls, plivoCalls, twilioOpenaiCalls, sipCalls, appointments, googleSheetsSyncConfigs, AI_LEAD_CATEGORIES, type AILeadCategory } from '@shared/schema';
+import { leads, calls, plivoCalls, twilioOpenaiCalls, sipCalls, appointments, googleSheetsSyncConfigs, plivoPhoneNumbers, incomingConnections, AI_LEAD_CATEGORIES, type AILeadCategory } from '@shared/schema';
 import { CRMStorage } from '../../storage/crm-storage';
-import { eq, and, or, sql } from 'drizzle-orm';
+import { eq, and, or, sql, isNull } from 'drizzle-orm';
 
 export interface CallData {
   id: string;
@@ -289,6 +289,239 @@ export class CRMLeadProcessor {
   }
 
   /**
+   * Intelligently extract the true caller / patient / customer name from:
+   * 1. Appointment data (attendeeName, contactName, patientName, callerName)
+   * 2. Call metadata
+   * 3. AI call summary patterns (e.g. "The customer, Sunil Kumar, requested...", "The caller, Yaju, requested...")
+   * 4. Call transcript
+   * 5. CallData direct fields (firstName / lastName)
+   * 6. Existing lead fallback
+   */
+  static extractCallerName(
+    callData: CallData,
+    qualification?: LeadQualification,
+    fallbackLead?: any
+  ): { firstName: string; lastName: string; fullName: string } {
+    const STOP_WORDS = new Set([
+      'initially', 'expressed', 'need', 'assistance', 'inquired', 'asked', 'requested', 
+      'wanted', 'said', 'customer', 'caller', 'patient', 'user', 'unknown', 'someone', 
+      'doctor', 'dr', 'hospital', 'clinic', 'appointment', 'consultation', 'help', 
+      'information', 'details', 'interested', 'confirmed', 'scheduled', 'booked',
+      'the', 'a', 'an', 'this', 'that', 'with', 'about', 'from', 'they', 'their',
+      'and', 'who', 'seeking', 'wanting', 'wants', 'to', 'for', 'at', 'on', 'in', 'is', 'was'
+    ]);
+
+    const splitName = (fullName: string) => {
+      const parts = fullName.trim().split(/\s+/);
+      if (parts.length === 1) {
+        return { firstName: parts[0], lastName: '', fullName: parts[0] };
+      }
+      const firstName = parts[0];
+      const lastName = parts.slice(1).join(' ');
+      return { firstName, lastName, fullName: `${firstName} ${lastName}` };
+    };
+
+    const cleanName = (raw?: any): string | null => {
+      if (!raw || typeof raw !== 'string') return null;
+      let name = raw.replace(/[^\w\s'-]/g, ' ').trim().replace(/\s+/g, ' ');
+      if (!name || name.length < 2 || name.length > 50) return null;
+
+      let parts = name.split(' ');
+      while (parts.length > 0 && STOP_WORDS.has(parts[parts.length - 1].toLowerCase())) {
+        parts.pop();
+      }
+      while (parts.length > 0 && STOP_WORDS.has(parts[0].toLowerCase())) {
+        parts.shift();
+      }
+
+      if (parts.length === 0) return null;
+
+      for (const p of parts) {
+        if (STOP_WORDS.has(p.toLowerCase())) return null;
+        if (!/^[a-zA-Z'-]+$/.test(p)) return null;
+      }
+
+      const capitalized = parts
+        .filter(p => p.length > 0)
+        .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+        .join(' ');
+
+      return capitalized || null;
+    };
+
+    // 1. Check appointment data or metadata direct fields
+    const appt = qualification?.appointmentData as any;
+    const meta = (callData.metadata || {}) as any;
+    const aiInsights = (callData.aiInsights || meta.aiInsights || {}) as any;
+
+    const candidateSources = [
+      appt?.patientName,
+      appt?.contactName,
+      appt?.attendeeName,
+      appt?.callerName,
+      appt?.name,
+      meta?.patientName,
+      meta?.callerName,
+      meta?.contactName,
+      meta?.attendeeName,
+      meta?.customerName,
+      aiInsights?.patientName,
+      aiInsights?.contactName,
+      aiInsights?.customerName,
+      aiInsights?.attendeeName,
+    ];
+
+    for (const src of candidateSources) {
+      const cleaned = cleanName(src);
+      if (cleaned) return splitName(cleaned);
+    }
+
+    // 2. Parse from AI Summary
+    const summary = callData.aiSummary;
+    if (summary && typeof summary === 'string') {
+      const term = '(?:\\b(?:and|who|wanting|wants|requested|called|stated|asked|inquired|needs|booked|scheduled|to|for|with|at|on|in|is|was)\\b|,|\\.|$)';
+
+      // Pattern 1: "The customer, Sunil Kumar, requested..." or "The caller, Yaju, requested..."
+      const p1 = new RegExp(`(?:the\\s+customer|the\\s+caller|the\\s+patient|the\\s+client)(?:,\\s*|\\s+is\\s+|\\s+named\\s+)([A-Z][a-zA-Z'-]+(?:\\s+[A-Z][a-zA-Z'-]+)?)(?=${term}|\\s)`, 'i');
+      const m1 = summary.match(p1);
+      if (m1 && m1[1]) {
+        const cleaned = cleanName(m1[1]);
+        if (cleaned) return splitName(cleaned);
+      }
+
+      // Pattern 2: Explicit labels e.g. "Patient Name: Sunil Kumar" or "Caller: Yaju"
+      const p2 = new RegExp(`(?:patient(?:\\s+name)?|caller(?:\\s+name)?|customer(?:\\s+name)?|contact(?:\\s+name)?|client(?:\\s+name)?)\\s*:\\s*([A-Za-z'-]+(?:\\s+[A-Za-z'-]+)?)(?=${term}|\\s)`, 'i');
+      const m2 = summary.match(p2);
+      if (m2 && m2[1]) {
+        const cleaned = cleanName(m2[1]);
+        if (cleaned) return splitName(cleaned);
+      }
+
+      // Pattern 3: "appointment for <Name>" or "named <Name>"
+      const p3 = new RegExp(`(?:named|appointment for|booking for|patient named|patient is)\\s+([A-Z][a-zA-Z'-]+(?:\\s+[A-Z][a-zA-Z'-]+)?)(?=${term}|\\s)`, 'i');
+      const m3 = summary.match(p3);
+      if (m3 && m3[1]) {
+        const cleaned = cleanName(m3[1]);
+        if (cleaned) return splitName(cleaned);
+      }
+
+      // Pattern 4: "caller's name is <Name>" or "caller identified as <Name>"
+      const p4 = new RegExp(`(?:caller'?s?|customer'?s?|patient'?s?)\\s+name\\s+is\\s+([A-Za-z'-]+(?:\\s+[A-Za-z'-]+)?)(?=${term}|\\s)`, 'i');
+      const m4 = summary.match(p4);
+      if (m4 && m4[1]) {
+        const cleaned = cleanName(m4[1]);
+        if (cleaned) return splitName(cleaned);
+      }
+
+      const p5 = new RegExp(`(?:caller|customer|patient)\\s+identified\\s+(?:themselves\\s+)?as\\s+([A-Za-z'-]+(?:\\s+[A-Za-z'-]+)?)(?=${term}|\\s)`, 'i');
+      const m5 = summary.match(p5);
+      if (m5 && m5[1]) {
+        const cleaned = cleanName(m5[1]);
+        if (cleaned) return splitName(cleaned);
+      }
+    }
+
+    // 3. Fallback to callData direct fields if provided
+    if (callData?.firstName || callData?.lastName) {
+      const full = [(callData.firstName || '').trim(), (callData.lastName || '').trim()].filter(Boolean).join(' ');
+      const cleaned = cleanName(full);
+      if (cleaned) return splitName(cleaned);
+    }
+
+    // 4. Fallback to existing lead name if available
+    if (fallbackLead?.firstName || fallbackLead?.lastName) {
+      const full = [(fallbackLead.firstName || '').trim(), (fallbackLead.lastName || '').trim()].filter(Boolean).join(' ');
+      const cleaned = cleanName(full);
+      if (cleaned) return splitName(cleaned);
+    }
+
+    return { firstName: '', lastName: '', fullName: 'Unknown' };
+  }
+
+  /**
+   * Push an inbound call outcome to the Google Sheet linked on the inbound phone number /
+   * incoming connection (optional, per-number). Never throws - failures are only logged.
+   */
+  static async pushToIncomingGoogleSheet(callData: CallData, lead: any, qualification: LeadQualification): Promise<void> {
+    try {
+      const direction = (callData.callDirection || '').toString().toLowerCase();
+      if (direction !== 'incoming' && direction !== 'inbound') return;
+      if (!callData.userId) return;
+
+      const digits = (v?: string | null) => (v || '').replace(/\D/g, '');
+      const dialed = digits(callData.toNumber);
+
+      let sheetId: string | null = null;
+      let sheetTab: string = 'Sheet1';
+
+      // 1) Plivo numbers: match the number that was dialed
+      if (dialed) {
+        const plivoNumbers = await db
+          .select()
+          .from(plivoPhoneNumbers)
+          .where(eq(plivoPhoneNumbers.userId, callData.userId));
+        const match = plivoNumbers.find(n => digits(n.phoneNumber) === dialed && !!n.googleSheetId);
+        if (match) {
+          sheetId = match.googleSheetId;
+          sheetTab = match.googleSheetName || 'Sheet1';
+        }
+      }
+
+      // 2) Twilio / other incoming connections
+      if (!sheetId && callData.incomingConnectionId) {
+        const [conn] = await db
+          .select()
+          .from(incomingConnections)
+          .where(eq(incomingConnections.id, callData.incomingConnectionId))
+          .limit(1);
+        if (conn?.googleSheetId) {
+          sheetId = conn.googleSheetId;
+          sheetTab = conn.googleSheetName || 'Sheet1';
+        }
+      }
+
+      if (!sheetId) return; // Not configured for this number - nothing to do
+
+      const { ensureSheetHeaders, appendRowToSheet } = await import('../../services/google-sheets/google-sheets.service');
+
+      const headers = [
+        'Caller Name', 'Caller Phone', 'Call Date', 'Call Time', 'Call Duration',
+        'AI Status / Category', 'Appointment Details', 'Call Summary', 'Call ID', 'Submitted At',
+      ];
+      await ensureSheetHeaders(callData.userId, sheetId, sheetTab, headers);
+
+      const now = new Date();
+      const existingName = [lead?.firstName, lead?.lastName].filter(Boolean).join(' ').trim();
+      const extractedCaller = this.extractCallerName(callData, qualification, lead);
+      // Consistent tracking: If number was already saved under a lead name, keep that previous name
+      const callName = existingName || extractedCaller.fullName || 'Unknown';
+      const callPhone = lead?.phone || callData.fromNumber || callData.phoneNumber || '';
+      const appt = qualification?.appointmentData
+        ? [qualification.appointmentData.date, (qualification.appointmentData as any).time, (qualification.appointmentData as any).purpose]
+            .filter(Boolean).map(String).join(' | ')
+        : '';
+
+      const row = [
+        callName,
+        callPhone,
+        now.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        callData.duration != null ? String(callData.duration) : '',
+        qualification?.category || lead?.aiCategory || '',
+        appt,
+        callData.aiSummary || '',
+        callData.id || '',
+        now.toISOString(),
+      ];
+
+      const ok = await appendRowToSheet(callData.userId, sheetId, sheetTab, row);
+      console.log(`${this.LOG_PREFIX} Inbound sheet push ${ok ? 'OK' : 'FAILED'} for call ${callData.id} -> ${sheetId} (${sheetTab}) [Caller: ${callName}]`);
+    } catch (err: any) {
+      console.error(`${this.LOG_PREFIX} Inbound Google Sheet push note:`, err?.message || err);
+    }
+  }
+
+  /**
    * Process a completed call and create a lead if it qualifies
    */
   static async processCall(callData: CallData): Promise<{ leadId: string | null; qualification: LeadQualification }> {
@@ -343,7 +576,10 @@ export class CRMLeadProcessor {
           const categoryChanged = existingLead.aiCategory !== updatedLead.aiCategory;
           console.log(`${this.LOG_PREFIX} Updated existing lead ${updatedLead.id} - aiCategory: ${existingLead.aiCategory || 'none'} -> ${updatedLead.aiCategory || qualification.category || 'none'}${categoryChanged ? ' (changed)' : ''}`);
 
-          // Trigger Google Sheets writeback if lead is linked
+          // Push to Inbound Google Sheet if configured on connection
+      await this.pushToIncomingGoogleSheet(callData, updatedLead, qualification);
+
+      // Trigger Google Sheets writeback if lead is linked
           try {
             const { CrmSyncService } = await import('../../services/crm-sync/crm-sync.service');
             await CrmSyncService.writebackCallOutcome({
@@ -394,6 +630,9 @@ export class CRMLeadProcessor {
       } catch (activityError) {
         console.error(`${this.LOG_PREFIX} Failed to create activity:`, activityError);
       }
+
+      // Push to Inbound Google Sheet if configured on connection
+      await this.pushToIncomingGoogleSheet(callData, lead, qualification);
 
       // Trigger form.lead_created webhook event
       try {
@@ -736,15 +975,13 @@ export class CRMLeadProcessor {
       const phone = this.resolveLeadPhone(callData);
       if (!phone || phone === 'Unknown') return;
 
-      let contactName = callData.firstName || '';
-      if (callData.lastName) contactName += ` ${callData.lastName}`;
-      contactName = contactName.trim();
-
-      if (!contactName && callData.aiSummary) {
-        const nameMatch = callData.aiSummary.match(/(?:named|customer|caller)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
-        if (nameMatch && nameMatch[1]) contactName = nameMatch[1].trim();
+      let contactName = this.extractCallerName(callData, qualification).fullName;
+      if (!contactName || contactName === 'Unknown') {
+        contactName = callData.firstName || '';
+        if (callData.lastName) contactName += ` ${callData.lastName}`;
+        contactName = contactName.trim();
       }
-      if (!contactName) contactName = 'Customer';
+      if (!contactName || contactName === 'Unknown') contactName = 'Customer';
 
       // Parse appointment date and time from summary / text
       let apptDate = new Date();
@@ -767,13 +1004,15 @@ export class CRMLeadProcessor {
       }
 
       const appointmentDate = apptDate.toISOString().split('T')[0];
+      const apptData = (qualification.appointmentData || {}) as any;
+      const detectedService = apptData.serviceName || apptData.purpose || apptData.department || 'Consultation / Appointment';
       const { CrmSyncService } = await import('../../services/crm-sync/crm-sync.service');
       const booked = await CrmSyncService.bookAppointment(callData.userId, {
         contactName,
         contactPhone: phone,
         appointmentDate,
         appointmentTime: apptTimeStr,
-        serviceName: 'Site Visit / Consultation',
+        serviceName: detectedService,
         notes: callData.aiSummary || 'Booked via Calliqo AI call',
       });
       console.log(`${this.LOG_PREFIX} Fallback created appointment ${booked.appointmentId} (Google Event: ${booked.googleEventId}) for ${contactName} on ${appointmentDate} at ${apptTimeStr}`);
@@ -1012,6 +1251,13 @@ export class CRMLeadProcessor {
     let email = callData.email || null;
     let company = callData.company || null;
 
+    // Check if AI extracted a specific caller/patient name from the call
+    const extractedCaller = this.extractCallerName(callData, qualification);
+    if (extractedCaller.firstName) {
+      firstName = extractedCaller.firstName;
+      lastName = extractedCaller.lastName || null;
+    }
+
     if (!firstName && phoneNumber) {
       const last10 = phoneNumber.replace(/\D/g, '').slice(-10);
       try {
@@ -1105,13 +1351,22 @@ export class CRMLeadProcessor {
   ): Promise<typeof leads.$inferSelect | null> {
     const updates: Record<string, unknown> = {};
 
-    // Update contact details if not already present
-    if (callData.firstName && !existingLead.firstName) {
-      updates.firstName = callData.firstName;
-    }
-    if (callData.lastName && !existingLead.lastName) {
+    // Preserve existing lead's original name so repeat calls from the same number stay consistently tracked
+    if (!existingLead.firstName) {
+      const extractedCaller = this.extractCallerName(callData, qualification);
+      if (extractedCaller.firstName) {
+        updates.firstName = extractedCaller.firstName;
+        updates.lastName = extractedCaller.lastName || null;
+      } else if (callData.firstName) {
+        updates.firstName = callData.firstName;
+        if (callData.lastName) {
+          updates.lastName = callData.lastName;
+        }
+      }
+    } else if (!existingLead.lastName && callData.lastName) {
       updates.lastName = callData.lastName;
     }
+
     if (callData.email && !existingLead.email) {
       updates.email = callData.email;
     }
