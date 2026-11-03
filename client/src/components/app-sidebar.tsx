@@ -147,6 +147,11 @@ export function AppSidebar() {
               src={customBrandLogo} 
               alt={whitelabelConfig?.businessName || branding.app_name} 
               className="h-8 w-auto max-w-[140px] object-contain"
+              onError={(e) => {
+                if (currentLogo && (e.target as HTMLImageElement).src !== currentLogo) {
+                  (e.target as HTMLImageElement).src = currentLogo;
+                }
+              }}
             />
           )}
           <SidebarTrigger 

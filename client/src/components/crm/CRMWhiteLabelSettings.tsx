@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { AuthStorage } from "@/lib/auth-storage";
 import {
   Building2,
   Stethoscope,
@@ -203,8 +204,15 @@ export function CRMWhiteLabelSettings() {
       const formData = new FormData();
       formData.append("logo", file);
 
+      const uploadHeaders: Record<string, string> = {};
+      const authHeader = AuthStorage.getAuthHeader();
+      if (authHeader) {
+        uploadHeaders["Authorization"] = authHeader;
+      }
+
       const res = await fetch("/api/crm/whitelabel/upload-logo", {
         method: "POST",
+        headers: uploadHeaders,
         body: formData,
         credentials: "include",
       });
