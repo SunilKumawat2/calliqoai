@@ -32,6 +32,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CRMIntegrationsDashboard } from "@/components/crm/CRMIntegrationsDashboard";
 import { SalesTeamSiteVisits } from "@/components/crm/SalesTeamSiteVisits";
 import { CRMWhiteLabelSettings } from "@/components/crm/CRMWhiteLabelSettings";
+import { AuthStorage } from "@/lib/auth-storage";
 import { motion, AnimatePresence } from "framer-motion";
 
 
@@ -2837,7 +2838,7 @@ export default function CRMPage() {
                 setViewMode("whitelabel");
               }}
               data-testid="view-whitelabel"
-              title="White-Label & Industry Setup"
+              title={AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry Setup" : "Clinic & Brand Customization"}
               className={`h-8 text-xs gap-1.5 px-3 font-medium transition-colors ${
                 viewMode === "whitelabel" 
                   ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 font-semibold border border-purple-500/30" 
@@ -2845,7 +2846,7 @@ export default function CRMPage() {
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-              <span>White-Label & Industry</span>
+              <span>{AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry" : "Brand Customization"}</span>
             </Button>
           </div>
         </div>

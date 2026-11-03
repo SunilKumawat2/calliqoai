@@ -185,6 +185,8 @@ function hexToHsl(hex: string): string | null {
 export function CRMWhiteLabelSettings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const currentUser = AuthStorage.getUser();
+  const isAdmin = currentUser?.role === "admin";
 
   // Fetch current whitelabel config
   const { data: config, isLoading } = useQuery<WhiteLabelConfig>({
@@ -359,19 +361,19 @@ export function CRMWhiteLabelSettings() {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Badge className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-0 font-medium px-2.5 py-0.5 text-xs shadow-sm">
-                <Sparkles className="w-3 h-3 mr-1" /> Multi-Industry White-Label Suite
+                <Sparkles className="w-3 h-3 mr-1" /> {isAdmin ? "Multi-Industry White-Label Suite" : "Clinic & Brand Customization"}
               </Badge>
               <Badge variant="outline" className="text-xs font-mono">
-                Active: {currentPreset.name}
+                Industry: {currentPreset.name}
               </Badge>
             </div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
-              Industry & White-Label Customization
+              {isAdmin ? "Industry & White-Label Customization" : "Brand & Clinic Customization"}
             </h1>
             <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
-              Transform this CRM into a dedicated, branded workspace for{" "}
-              <strong className="text-foreground">Clinics, Real Estate Developers, Coaching Academies, or Dealerships</strong>.
-              All appointments, labels, notifications, and client portals adapt automatically.
+              {isAdmin
+                ? "Transform this CRM into a dedicated, branded workspace for Clinics, Real Estate Developers, Coaching Academies, or Dealerships. All appointments, labels, notifications, and client portals adapt automatically."
+                : "Customize your clinic or company name, logo, brand colors, and terminology. All CRM labels, appointment reminders, and team notifications adapt to your brand identity."}
             </p>
           </div>
 
@@ -399,93 +401,120 @@ export function CRMWhiteLabelSettings() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Side: Setup Controls */}
         <div className="lg:col-span-7 space-y-6">
-          {/* 1. Industry Preset Selector */}
-          <Card className="border-border/60 shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-primary" />
-                1. Select Industry Preset
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Pick the vertical this workspace operates in. This sets smart defaults for appointment titles and contact terms.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {INDUSTRY_PRESETS.map((preset) => {
-                  const Icon = preset.icon;
-                  const isSelected = industry === preset.id;
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => handleSelectIndustry(preset.id)}
-                      className={`text-left p-3.5 rounded-xl border transition-all relative flex flex-col justify-between gap-3 ${
-                        isSelected
-                          ? "border-primary bg-primary/5 ring-1 ring-primary shadow-sm"
-                          : "border-border/60 hover:border-border hover:bg-muted/40"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full">
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-white"
-                          style={{ backgroundColor: preset.color }}
-                        >
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        {isSelected ? (
-                          <Badge 
-                            className="text-white text-[10px] px-2 py-0 border-0 shadow-xs"
+          {/* 1. Industry Preset Selector (Visible to Super Admin only) */}
+          {isAdmin ? (
+            <Card className="border-border/60 shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-primary" />
+                  1. Select Industry Preset
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Pick the vertical this workspace operates in. This sets smart defaults for appointment titles and contact terms.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {INDUSTRY_PRESETS.map((preset) => {
+                    const Icon = preset.icon;
+                    const isSelected = industry === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleSelectIndustry(preset.id)}
+                        className={`text-left p-3.5 rounded-xl border transition-all relative flex flex-col justify-between gap-3 ${
+                          isSelected
+                            ? "border-primary bg-primary/5 ring-1 ring-primary shadow-sm"
+                            : "border-border/60 hover:border-border hover:bg-muted/40"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-white"
                             style={{ backgroundColor: preset.color }}
                           >
-                            Active
-                          </Badge>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground font-medium">
-                            {preset.badge}
-                          </span>
-                        )}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-sm text-foreground">{preset.name}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {preset.defaultApptTerm}
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          {isSelected ? (
+                            <Badge 
+                              className="text-white text-[10px] px-2 py-0 border-0 shadow-xs"
+                              style={{ backgroundColor: preset.color }}
+                            >
+                              Active
+                            </Badge>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground font-medium">
+                              {preset.badge}
+                            </span>
+                          )}
                         </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                        <div>
+                          <div className="font-semibold text-sm text-foreground">{preset.name}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {preset.defaultApptTerm}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
 
-              {/* Sub-Industry Selection */}
-              <div className="pt-2">
-                <Label className="text-xs font-semibold text-foreground">Sub-Speciality / Category</Label>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {currentPreset.subIndustries.map((sub) => (
-                    <button
-                      key={sub}
-                      type="button"
-                      onClick={() => setSubIndustry(sub)}
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                        subIndustry === sub
-                          ? "bg-foreground text-background font-medium border-foreground"
-                          : "bg-muted/40 text-muted-foreground border-border/60 hover:border-border hover:text-foreground"
-                      }`}
-                    >
-                      {sub}
-                    </button>
-                  ))}
+                {/* Sub-Industry Selection */}
+                <div className="pt-2">
+                  <Label className="text-xs font-semibold text-foreground">Sub-Speciality / Category</Label>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {currentPreset.subIndustries.map((sub) => (
+                      <button
+                        key={sub}
+                        type="button"
+                        onClick={() => setSubIndustry(sub)}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                          subIndustry === sub
+                            ? "bg-foreground text-background font-medium border-foreground"
+                            : "bg-muted/40 text-muted-foreground border-border/60 hover:border-border hover:text-foreground"
+                        }`}
+                      >
+                        {sub}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            /* Non-admin / Client view: Subtle assigned industry info box */
+            <div className="flex items-center justify-between p-4 rounded-xl border border-border/60 bg-muted/20">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-white shadow-xs shrink-0"
+                  style={{ backgroundColor: currentPreset.color }}
+                >
+                  <currentPreset.icon className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <span>Industry: {currentPreset.name}</span>
+                    {subIndustry && (
+                      <Badge variant="outline" className="text-[11px] py-0 px-2 h-5 text-muted-foreground border-border/80">
+                        {subIndustry}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Assigned to your workspace by Admin. Terminology and notifications adapt to this vertical.
+                  </p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          )}
 
-          {/* 2. Business & Brand Identity */}
+          {/* Business & Brand Identity */}
           <Card className="border-border/60 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <Palette className="w-4 h-4 text-primary" />
-                2. Brand Identity & Clinic Profile
+                {isAdmin ? "2. Brand Identity & Clinic Profile" : "Brand Identity & Profile"}
               </CardTitle>
               <CardDescription className="text-xs">
                 Customize how your clinic or company name appears to your patients, clients, and team.

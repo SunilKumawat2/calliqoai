@@ -419,6 +419,7 @@ export function WhiteLabelClientsManagement() {
                           <div className="flex items-center gap-2">
                             <Switch
                               checked={client.isActive}
+                              disabled={client.role === "admin" || toggleStatusMutation.isPending}
                               onCheckedChange={(checked) =>
                                 toggleStatusMutation.mutate({ userId: client.id, isActive: checked })
                               }

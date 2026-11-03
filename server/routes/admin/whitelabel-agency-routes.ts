@@ -11,7 +11,7 @@ import { AdminRequest, requireAdminPermission } from '../../middleware/admin-aut
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import { db } from '../../db';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, ne, desc, sql } from 'drizzle-orm';
 import { users, crmWhitelabelConfigs } from '@shared/schema';
 import { storage } from '../../storage';
 
@@ -22,7 +22,7 @@ export function registerWhitelabelAgencyRoutes(router: Router) {
    */
   router.get('/whitelabel/clients', requireAdminPermission('users', 'view_users', 'read'), async (req: AdminRequest, res: Response) => {
     try {
-      // Fetch users who have white-label configurations or are agency tenants
+      // Fetch users who have white-label configurations (exclude super admin accounts)
       const clients = await db
         .select({
           userId: users.id,
@@ -47,6 +47,7 @@ export function registerWhitelabelAgencyRoutes(router: Router) {
         })
         .from(crmWhitelabelConfigs)
         .innerJoin(users, eq(crmWhitelabelConfigs.userId, users.id))
+        .where(ne(users.role, 'admin'))
         .orderBy(desc(crmWhitelabelConfigs.updatedAt));
 
       res.json({
@@ -188,6 +189,22 @@ export function registerWhitelabelAgencyRoutes(router: Router) {
   router.patch('/whitelabel/clients/:userId', requireAdminPermission('users', 'edit_users', 'update'), async (req: AdminRequest, res: Response) => {
     try {
       const { userId } = req.params;
+
+      // Safety Guard: Super Admin accounts can never be modified or suspended via client management
+      const [targetUser] = await db
+        .select({ id: users.id, role: users.role })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (!targetUser) {
+        return res.status(404).json({ error: 'Client not found.' });
+      }
+
+      if (targetUser.role === 'admin') {
+        return res.status(403).json({ error: 'Super Admin accounts cannot be managed or suspended from client agency routes.' });
+      }
+
       const { 
         isActive, 
         businessName, 
