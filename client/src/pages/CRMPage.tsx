@@ -1717,8 +1717,10 @@ export default function CRMPage() {
       const hsl = hexToHsl(whitelabelConfig.primaryColor);
       if (hsl) {
         document.documentElement.style.setProperty('--primary', hsl);
+        document.documentElement.style.setProperty('--primary-foreground', '0 0% 100%');
         document.documentElement.style.setProperty('--ring', hsl);
         document.documentElement.style.setProperty('--brand', hsl);
+        document.documentElement.style.setProperty('--brand-foreground', '0 0% 100%');
       }
     }
   }, [whitelabelConfig?.primaryColor]);

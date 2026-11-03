@@ -286,8 +286,10 @@ export function CRMWhiteLabelSettings() {
       const hsl = hexToHsl(primaryColor);
       if (hsl) {
         document.documentElement.style.setProperty('--primary', hsl);
+        document.documentElement.style.setProperty('--primary-foreground', '0 0% 100%');
         document.documentElement.style.setProperty('--ring', hsl);
         document.documentElement.style.setProperty('--brand', hsl);
+        document.documentElement.style.setProperty('--brand-foreground', '0 0% 100%');
       }
     }
   }, [primaryColor]);
@@ -377,7 +379,7 @@ export function CRMWhiteLabelSettings() {
             size="lg"
             onClick={handleSave}
             disabled={saveMutation.isPending || isLoading}
-            className="shrink-0 gap-2 font-semibold shadow-md"
+            className="shrink-0 gap-2 font-semibold shadow-md text-white hover:text-white"
             style={{ backgroundColor: primaryColor }}
           >
             {saveMutation.isPending ? (
@@ -432,7 +434,10 @@ export function CRMWhiteLabelSettings() {
                           <Icon className="w-4 h-4" />
                         </div>
                         {isSelected ? (
-                          <Badge className="bg-primary text-primary-foreground text-[10px] px-2 py-0">
+                          <Badge 
+                            className="text-white text-[10px] px-2 py-0 border-0 shadow-xs"
+                            style={{ backgroundColor: preset.color }}
+                          >
                             Active
                           </Badge>
                         ) : (
@@ -790,7 +795,7 @@ export function CRMWhiteLabelSettings() {
               {/* Save Call to Action */}
               <div className="pt-2">
                 <Button
-                  className="w-full gap-2 font-semibold shadow-md"
+                  className="w-full gap-2 font-semibold shadow-md text-white hover:text-white"
                   size="lg"
                   onClick={handleSave}
                   disabled={saveMutation.isPending || isLoading}
