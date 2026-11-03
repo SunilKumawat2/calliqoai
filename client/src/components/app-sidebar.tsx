@@ -61,6 +61,12 @@ export function AppSidebar() {
   const { branding, currentLogo, showLogo, showFavicon } = useBranding();
   const { setOpenMobile, isMobile } = useSidebar();
 
+  const { data: whitelabelConfig } = useQuery<{ logoUrl?: string; businessName?: string }>({
+    queryKey: ["/api/crm/whitelabel"],
+    staleTime: 1000 * 60 * 5,
+  });
+  const customBrandLogo = whitelabelConfig?.logoUrl || currentLogo;
+
   const handleNavClick = () => {
     if (isMobile) {
       setOpenMobile(false);
@@ -136,10 +142,10 @@ export function AppSidebar() {
       <SidebarHeader className="px-3 py-3 border-b border-sidebar-border">
         {/* When expanded: Logo on left, toggle on right */}
         <div className="flex items-center justify-between gap-2 group-data-[collapsible=icon]:hidden">
-          {showLogo && (
+          {showLogo && customBrandLogo && (
             <img 
-              src={currentLogo!} 
-              alt={branding.app_name} 
+              src={customBrandLogo} 
+              alt={whitelabelConfig?.businessName || branding.app_name} 
               className="h-8 w-auto max-w-[140px] object-contain"
             />
           )}
@@ -151,8 +157,8 @@ export function AppSidebar() {
         {/* When collapsed: Favicon/Mini logo + toggle stacked */}
         <div className="hidden group-data-[collapsible=icon]:flex flex-col items-center gap-2">
           <img 
-            src="/images/mini-dark-logo.png" 
-            alt={branding?.app_name || "Calliqo AI"} 
+            src={whitelabelConfig?.logoUrl || "/images/mini-dark-logo.png"} 
+            alt={whitelabelConfig?.businessName || branding?.app_name || "Calliqo AI"} 
             className="h-7 w-7 object-contain rounded-md"
           />
           <SidebarTrigger 

@@ -13,6 +13,37 @@ import { z } from 'zod';
 import { db } from '../db';
 import { eq } from 'drizzle-orm';
 import { crmWhitelabelConfigs } from '@shared/schema';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+
+const whitelabelUploadsDir = path.join(process.cwd(), 'client', 'public', 'uploads');
+if (!fs.existsSync(whitelabelUploadsDir)) {
+  fs.mkdirSync(whitelabelUploadsDir, { recursive: true });
+}
+
+const whitelabelUploadStorage = multer.diskStorage({
+  destination: function (_req, _file, cb) {
+    cb(null, whitelabelUploadsDir);
+  },
+  filename: function (_req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, 'crm-logo-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const uploadWhitelabelLogo = multer({
+  storage: whitelabelUploadStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PNG, JPG, GIF, WebP, and SVG images are allowed'));
+    }
+  }
+});
 // Team Management - uses adapter for optional plugin loading
 import { getTeamService } from '../plugins/team-management-adapter';
 
@@ -1056,6 +1087,30 @@ router.get('/whitelabel', requireAuth, async (req: AuthRequest, res: Response) =
   } catch (err: any) {
     console.error('[CRM] Error fetching whitelabel config:', err);
     res.status(500).json({ error: 'Failed to fetch whitelabel configuration' });
+  }
+});
+
+router.post('/whitelabel/upload-logo', requireAuth, uploadWhitelabelLogo.single('logo'), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No logo file uploaded' });
+    }
+    const logoUrl = `/uploads/${req.file.filename}`;
+    
+    // Sync to dist/public/uploads if it exists
+    const distUploads = path.join(process.cwd(), 'dist', 'public', 'uploads');
+    try {
+      if (fs.existsSync(distUploads)) {
+        fs.copyFileSync(req.file.path, path.join(distUploads, req.file.filename));
+      }
+    } catch (syncErr) {
+      console.warn('[CRM Whitelabel] Could not copy logo to dist uploads:', syncErr);
+    }
+
+    res.json({ success: true, url: logoUrl });
+  } catch (err: any) {
+    console.error('[CRM Whitelabel] Upload logo error:', err);
+    res.status(500).json({ error: err.message || 'Failed to upload logo' });
   }
 });
 

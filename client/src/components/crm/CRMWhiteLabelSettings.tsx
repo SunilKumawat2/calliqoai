@@ -26,6 +26,10 @@ import {
   PhoneCall,
   CheckCircle2,
   Share2,
+  Upload,
+  Image as ImageIcon,
+  Trash2,
+  Link as LinkIcon,
 } from "lucide-react";
 
 export interface WhiteLabelConfig {
@@ -177,6 +181,58 @@ export function CRMWhiteLabelSettings() {
   const [primaryColor, setPrimaryColor] = useState<string>("#0284c7");
   const [logoUrl, setLogoUrl] = useState<string>("");
   const [customDomain, setCustomDomain] = useState<string>("");
+  const [logoSourceMode, setLogoSourceMode] = useState<"upload" | "url">("upload");
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File Too Large",
+        description: "Logo file size must be less than 5MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("logo", file);
+
+      const res = await fetch("/api/crm/whitelabel/upload-logo", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to upload logo");
+      }
+
+      const data = await res.json();
+      setLogoUrl(data.url);
+      toast({
+        title: "Logo Uploaded! 🎉",
+        description: "Logo image uploaded successfully. Click 'Save White-Label Setup' to apply.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Upload Failed",
+        description: err.message || "Could not upload the logo image.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingLogo(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   // Sync state when config loads
   useEffect(() => {
@@ -471,18 +527,114 @@ export function CRMWhiteLabelSettings() {
                 </div>
               </div>
 
-              {/* Logo URL */}
-              <div className="space-y-1.5 pt-1">
-                <Label className="text-xs font-medium">Clinic / Company Logo URL (Optional)</Label>
-                <Input
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  placeholder="https://example.com/logo.png"
-                  className="h-9 text-sm"
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  Paste the URL of your PNG/SVG logo to replace platform branding in notifications and headers.
-                </p>
+              {/* Clinic / Company Logo (Upload File or Enter URL) */}
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-medium">Clinic / Company Logo</Label>
+                  <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setLogoSourceMode("upload")}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1 ${
+                        logoSourceMode === "upload"
+                          ? "bg-background text-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Upload className="w-3 h-3" /> Upload File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLogoSourceMode("url")}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1 ${
+                        logoSourceMode === "url"
+                          ? "bg-background text-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <LinkIcon className="w-3 h-3" /> Image URL
+                    </button>
+                  </div>
+                </div>
+
+                {logoSourceMode === "upload" ? (
+                  <div className="space-y-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                      accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif"
+                      className="hidden"
+                      id="crm-logo-file-input"
+                    />
+                    <div
+                      onClick={() => !isUploadingLogo && fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-border/80 hover:border-primary/50 transition-colors rounded-xl p-4 text-center cursor-pointer bg-muted/20 hover:bg-muted/40 flex flex-col items-center justify-center gap-2 group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
+                        {isUploadingLogo ? (
+                          <RefreshCw className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <Upload className="w-5 h-5" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-foreground">
+                          {isUploadingLogo ? "Uploading logo..." : "Click to browse or drop clinic/company logo"}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          PNG, JPG, SVG, WebP (Max 5MB) — Transparent PNG recommended
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Input
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="https://example.com/clinic-logo.png"
+                      className="h-9 text-sm font-mono"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Paste any direct image URL to use as your clinic or company brand logo.
+                    </p>
+                  </div>
+                )}
+
+                {/* Active Logo Preview Banner */}
+                {logoUrl && (
+                  <div className="flex items-center justify-between p-2.5 rounded-xl border bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-lg bg-card border flex items-center justify-center p-1 overflow-hidden shadow-xs shrink-0">
+                        <img
+                          src={logoUrl}
+                          alt="Brand Logo"
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Active Brand Logo
+                        </p>
+                        <p className="text-[11px] text-muted-foreground truncate max-w-[220px]">
+                          {logoUrl}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setLogoUrl("")}
+                      className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive gap-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Remove
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -619,3 +771,4 @@ export function CRMWhiteLabelSettings() {
     </div>
   );
 }
+

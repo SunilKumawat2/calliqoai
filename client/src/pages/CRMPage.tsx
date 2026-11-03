@@ -1675,6 +1675,18 @@ export default function CRMPage() {
   const [bulkTagDialogOpen, setBulkTagDialogOpen] = useState(false);
   const [newTagInput, setNewTagInput] = useState("");
   const LEADS_PER_PAGE = 50;
+
+  // White-label & Industry profile
+  const { data: whitelabelConfig } = useQuery<{
+    businessName?: string;
+    tagline?: string;
+    logoUrl?: string;
+    leadTerm?: string;
+    appointmentTerm?: string;
+    primaryColor?: string;
+  }>({
+    queryKey: ["/api/crm/whitelabel"],
+  });
   
   // AI Category filtering - only show qualified prospects
   const [aiCategoryFilter, setAiCategoryFilter] = useState<AICategory | "all">("all");
@@ -2413,13 +2425,34 @@ export default function CRMPage() {
           {/* Header Row - Title and Actions */}
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/10">
-                <Zap className="w-6 h-6 text-primary" />
-              </div>
+              {whitelabelConfig?.logoUrl ? (
+                <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-card border shadow-xs p-1.5 overflow-hidden shrink-0">
+                  <img
+                    src={whitelabelConfig.logoUrl}
+                    alt={whitelabelConfig.businessName || "Clinic Logo"}
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                </div>
+              ) : (
+                <div 
+                  className="flex items-center justify-center w-12 h-12 rounded-2xl shrink-0"
+                  style={{ backgroundColor: whitelabelConfig?.primaryColor ? `${whitelabelConfig.primaryColor}20` : undefined }}
+                >
+                  <Zap 
+                    className="w-6 h-6" 
+                    style={{ color: whitelabelConfig?.primaryColor || undefined }} 
+                  />
+                </div>
+              )}
               <div>
-                <h1 className="text-xl font-semibold">{t("crmPage.title")}</h1>
+                <h1 className="text-xl font-semibold">
+                  {whitelabelConfig?.businessName || t("crmPage.title")}
+                </h1>
                 <p className="text-sm text-muted-foreground">
-                  {t("crmPage.description")}
+                  {whitelabelConfig?.tagline || t("crmPage.description")}
                 </p>
               </div>
             </div>
