@@ -3422,3 +3422,26 @@ export type InsertUserEmailTemplate = z.infer<typeof insertUserEmailTemplateSche
 export type UserEmailTemplate = typeof userEmailTemplates.$inferSelect;
 
 
+
+// ============================================================
+// CRM White-Label & Multi-Industry Configurations
+// ============================================================
+
+export const crmWhitelabelConfigs = pgTable("crm_whitelabel_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  industry: varchar("industry").notNull().default("healthcare"),
+  subIndustry: varchar("sub_industry").default("dermatology"),
+  businessName: varchar("business_name").default("Healthcare & Dental Clinic"),
+  tagline: varchar("tagline").default("Smart AI Appointments & Consultation"),
+  appointmentTerm: varchar("appointment_term").default("Doctor Consultation"),
+  leadTerm: varchar("lead_term").default("Patient"),
+  primaryColor: varchar("primary_color").default("#0284c7"),
+  logoUrl: text("logo_url"),
+  customDomain: varchar("custom_domain"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type CrmWhitelabelConfig = typeof crmWhitelabelConfigs.$inferSelect;
+export type InsertCrmWhitelabelConfig = typeof crmWhitelabelConfigs.$inferInsert;

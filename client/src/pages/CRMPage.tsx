@@ -31,6 +31,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CRMIntegrationsDashboard } from "@/components/crm/CRMIntegrationsDashboard";
 import { SalesTeamSiteVisits } from "@/components/crm/SalesTeamSiteVisits";
+import { CRMWhiteLabelSettings } from "@/components/crm/CRMWhiteLabelSettings";
 import { motion, AnimatePresence } from "framer-motion";
 
 
@@ -1658,7 +1659,7 @@ export default function CRMPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const queryClientRef = useQueryClient();
-  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team">("kanban");
+  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team" | "whitelabel">("kanban");
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedSourceId, setSelectedSourceId] = useState<string>("all");
@@ -2759,6 +2760,23 @@ export default function CRMPage() {
                 </span>
               )}
             </Button>
+            <Button
+              variant={viewMode === "whitelabel" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => {
+                setViewMode("whitelabel");
+              }}
+              data-testid="view-whitelabel"
+              title="White-Label & Industry Setup"
+              className={`h-8 text-xs gap-1.5 px-3 font-medium transition-colors ${
+                viewMode === "whitelabel" 
+                  ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 font-semibold border border-purple-500/30" 
+                  : "text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>White-Label & Industry</span>
+            </Button>
           </div>
         </div>
       </div>
@@ -2932,7 +2950,13 @@ export default function CRMPage() {
       </Dialog>
 
       <div className="flex-1 overflow-hidden">
-        {viewMode === "sales_team" ? (
+        {viewMode === "whitelabel" ? (
+          <ScrollArea className="h-full">
+            <div className="p-6">
+              <CRMWhiteLabelSettings />
+            </div>
+          </ScrollArea>
+        ) : viewMode === "sales_team" ? (
           <ScrollArea className="h-full">
             <div className="p-6">
               <SalesTeamSiteVisits />

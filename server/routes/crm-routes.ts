@@ -10,6 +10,9 @@ import { Router, Request, Response } from 'express';
 import { CRMStorage, DEFAULT_STAGES } from '../storage/crm-storage';
 import { insertLeadSchema, insertLeadStageSchema, insertLeadNoteSchema, AI_LEAD_CATEGORIES, AI_CATEGORY_LABELS, AI_CATEGORY_COLORS, AI_CATEGORY_PRIORITY, determineAICategory, type AILeadCategory } from '@shared/schema';
 import { z } from 'zod';
+import { db } from '../db';
+import { eq } from 'drizzle-orm';
+import { crmWhitelabelConfigs } from '@shared/schema';
 // Team Management - uses adapter for optional plugin loading
 import { getTeamService } from '../plugins/team-management-adapter';
 
@@ -1015,6 +1018,107 @@ router.get('/tags', requireAuth, async (req: AuthRequest, res: Response) => {
   } catch (error: any) {
     console.error('[CRM] Error fetching tags:', error);
     res.status(500).json({ error: 'Failed to fetch tags' });
+  }
+});
+
+
+// ============================================================
+// White-Label & Multi-Industry CRM Configurations
+// ============================================================
+
+router.get('/whitelabel', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const [existing] = await db
+      .select()
+      .from(crmWhitelabelConfigs)
+      .where(eq(crmWhitelabelConfigs.userId, req.userId!))
+      .limit(1);
+
+    if (existing) {
+      return res.json(existing);
+    }
+
+    const [created] = await db
+      .insert(crmWhitelabelConfigs)
+      .values({
+        userId: req.userId!,
+        industry: 'healthcare',
+        subIndustry: 'Dermatology & Skin Clinic',
+        businessName: 'City Care Skin & Dental Clinic',
+        tagline: 'Smart AI Patient Care & Doctor Appointments',
+        appointmentTerm: 'Doctor Consultation',
+        leadTerm: 'Patient',
+        primaryColor: '#0284c7',
+      })
+      .returning();
+
+    res.json(created);
+  } catch (err: any) {
+    console.error('[CRM] Error fetching whitelabel config:', err);
+    res.status(500).json({ error: 'Failed to fetch whitelabel configuration' });
+  }
+});
+
+router.post('/whitelabel', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      industry,
+      subIndustry,
+      businessName,
+      tagline,
+      appointmentTerm,
+      leadTerm,
+      primaryColor,
+      logoUrl,
+      customDomain,
+    } = req.body;
+
+    const [existing] = await db
+      .select()
+      .from(crmWhitelabelConfigs)
+      .where(eq(crmWhitelabelConfigs.userId, req.userId!))
+      .limit(1);
+
+    let result;
+    if (existing) {
+      [result] = await db
+        .update(crmWhitelabelConfigs)
+        .set({
+          industry: industry ?? existing.industry,
+          subIndustry: subIndustry ?? existing.subIndustry,
+          businessName: businessName ?? existing.businessName,
+          tagline: tagline ?? existing.tagline,
+          appointmentTerm: appointmentTerm ?? existing.appointmentTerm,
+          leadTerm: leadTerm ?? existing.leadTerm,
+          primaryColor: primaryColor ?? existing.primaryColor,
+          logoUrl: logoUrl !== undefined ? logoUrl : existing.logoUrl,
+          customDomain: customDomain !== undefined ? customDomain : existing.customDomain,
+          updatedAt: new Date(),
+        })
+        .where(eq(crmWhitelabelConfigs.id, existing.id))
+        .returning();
+    } else {
+      [result] = await db
+        .insert(crmWhitelabelConfigs)
+        .values({
+          userId: req.userId!,
+          industry: industry || 'healthcare',
+          subIndustry: subIndustry || 'Dermatology & Skin Clinic',
+          businessName: businessName || 'City Care Skin & Dental Clinic',
+          tagline: tagline || 'Smart AI Patient Care & Doctor Appointments',
+          appointmentTerm: appointmentTerm || 'Doctor Consultation',
+          leadTerm: leadTerm || 'Patient',
+          primaryColor: primaryColor || '#0284c7',
+          logoUrl,
+          customDomain,
+        })
+        .returning();
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    console.error('[CRM] Error saving whitelabel config:', err);
+    res.status(500).json({ error: 'Failed to save whitelabel configuration' });
   }
 });
 
