@@ -369,7 +369,7 @@ export function CRMWhiteLabelSettings() {
               Industry & White-Label Customization
             </h1>
             <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
-              Transform your Calliqo AI CRM into a dedicated, branded platform for{" "}
+              Transform this CRM into a dedicated, branded workspace for{" "}
               <strong className="text-foreground">Clinics, Real Estate Developers, Coaching Academies, or Dealerships</strong>.
               All appointments, labels, notifications, and client portals adapt automatically.
             </p>

@@ -323,7 +323,7 @@ export function CompanyEmailSettingsDialog({ open, onOpenChange }: CompanyEmailS
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Company / Sender Display Name</Label>
                   <Input
-                    placeholder="e.g. Calliqo Appointments Team"
+                    placeholder="e.g. Appointments & Notifications Team"
                     value={fromName}
                     onChange={(e) => setFromName(e.target.value)}
                     className="h-9 text-xs"

@@ -154,6 +154,16 @@ export function SalesTeamSiteVisits() {
     refetchInterval: 15000,
   });
 
+  // White-label & Brand Profile
+  const { data: whitelabelConfig } = useQuery<{
+    businessName?: string;
+    appointmentTerm?: string;
+    leadTerm?: string;
+  }>({
+    queryKey: ["/api/crm/whitelabel"],
+  });
+  const brandName = whitelabelConfig?.businessName || "AI Assistant";
+
   // Google Calendar Connection Status
   const { data: gcalStatus, refetch: refetchGCalStatus } = useQuery<{
     connected: boolean;
@@ -587,7 +597,7 @@ export function SalesTeamSiteVisits() {
       return;
     }
 
-    const message = `*Namaste ${visit.assignedStaffName || 'Team'}!* 🏢\n\n*New Appointment Assigned via Calliqo AI:*\n• *Client:* ${visit.contactName}\n• *Phone:* ${visit.contactPhone}\n• *Service / Purpose:* ${visit.serviceName || 'Scheduled Appointment'}\n• *Date & Time:* ${visit.appointmentDate} at ${visit.appointmentTime}\n• *Notes:* ${visit.notes || 'Appointment Booking'}\n\nPlease coordinate with the customer for this appointment!`;
+    const message = `*Namaste ${visit.assignedStaffName || 'Team'}!* 🏢\n\n*New ${whitelabelConfig?.appointmentTerm || 'Appointment'} Assigned via ${brandName}:*\n• *${whitelabelConfig?.leadTerm || 'Client'}:* ${visit.contactName}\n• *Phone:* ${visit.contactPhone}\n• *Service / Purpose:* ${visit.serviceName || 'Scheduled Appointment'}\n• *Date & Time:* ${visit.appointmentDate} at ${visit.appointmentTime}\n• *Notes:* ${visit.notes || 'Appointment Booking'}\n\nPlease coordinate with the customer for this appointment!`;
     const url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
     window.open(url, "_blank");
   };

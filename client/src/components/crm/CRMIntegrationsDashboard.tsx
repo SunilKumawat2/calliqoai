@@ -159,6 +159,18 @@ export function CRMIntegrationsDashboard() {
   // Base URL for webhooks
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://calliqoai.com";
 
+  // White-Label & Business Brand Identity
+  const { data: whitelabelConfig } = useQuery<{
+    businessName?: string;
+    tagline?: string;
+    leadTerm?: string;
+    appointmentTerm?: string;
+  }>({
+    queryKey: ["/api/crm/whitelabel"],
+  });
+  const brandName = whitelabelConfig?.businessName || "Calliqo AI";
+  const crmBrand = whitelabelConfig?.businessName ? `${whitelabelConfig.businessName} CRM` : "Calliqo CRM";
+
   // Check connection status (Google Sheets & Calendar)
   const { data: statusData, isLoading: statusLoading, refetch: refetchStatus } = useQuery<{
     googleSheets: { connected: boolean; email?: string };
@@ -744,7 +756,7 @@ export function CRMIntegrationsDashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Connect your Google account to automatically pull phone numbers and prospect details into Calliqo AI, and automatically write call duration, transcripts, AI scores, and summaries back into your spreadsheet.
+              Connect your Google account to automatically pull phone numbers and prospect details into {brandName}, and automatically write call duration, transcripts, AI scores, and summaries back into your spreadsheet.
             </p>
 
             <div className="p-3 bg-muted/40 rounded-lg text-xs space-y-1">
@@ -891,8 +903,8 @@ export function CRMIntegrationsDashboard() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Sender Name:</span>
-                <span className="font-medium text-foreground truncate max-w-[170px]" title={smtpData?.settings?.fromName || "Calliqo AI"}>
-                  {smtpData?.settings?.fromName || "Calliqo AI"}
+                <span className="font-medium text-foreground truncate max-w-[170px]" title={smtpData?.settings?.fromName || brandName}>
+                  {smtpData?.settings?.fromName || brandName}
                 </span>
               </div>
             </div>
@@ -916,7 +928,7 @@ export function CRMIntegrationsDashboard() {
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-base font-semibold">Active Google Sheet Sync Mappings</CardTitle>
-            <CardDescription className="text-xs">Spreadsheets actively monitored and synchronized with Calliqo CRM</CardDescription>
+            <CardDescription className="text-xs">Spreadsheets actively monitored and synchronized with {crmBrand}</CardDescription>
           </div>
           {statusData?.googleSheets?.connected && (
             <Button size="sm" onClick={() => setCreateDialogOpen(true)} className="gap-1.5">
@@ -930,7 +942,7 @@ export function CRMIntegrationsDashboard() {
               <FileSpreadsheet className="w-8 h-8 mx-auto text-muted-foreground/60" />
               <p className="text-sm font-medium">No Google Sheets connected for sync yet.</p>
               <p className="text-xs text-muted-foreground/80 max-w-md mx-auto">
-                Connect your Google account and link a spreadsheet to start automatically importing leads into Calliqo AI.
+                Connect your Google account and link a spreadsheet to start automatically importing leads into {brandName}.
               </p>
             </div>
           ) : (
@@ -1022,7 +1034,7 @@ export function CRMIntegrationsDashboard() {
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wider flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5" /> Calliqo Omnichannel CRM & External Synchronization Hub
+              <Sparkles className="w-3.5 h-3.5" /> {crmBrand} & External Synchronization Hub
             </span>
           </div>
           <h2 className="text-xl font-bold tracking-tight text-foreground">
@@ -1190,7 +1202,7 @@ export function CRMIntegrationsDashboard() {
                   </div>
                   <CardTitle className="text-base font-semibold">99acres & Magicbricks</CardTitle>
                   <CardDescription className="text-xs">
-                    Connect property inquiries from 99acres, Magicbricks, and Housing.com directly into Calliqo CRM.
+                    Connect property inquiries from 99acres, Magicbricks, and Housing.com directly into {crmBrand}.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 pt-0">
@@ -1323,7 +1335,7 @@ export function CRMIntegrationsDashboard() {
                   Zoho CRM Automated Lead-to-Call Pipeline
                 </CardTitle>
                 <CardDescription className="text-xs leading-relaxed">
-                  Connect your company's Zoho CRM with Calliqo AI. When a new lead is created in Zoho CRM, it is instantly captured into Calliqo CRM and dialed by your assigned AI Voice Agent with speed-to-lead automation!
+                  Connect your company's Zoho CRM with {brandName}. When a new lead is created in Zoho CRM, it is instantly captured into {crmBrand} and dialed by your assigned AI Voice Agent with speed-to-lead automation!
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1374,7 +1386,7 @@ export function CRMIntegrationsDashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="font-semibold text-foreground">2. Click "Configure Webhook":</p>
-                  <p className="text-[11px]">Name: <code className="bg-background px-1 py-0.5 rounded">Calliqo AI Auto-Caller</code></p>
+                  <p className="text-[11px]">Name: <code className="bg-background px-1 py-0.5 rounded">{brandName} Auto-Caller</code></p>
                   <p className="text-[11px]">URL: Paste the webhook URL generated below.</p>
                   <p className="text-[11px]">Method: <code className="bg-background px-1 py-0.5 rounded">POST</code></p>
                 </div>
@@ -1429,7 +1441,7 @@ export function CRMIntegrationsDashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  When a buyer inquires on 99acres, their contact information, project preference, and inquiry text are automatically pushed into Calliqo CRM and queued for AI dialing.
+                  When a buyer inquires on 99acres, their contact information, project preference, and inquiry text are automatically pushed into {crmBrand} and queued for AI dialing.
                 </p>
                 <Button 
                   size="sm" 
@@ -1550,7 +1562,7 @@ export function CRMIntegrationsDashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Supports Meta App Webhooks verification challenge (`hub.challenge`) and automatic lead payload parsing. When a user fills your Instagram/Facebook lead ad form, Calliqo instantly calls them.
+                  Supports Meta App Webhooks verification challenge (`hub.challenge`) and automatic lead payload parsing. When a user fills your Instagram/Facebook lead ad form, {brandName} AI instantly calls them.
                 </p>
                 <Button 
                   size="sm" 
@@ -1637,7 +1649,7 @@ export function CRMIntegrationsDashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Simply point your website contact form's Webhook Action to Calliqo AI. When a visitor submits their name and phone number on your website, our AI agent calls them within 15 seconds to answer questions, qualify their interest, and book an appointment!
+                  Simply point your website contact form's Webhook Action to {brandName}. When a visitor submits their name and phone number on your website, our AI agent calls them within 15 seconds to answer questions, qualify their interest, and book an appointment!
                 </p>
                 <div className="flex items-center gap-2 pt-1">
                   <Button 
@@ -1955,7 +1967,7 @@ export function CRMIntegrationsDashboard() {
             <DialogHeader>
               <DialogTitle>Configure Google Sheet 2-Way Sync</DialogTitle>
               <DialogDescription>
-                Select your spreadsheet and map the columns so Calliqo AI knows where to read leads and write call results.
+                Select your spreadsheet and map the columns so {brandName} knows where to read leads and write call results.
               </DialogDescription>
             </DialogHeader>
           </div>
