@@ -43,6 +43,7 @@ import BannedWordsManagement from "@/components/admin/BannedWordsManagement";
 import OpenAIPoolManagement from "@/components/admin/OpenAIPoolManagement";
 import PlivoSettings from "@/components/admin/PlivoSettings";
 import VoiceEngineSettings from "@/components/admin/VoiceEngineSettings";
+import { WhiteLabelClientsManagement } from "@/components/admin/WhiteLabelClientsManagement";
 import { Badge } from "@/components/ui/badge";
 import { Suspense } from "react";
 import { usePluginRegistry } from "@/contexts/plugin-registry";
@@ -515,6 +516,11 @@ export default function AdminDashboard() {
                 <Users className="h-4 w-4 mr-1 md:mr-2" />
                 {t("adminDashboard.tabs.users")}
               </TabsTrigger>
+              <TabsTrigger value="whitelabel-agency" className="text-xs md:text-sm whitespace-nowrap text-purple-600 dark:text-purple-400 font-medium" data-testid="tab-whitelabel-agency">
+                <Building2 className="h-4 w-4 mr-1 md:mr-2 text-purple-600 dark:text-purple-400" />
+                <span className="hidden sm:inline">White-Label Clients</span>
+                <span className="sm:hidden">Clients</span>
+              </TabsTrigger>
               <TabsTrigger value="contacts" className="text-xs md:text-sm whitespace-nowrap" data-testid="tab-contacts">
                 <ContactRound className="h-4 w-4 mr-1 md:mr-2" />
                 {t("adminDashboard.tabs.contacts")}
@@ -598,6 +604,10 @@ export default function AdminDashboard() {
 
         <TabsContent value="users" className="space-y-4">
           <UserManagement />
+        </TabsContent>
+
+        <TabsContent value="whitelabel-agency" className="space-y-4">
+          <WhiteLabelClientsManagement />
         </TabsContent>
 
         <TabsContent value="contacts" className="space-y-4">

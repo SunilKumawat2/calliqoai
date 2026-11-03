@@ -41,6 +41,7 @@ import {
   registerCallsModerationRoutes,
   registerSystemUpdateRoutes,
   registerCreditBackfillRoutes,
+  registerWhitelabelAgencyRoutes,
 } from './admin/index';
 
 const router = Router();
@@ -61,6 +62,7 @@ registerElevenlabsPoolRoutes(router);
 registerCallsModerationRoutes(router);
 registerSystemUpdateRoutes(router);
 registerCreditBackfillRoutes(router);
+registerWhitelabelAgencyRoutes(router);
 
 async function getStripeClient(): Promise<Stripe | null> {
   try {

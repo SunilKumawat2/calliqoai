@@ -13,3 +13,4 @@ export { registerElevenlabsPoolRoutes } from './elevenlabs-pool-routes';
 export { registerCallsModerationRoutes } from './calls-moderation-routes';
 export { registerSystemUpdateRoutes } from './system-update-routes';
 export { registerCreditBackfillRoutes } from './credit-backfill-routes';
+export { registerWhitelabelAgencyRoutes } from './whitelabel-agency-routes';
