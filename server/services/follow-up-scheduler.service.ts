@@ -854,6 +854,7 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
           status: 'completed',
           followUpCallId: followUpCallId || null,
           agentId: agentRecord.id,
+          errorMessage: null,
           completedAt: new Date(),
           updatedAt: new Date(),
         })
