@@ -1728,6 +1728,27 @@ ${allUrls.map(u => {
                 .set({ status: 'completed', endedAt: new Date() })
                 .where(eq(plivoCalls.id, pCall.id))
                 .catch(() => {});
+
+              // Missed-Call Auto-Callback & Qualification (Module 1 - Demo Page Unanswered Call)
+              const isAbandoned = (!pCall.duration || pCall.duration <= 3);
+              if (isAbandoned && pCall.userId) {
+                try {
+                  const { MissedCallCallbackService } = await import('../services/missed-call-callback.service');
+                  MissedCallCallbackService.handleMissedCall({
+                    callId: pCall.id,
+                    engine: 'plivo-openai',
+                    direction: 'outbound',
+                    fromNumber: pCall.fromNumber || '',
+                    toNumber: pCall.toNumber || destNumber || '',
+                    userId: pCall.userId,
+                    agentId: pCall.agentId,
+                    campaignId: pCall.campaignId,
+                    status: 'demo-call-unanswered',
+                  }).catch(err => console.error('[DemoHangup] Missed call handler error:', err.message));
+                } catch (e: any) {
+                  console.error('[DemoHangup] Failed to invoke MissedCallCallbackService:', e.message);
+                }
+              }
             }
           }
         } catch (dbErr: any) {

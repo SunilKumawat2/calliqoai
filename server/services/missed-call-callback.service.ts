@@ -70,14 +70,14 @@ export class MissedCallCallbackService {
         return null;
       }
 
-      // 2. Cooldown check: Prevent duplicate callbacks if customer rings multiple times within 10 minutes
+      // 2. Cooldown check: Prevent duplicate callbacks if customer rings multiple times within 1 minute
       const coolDownKey = `${userId}:${cleanPhone}`;
       if (_recentMissedCallCoolDown.has(coolDownKey)) {
         console.log(`⏳ [MissedCallService] Cooldown active for ${cleanPhone}. Skipping duplicate auto-callback.`);
         return null;
       }
       _recentMissedCallCoolDown.add(coolDownKey);
-      setTimeout(() => _recentMissedCallCoolDown.delete(coolDownKey), 10 * 60 * 1000);
+      setTimeout(() => _recentMissedCallCoolDown.delete(coolDownKey), 60 * 1000);
 
       console.log(`🔔 [MissedCallService] Processing missed ${direction} call for ${cleanPhone} (Call: ${callId}, Status: ${status})`);
 
@@ -219,10 +219,17 @@ export class MissedCallCallbackService {
         .limit(1);
 
       if (existingPending) {
-        console.log(`[MissedCallService] Follow-up already pending (${existingPending.id}), updating scheduled time`);
+        console.log(`[MissedCallService] Follow-up already pending (${existingPending.id}), bringing scheduled time forward to ${delaySeconds}s`);
         await db
           .update(scheduledFollowUps)
-          .set({ scheduledAt, updatedAt: new Date() })
+          .set({ 
+            scheduledAt, 
+            preferredTimeText: direction === 'outbound' ? 'Outbound Unanswered Auto-Retry' : 'Missed Call Auto-Callback',
+            contextNote: direction === 'outbound'
+              ? `Outbound call from ${businessName} at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} was not answered (busy/no-answer). Calling back automatically to connect and qualify.`
+              : `Missed call callback. Caller rang at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} but call was unanswered. Calling back automatically to assist and qualify.`,
+            updatedAt: new Date() 
+          })
           .where(eq(scheduledFollowUps.id, existingPending.id));
         scheduledFollowUpId = existingPending.id;
       } else {
