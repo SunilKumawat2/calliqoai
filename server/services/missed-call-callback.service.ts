@@ -63,7 +63,10 @@ export class MissedCallCallbackService {
 
       // 1. Identify customer phone number
       const rawCustomerPhone = direction === 'inbound' ? fromNumber : toNumber;
-      const cleanPhone = (rawCustomerPhone || '').trim().replace(/^(whatsapp:|tel:)/i, '');
+      let cleanPhone = (rawCustomerPhone || '').trim().replace(/^(whatsapp:|tel:)/i, '');
+      if (cleanPhone && !cleanPhone.startsWith('+')) {
+        cleanPhone = `+${cleanPhone}`;
+      }
 
       if (!cleanPhone || cleanPhone.replace(/\D/g, '').length < 6) {
         logger.warn(`[MissedCallService] Skipping invalid customer phone: "${rawCustomerPhone}" for call ${callId}`);

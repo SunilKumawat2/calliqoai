@@ -654,6 +654,13 @@ export class FollowUpSchedulerService {
         }
       }
 
+      if (destinationNumber) {
+        destinationNumber = destinationNumber.trim();
+        if (!destinationNumber.startsWith('+')) {
+          destinationNumber = `+${destinationNumber}`;
+        }
+      }
+
       // Construct Follow-up Context Injection Prompt & Initial Greeting
       const rawName = followUp.customerName?.trim() || '';
       const isGenericName = !rawName || ['customer', 'unknown', 'not mentioned', 'caller', 'user'].includes(rawName.toLowerCase());

@@ -208,9 +208,12 @@ export class PlivoCallService {
       const answerUrl = getWebhookUrl(baseUrl, `/voice/${callRecord.id}`);
       const statusCallbackUrl = getWebhookUrl(baseUrl, `/status/${callRecord.id}`);
 
+      const formattedToNumber = params.toNumber.startsWith('+') ? params.toNumber : `+${params.toNumber}`;
+      const formattedFromNumber = params.fromNumber.startsWith('+') ? params.fromNumber : `+${params.fromNumber}`;
+
       const response = await client.calls.create(
-        params.fromNumber,
-        params.toNumber,
+        formattedFromNumber,
+        formattedToNumber,
         answerUrl,
         {
           answerMethod: 'POST',
