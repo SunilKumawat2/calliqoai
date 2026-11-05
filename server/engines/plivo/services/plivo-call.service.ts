@@ -836,7 +836,10 @@ export class PlivoCallService {
       }
 
       // Missed-Call Auto-Callback & Qualification (Module 1)
-      if (['no-answer', 'busy', 'failed', 'canceled'].includes(status.toLowerCase()) && call.userId) {
+      const isAbandonedInbound = (call.callDirection === 'inbound' && (updatedCall.duration === null || updatedCall.duration === undefined || updatedCall.duration <= 3));
+      const isMissedStatus = ['no-answer', 'busy', 'failed', 'canceled'].includes(status.toLowerCase()) || isAbandonedInbound;
+
+      if (isMissedStatus && call.userId) {
         try {
           const { MissedCallCallbackService } = await import('../../../services/missed-call-callback.service');
           MissedCallCallbackService.handleMissedCall({
@@ -848,7 +851,7 @@ export class PlivoCallService {
             userId: call.userId,
             agentId: call.agentId,
             campaignId: call.campaignId,
-            status,
+            status: isAbandonedInbound ? 'missed-call-0-duration' : status,
           }).catch(err => logger.error(`Missed call callback error: ${err.message}`, undefined, 'PlivoCall'));
         } catch (err: any) {
           logger.error(`Failed to invoke MissedCallCallbackService: ${err.message}`, undefined, 'PlivoCall');
