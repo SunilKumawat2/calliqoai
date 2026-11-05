@@ -11,6 +11,11 @@ import { eq, and, lte, desc, sql } from 'drizzle-orm';
 import { scheduledFollowUps, calls, plivoCalls, agents, plivoPhoneNumbers, users, contacts, campaigns, crmWhitelabelConfigs, type ScheduledFollowUp } from '../../shared/schema';
 import { logger } from '../utils/logger';
 import { PlivoCallService } from '../engines/plivo/services/plivo-call.service';
+import { OpenAIAgentFactory } from '../engines/plivo/services/openai-agent-factory';
+import { PlivoEngineConfig } from '../engines/plivo/config/plivo-config';
+import { PlivoElevenLabsOutboundService } from '../engines/plivo-elevenlabs/services/outbound-call.service';
+import { ElevenLabsPoolService } from './elevenlabs-pool';
+import { storage } from '../storage';
 import type { OpenAIVoice, OpenAIRealtimeModel } from '../engines/plivo/types/plivo.types';
 
 export class FollowUpSchedulerService {
@@ -754,11 +759,9 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
 
       // Determine if this agent uses Plivo + ElevenLabs
       let isElevenLabs = Boolean(
-        agentRecord.elevenLabsAgentId ||
-        (agentRecord.metadata as any)?.elevenLabsAgentId ||
-        (agentRecord as any)?.telephonyProvider === 'plivo_elevenlabs' ||
-        (agentRecord as any)?.engine === 'plivo-elevenlabs' ||
-        (agentRecord as any)?.voiceEngine === 'elevenlabs'
+        agentRecord.telephonyProvider === 'plivo_elevenlabs' ||
+        agentRecord.telephonyProvider === 'elevenlabs-plivo' ||
+        (agentRecord.voiceEngine === 'elevenlabs' && agentRecord.elevenLabsAgentId)
       );
 
       if (!isElevenLabs && followUp.campaignId) {
@@ -768,7 +771,10 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
             .from(campaigns)
             .where(eq(campaigns.id, followUp.campaignId))
             .limit(1);
-          if (camp?.batchJobId) {
+          if (
+            camp?.batchJobId?.startsWith('plivo_elevenlabs-') ||
+            camp?.batchJobId?.startsWith('plivo-el-')
+          ) {
             isElevenLabs = true;
           }
         } catch (_) {}
@@ -779,10 +785,6 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
 
       if (isElevenLabs) {
         logger.info(`[FollowUpScheduler] Triggering Plivo+ElevenLabs follow-up for agent ${agentRecord.name} (${agentRecord.id})`, undefined, 'FollowUpScheduler');
-
-        const { PlivoElevenLabsOutboundService } = await import('../engines/plivo-elevenlabs/services/outbound-call.service');
-        const { ElevenLabsPoolService } = await import('./elevenlabs-pool.service');
-        const { storage } = await import('../storage');
 
         const plivoSetting = await storage.getGlobalSetting('plivo_credentials');
         const plivoCreds = (plivoSetting?.value as any) || {};
@@ -823,8 +825,8 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
         triggeredCallUuid = result.callUuid || result.internalId || null;
       } else {
         // Standard Plivo + OpenAI call (100% existing logic untouched)
-        const voice = (agentRecord.openaiVoice || 'ash') as OpenAIVoice;
-        const model = (agentRecord.llmModel || 'gpt-4o-realtime-preview-2024-12-17') as OpenAIRealtimeModel;
+        const voice = OpenAIAgentFactory.validateVoice(agentRecord.openaiVoice || PlivoEngineConfig.defaults.voice);
+        const model = OpenAIAgentFactory.validateModel((agentRecord.config as any)?.openaiModel || agentRecord.llmModel || PlivoEngineConfig.defaults.model, 'pro');
 
         const { callUuid, plivoCall } = await PlivoCallService.initiateCall({
           fromNumber: plivoPhone.phoneNumber,
