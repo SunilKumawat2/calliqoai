@@ -1126,6 +1126,10 @@ router.post('/whitelabel', requireAuth, async (req: AuthRequest, res: Response) 
       primaryColor,
       logoUrl,
       customDomain,
+      missedCallCallbackEnabled,
+      missedCallDelaySeconds,
+      missedCallWhatsappEnabled,
+      missedCallWhatsappMessage,
     } = req.body;
 
     const [existing] = await db
@@ -1148,6 +1152,10 @@ router.post('/whitelabel', requireAuth, async (req: AuthRequest, res: Response) 
           primaryColor: primaryColor ?? existing.primaryColor,
           logoUrl: logoUrl !== undefined ? logoUrl : existing.logoUrl,
           customDomain: customDomain !== undefined ? customDomain : existing.customDomain,
+          missedCallCallbackEnabled: missedCallCallbackEnabled !== undefined ? missedCallCallbackEnabled : existing.missedCallCallbackEnabled,
+          missedCallDelaySeconds: missedCallDelaySeconds !== undefined ? missedCallDelaySeconds : existing.missedCallDelaySeconds,
+          missedCallWhatsappEnabled: missedCallWhatsappEnabled !== undefined ? missedCallWhatsappEnabled : existing.missedCallWhatsappEnabled,
+          missedCallWhatsappMessage: missedCallWhatsappMessage !== undefined ? missedCallWhatsappMessage : existing.missedCallWhatsappMessage,
           updatedAt: new Date(),
         })
         .where(eq(crmWhitelabelConfigs.id, existing.id))
@@ -1166,6 +1174,10 @@ router.post('/whitelabel', requireAuth, async (req: AuthRequest, res: Response) 
           primaryColor: primaryColor || '#0284c7',
           logoUrl,
           customDomain,
+          missedCallCallbackEnabled: missedCallCallbackEnabled !== undefined ? missedCallCallbackEnabled : true,
+          missedCallDelaySeconds: missedCallDelaySeconds !== undefined ? missedCallDelaySeconds : 90,
+          missedCallWhatsappEnabled: missedCallWhatsappEnabled !== undefined ? missedCallWhatsappEnabled : true,
+          missedCallWhatsappMessage: missedCallWhatsappMessage,
         })
         .returning();
     }

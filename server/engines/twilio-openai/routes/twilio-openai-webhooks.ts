@@ -664,6 +664,26 @@ router.post('/voice/status', async (req: Request, res: Response) => {
       }
     }
 
+    // Missed-Call Auto-Callback & Qualification (Module 1)
+    if (['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus.toLowerCase()) && callRecord.userId) {
+      try {
+        const { MissedCallCallbackService } = await import('../../../services/missed-call-callback.service');
+        MissedCallCallbackService.handleMissedCall({
+          callId: callRecord.id,
+          engine: 'twilio-openai',
+          direction: (callRecord.callDirection as any) || 'outbound',
+          fromNumber: callRecord.fromNumber || params.From || '',
+          toNumber: callRecord.toNumber || params.To || '',
+          userId: callRecord.userId,
+          agentId: callRecord.agentId,
+          campaignId: callRecord.campaignId,
+          status: CallStatus,
+        }).catch(err => logger.error(`Missed call callback error: ${err.message}`, undefined, 'TwilioOpenAI'));
+      } catch (err: any) {
+        logger.error(`Failed to invoke MissedCallCallbackService: ${err.message}`, undefined, 'TwilioOpenAI');
+      }
+    }
+
     if (CallStatus === 'completed' && callRecord.userId && callRecord.agentId) {
       try {
         const callerPhone = callRecord.callDirection === 'inbound'

@@ -3439,6 +3439,10 @@ export const crmWhitelabelConfigs = pgTable("crm_whitelabel_configs", {
   primaryColor: varchar("primary_color").default("#0284c7"),
   logoUrl: text("logo_url"),
   customDomain: varchar("custom_domain"),
+  missedCallCallbackEnabled: boolean("missed_call_callback_enabled").default(true),
+  missedCallDelaySeconds: integer("missed_call_delay_seconds").default(90),
+  missedCallWhatsappEnabled: boolean("missed_call_whatsapp_enabled").default(true),
+  missedCallWhatsappMessage: text("missed_call_whatsapp_message"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

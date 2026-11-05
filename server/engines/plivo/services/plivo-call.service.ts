@@ -835,6 +835,26 @@ export class PlivoCallService {
         logger.error(`Failed to trigger webhook for call ${callId}: ${webhookError.message}`, webhookError, 'PlivoCall');
       }
 
+      // Missed-Call Auto-Callback & Qualification (Module 1)
+      if (['no-answer', 'busy', 'failed', 'canceled'].includes(status.toLowerCase()) && call.userId) {
+        try {
+          const { MissedCallCallbackService } = await import('../../../services/missed-call-callback.service');
+          MissedCallCallbackService.handleMissedCall({
+            callId: call.id,
+            engine: 'plivo-openai',
+            direction: (call.callDirection as any) || 'inbound',
+            fromNumber: call.fromNumber || '',
+            toNumber: call.toNumber || '',
+            userId: call.userId,
+            agentId: call.agentId,
+            campaignId: call.campaignId,
+            status,
+          }).catch(err => logger.error(`Missed call callback error: ${err.message}`, undefined, 'PlivoCall'));
+        } catch (err: any) {
+          logger.error(`Failed to invoke MissedCallCallbackService: ${err.message}`, undefined, 'PlivoCall');
+        }
+      }
+
       // CRM Lead Creation - Process call for qualified lead creation
       if (status === 'completed' && call.userId) {
         try {

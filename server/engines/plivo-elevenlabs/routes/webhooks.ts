@@ -262,6 +262,26 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
               }
             }
 
+            // Missed-Call Auto-Callback & Qualification (Module 1)
+            if (['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus.toLowerCase()) && call.userId) {
+              try {
+                const { MissedCallCallbackService } = await import('../../../services/missed-call-callback.service');
+                MissedCallCallbackService.handleMissedCall({
+                  callId: call.id,
+                  engine: 'plivo-elevenlabs',
+                  direction: (call.callDirection as any) || 'outgoing',
+                  fromNumber: call.fromNumber || '',
+                  toNumber: call.toNumber || '',
+                  userId: call.userId,
+                  agentId: call.agentId,
+                  campaignId: call.campaignId,
+                  status: CallStatus,
+                }).catch(err => logger.error(`Missed call callback error: ${err.message}`, undefined, 'PlivoElevenLabs'));
+              } catch (err: any) {
+                logger.error(`Failed to invoke MissedCallCallbackService: ${err.message}`, undefined, 'PlivoElevenLabs');
+              }
+            }
+
             if (CallStatus === 'completed' && call.userId && call.agentId) {
               try {
                 const [agentRecord] = await db

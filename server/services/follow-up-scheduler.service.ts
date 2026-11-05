@@ -8,7 +8,7 @@
 
 import { db } from '../db';
 import { eq, and, lte, desc, sql } from 'drizzle-orm';
-import { scheduledFollowUps, calls, plivoCalls, agents, plivoPhoneNumbers, users, contacts, campaigns, type ScheduledFollowUp } from '../../shared/schema';
+import { scheduledFollowUps, calls, plivoCalls, agents, plivoPhoneNumbers, users, contacts, campaigns, crmWhitelabelConfigs, type ScheduledFollowUp } from '../../shared/schema';
 import { logger } from '../utils/logger';
 import { PlivoCallService } from '../engines/plivo/services/plivo-call.service';
 import type { OpenAIVoice, OpenAIRealtimeModel } from '../engines/plivo/types/plivo.types';
@@ -656,6 +656,20 @@ export class FollowUpSchedulerService {
       const contextNote = followUp.contextNote || 'Customer requested a callback.';
       const preferredTime = followUp.preferredTimeText || 'इस समय';
 
+      // Resolve Business / Clinic Name from White-Label settings if available
+      let businessName = agentRecord.name || 'AI Assistant';
+      try {
+        const [wl] = await db
+          .select({ businessName: crmWhitelabelConfigs.businessName })
+          .from(crmWhitelabelConfigs)
+          .where(eq(crmWhitelabelConfigs.userId, followUp.userId))
+          .limit(1);
+        if (wl?.businessName) businessName = wl.businessName;
+      } catch (_) {}
+
+      const isMissedCall = (followUp.preferredTimeText === 'Missed Call Auto-Callback') || 
+                           (contextNote.toLowerCase().includes('missed'));
+
       // Detect language preference (Hindi vs English)
       const isHindi = (agentRecord.language === 'hi') || 
                       /[\u0900-\u097F]/.test(agentRecord.systemPrompt || '') || 
@@ -664,18 +678,41 @@ export class FollowUpSchedulerService {
                       /namaste|kripya|baad|baje|karein|boliye|humne|baat/i.test(agentRecord.systemPrompt || '');
 
       let firstMessage = '';
-      if (isHindi) {
-        firstMessage = customerName
-          ? `नमस्ते ${customerName} जी, मैं ${agentRecord.name || 'AI Assistant'} बात कर रहा हूँ। आपने पहले कहा था कि ${preferredTime} कॉल करें, तो क्या अभी आपसे बात करने का सही समय है?`
-          : `नमस्ते, मैं ${agentRecord.name || 'AI Assistant'} बात कर रहा हूँ। आपने पहले कहा था कि ${preferredTime} कॉल करें, तो क्या अभी आपसे बात करने का सही समय है?`;
+      if (isMissedCall) {
+        if (isHindi) {
+          firstMessage = customerName
+            ? `नमस्ते ${customerName} जी, मैं ${businessName} से बात कर रहा हूँ। आपका कॉल अभी मिस हो गया था, इसलिए मैंने आपको तुरंत वापस कॉल किया है। क्या अभी आपसे बात करने का सही समय है?`
+            : `नमस्ते, मैं ${businessName} से बात कर रहा हूँ। आपका कॉल अभी मिस हो गया था, इसलिए मैंने आपको तुरंत वापस कॉल किया है। बताइए मैं आपकी क्या सहायता कर सकता हूँ?`;
+        } else {
+          firstMessage = customerName
+            ? `Hello ${customerName}, I am calling you back from ${businessName}. We just missed your call a moment ago, is this a good time to speak?`
+            : `Hello, I am calling you back from ${businessName}. We just missed your call a moment ago, is this a good time to speak?`;
+        }
       } else {
-        firstMessage = customerName
-          ? `Hello ${customerName}, I am calling you back as you requested earlier (${preferredTime}). Is this a good time to speak?`
-          : `Hello, I am calling you back as requested earlier (${preferredTime}). Is this a good time to speak?`;
+        if (isHindi) {
+          firstMessage = customerName
+            ? `नमस्ते ${customerName} जी, मैं ${businessName} बात कर रहा हूँ। आपने पहले कहा था कि ${preferredTime} कॉल करें, तो क्या अभी आपसे बात करने का सही समय है?`
+            : `नमस्ते, मैं ${businessName} बात कर रहा हूँ। आपने पहले कहा था कि ${preferredTime} कॉल करें, तो क्या अभी आपसे बात करने का सही समय है?`;
+        } else {
+          firstMessage = customerName
+            ? `Hello ${customerName}, I am calling you back as you requested earlier (${preferredTime}). Is this a good time to speak?`
+            : `Hello, I am calling you back as requested earlier (${preferredTime}). Is this a good time to speak?`;
+        }
       }
 
       const baseSystemPrompt = agentRecord.systemPrompt || 'You are a professional AI assistant.';
-      const followUpContext = `\n\n[AUTOMATED FOLLOW-UP CALL MODE]:
+      const followUpContext = isMissedCall ? `\n\n[MISSED-CALL AUTO-CALLBACK & QUALIFICATION MODE]:
+You are now calling back ${customerName || 'the customer'} at ${destinationNumber}.
+They called our business (${businessName}) a moment ago, but the call was missed/unanswered.
+Previous context / notes: "${contextNote}".
+
+CRITICAL INSTRUCTIONS FOR THIS CALLBACK:
+1. Open by politely acknowledging their missed call to ${businessName}.
+2. Inquire what assistance or enquiry they had today.
+3. Actively qualify their requirement (their needs, preferred timeline, and budget).
+4. Offer to schedule an appointment, consultation, or site visit directly during this call.
+5. Maintain a natural, warm, conversational, and helpful tone throughout.`
+      : `\n\n[AUTOMATED FOLLOW-UP CALL MODE]:
 You are now calling back ${customerName || 'the customer'} at ${destinationNumber} for a scheduled follow-up.
 In the previous conversation, the customer was busy or requested a callback (${preferredTime}).
 Previous context / notes from earlier call: "${contextNote}".
