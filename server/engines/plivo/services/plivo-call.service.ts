@@ -214,6 +214,8 @@ export class PlivoCallService {
         answerUrl,
         {
           answerMethod: 'POST',
+          hangupUrl: statusCallbackUrl,
+          hangupMethod: 'POST',
           statusCallback: statusCallbackUrl,
           statusCallbackMethod: 'POST',
           statusCallbackEvents: 'ringing,answered,completed,busy,failed,no-answer,canceled',
