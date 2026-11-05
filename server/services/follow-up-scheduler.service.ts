@@ -762,15 +762,16 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
       );
 
       if (!isElevenLabs && followUp.campaignId) {
-        const [camp] = await db
-          .select({ telephonyProvider: campaigns.telephonyProvider, voiceEngine: campaigns.voiceEngine })
-          .from(campaigns)
-          .where(eq(campaigns.id, followUp.campaignId))
-          .limit(1)
-          .catch(() => []);
-        if (camp && (camp.telephonyProvider === 'plivo_elevenlabs' || camp.voiceEngine === 'elevenlabs')) {
-          isElevenLabs = true;
-        }
+        try {
+          const [camp] = await db
+            .select({ batchJobId: campaigns.batchJobId })
+            .from(campaigns)
+            .where(eq(campaigns.id, followUp.campaignId))
+            .limit(1);
+          if (camp?.batchJobId) {
+            isElevenLabs = true;
+          }
+        } catch (_) {}
       }
 
       let followUpCallId: string | null = null;
