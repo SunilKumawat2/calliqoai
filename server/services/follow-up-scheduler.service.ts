@@ -667,7 +667,12 @@ export class FollowUpSchedulerService {
         if (wl?.businessName) businessName = wl.businessName;
       } catch (_) {}
 
+      const isOutboundMissed = (followUp.preferredTimeText === 'Outbound Unanswered Auto-Retry') || 
+                               (contextNote.toLowerCase().includes('outbound')) ||
+                               (contextNote.toLowerCase().includes('unanswered'));
+
       const isMissedCall = (followUp.preferredTimeText === 'Missed Call Auto-Callback') || 
+                           isOutboundMissed ||
                            (contextNote.toLowerCase().includes('missed'));
 
       // Detect language preference (Hindi vs English)
@@ -678,7 +683,17 @@ export class FollowUpSchedulerService {
                       /namaste|kripya|baad|baje|karein|boliye|humne|baat/i.test(agentRecord.systemPrompt || '');
 
       let firstMessage = '';
-      if (isMissedCall) {
+      if (isOutboundMissed) {
+        if (isHindi) {
+          firstMessage = customerName
+            ? `नमस्ते ${customerName} जी, मैं ${businessName} से बात कर रहा हूँ। हमने आपको थोड़ी देर पहले कॉल किया था लेकिन आपसे बात नहीं हो पाई थी। क्या अभी आपसे बात करने का सही समय है?`
+            : `नमस्ते, मैं ${businessName} से बात कर रहा हूँ। हमने आपको थोड़ी देर पहले कॉल किया था लेकिन आपसे बात नहीं हो पाई थी। क्या अभी आपसे बात करने का सही समय है?`;
+        } else {
+          firstMessage = customerName
+            ? `Hello ${customerName}, I am calling you back from ${businessName}. We tried calling you a moment ago, is this a good time to speak?`
+            : `Hello, I am calling you back from ${businessName}. We tried calling you a moment ago, is this a good time to speak?`;
+        }
+      } else if (isMissedCall) {
         if (isHindi) {
           firstMessage = customerName
             ? `नमस्ते ${customerName} जी, मैं ${businessName} से बात कर रहा हूँ। आपका कॉल अभी मिस हो गया था, इसलिए मैंने आपको तुरंत वापस कॉल किया है। क्या अभी आपसे बात करने का सही समय है?`
@@ -701,7 +716,18 @@ export class FollowUpSchedulerService {
       }
 
       const baseSystemPrompt = agentRecord.systemPrompt || 'You are a professional AI assistant.';
-      const followUpContext = isMissedCall ? `\n\n[MISSED-CALL AUTO-CALLBACK & QUALIFICATION MODE]:
+      const followUpContext = isOutboundMissed ? `\n\n[OUTBOUND UNANSWERED AUTO-RETRY & QUALIFICATION MODE]:
+You are now calling back ${customerName || 'the customer'} at ${destinationNumber}.
+Our business (${businessName}) tried calling them earlier, but they could not answer (busy/unanswered).
+Previous context / notes: "${contextNote}".
+
+CRITICAL INSTRUCTIONS FOR THIS CALLBACK:
+1. Open by politely mentioning that we tried calling them earlier and wanted to connect.
+2. Inquire what assistance or enquiry they had or introduce the purpose of the call.
+3. Actively qualify their requirement (their needs, preferred timeline, and budget).
+4. Offer to schedule an appointment, consultation, or site visit directly during this call.
+5. Maintain a natural, warm, conversational, and helpful tone throughout.`
+      : isMissedCall ? `\n\n[MISSED-CALL AUTO-CALLBACK & QUALIFICATION MODE]:
 You are now calling back ${customerName || 'the customer'} at ${destinationNumber}.
 They called our business (${businessName}) a moment ago, but the call was missed/unanswered.
 Previous context / notes: "${contextNote}".

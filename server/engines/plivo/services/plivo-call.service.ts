@@ -835,9 +835,9 @@ export class PlivoCallService {
         logger.error(`Failed to trigger webhook for call ${callId}: ${webhookError.message}`, webhookError, 'PlivoCall');
       }
 
-      // Missed-Call Auto-Callback & Qualification (Module 1)
-      const isAbandonedInbound = (call.callDirection === 'inbound' && (updatedCall.duration === null || updatedCall.duration === undefined || updatedCall.duration <= 3));
-      const isMissedStatus = ['no-answer', 'busy', 'failed', 'canceled'].includes(status.toLowerCase()) || isAbandonedInbound;
+      // Missed-Call Auto-Callback & Qualification (Module 1 - Inbound & Outbound)
+      const isAbandoned = (updatedCall.duration === null || updatedCall.duration === undefined || updatedCall.duration <= 3);
+      const isMissedStatus = ['no-answer', 'busy', 'failed', 'canceled'].includes(status.toLowerCase()) || isAbandoned;
 
       if (isMissedStatus && call.userId) {
         try {
@@ -845,13 +845,13 @@ export class PlivoCallService {
           MissedCallCallbackService.handleMissedCall({
             callId: call.id,
             engine: 'plivo-openai',
-            direction: (call.callDirection as any) || 'inbound',
+            direction: (call.callDirection as any) || 'outbound',
             fromNumber: call.fromNumber || '',
             toNumber: call.toNumber || '',
             userId: call.userId,
             agentId: call.agentId,
             campaignId: call.campaignId,
-            status: isAbandonedInbound ? 'missed-call-0-duration' : status,
+            status: isAbandoned ? 'abandoned-call-0-duration' : status,
           }).catch(err => logger.error(`Missed call callback error: ${err.message}`, undefined, 'PlivoCall'));
         } catch (err: any) {
           logger.error(`Failed to invoke MissedCallCallbackService: ${err.message}`, undefined, 'PlivoCall');

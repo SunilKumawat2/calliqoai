@@ -87,7 +87,6 @@ export class MissedCallCallbackService {
       let callbackEnabled = true;
       let delaySeconds = 90; // Default: 1.5 minutes
       let whatsappEnabled = true;
-      let customWaMessage: string | null = null;
 
       try {
         const [config] = await db
@@ -102,7 +101,6 @@ export class MissedCallCallbackService {
           callbackEnabled = config.missedCallCallbackEnabled !== false;
           delaySeconds = config.missedCallDelaySeconds || 90;
           whatsappEnabled = config.missedCallWhatsappEnabled !== false;
-          customWaMessage = config.missedCallWhatsappMessage || null;
         }
       } catch (err: any) {
         console.warn(`[MissedCallService] Error reading white-label config: ${err.message}`);
@@ -237,8 +235,10 @@ export class MissedCallCallbackService {
             callId: params.callId,
             phoneNumber: cleanPhone,
             customerName,
-            preferredTimeText: 'Missed Call Auto-Callback',
-            contextNote: `Missed call callback. Caller rang at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} but call was unanswered. Calling back automatically to assist and qualify.`,
+            preferredTimeText: direction === 'outbound' ? 'Outbound Unanswered Auto-Retry' : 'Missed Call Auto-Callback',
+            contextNote: direction === 'outbound'
+              ? `Outbound call from ${businessName} at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} was not answered (busy/no-answer). Calling back automatically to connect and qualify.`
+              : `Missed call callback. Caller rang at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} but call was unanswered. Calling back automatically to assist and qualify.`,
             scheduledAt,
             status: 'pending',
           })
@@ -247,15 +247,19 @@ export class MissedCallCallbackService {
         console.log(`⏰ [MissedCallService] Scheduled auto-callback in ${delaySeconds}s (id: ${scheduledFollowUpId}) for ${cleanPhone}`);
       }
 
-      // 7. Instant WhatsApp Acknowledgment to Caller
+      // 7. Instant WhatsApp Acknowledgment to Customer
       let whatsappSent = false;
       if (whatsappEnabled) {
         try {
           const { metaWhatsAppService } = await import('../../plugins/messaging/services/meta-whatsapp.service').catch(() => ({ metaWhatsAppService: null as any }));
           if (metaWhatsAppService && typeof metaWhatsAppService.sendTextMessage === 'function') {
+            const defaultMsg = direction === 'outbound'
+              ? `नमस्ते! हमने आपको ${businessName} से कॉल किया था, लेकिन किसी वजह से आपसे बात नहीं हो पाई। हमारा AI असिस्टेंट आपको अगले 1-2 मिनट में दोबारा कॉल करेगा। आप चाहें तो सीधे यहीं पर रिप्लाई करके भी बात कर सकते हैं!`
+              : `नमस्ते! आपने ${businessName} पर कॉल किया था, लेकिन किसी वजह से कॉल कनेक्ट नहीं हो पाया। हमारा AI असिस्टेंट आपको अगले 1-2 मिनट में वापस कॉल करेगा। आप चाहें तो सीधे यहीं पर रिप्लाई करके भी बात कर सकते हैं!`;
+            
             const messageBody = customWaMessage
               ? customWaMessage.replace(/{businessName}/g, businessName)
-              : `नमस्ते! आपने ${businessName} पर कॉल किया था, लेकिन किसी वजह से कॉल कनेक्ट नहीं हो पाया। हमारा AI असिस्टेंट आपको अगले 1-2 मिनट में वापस कॉल करेगा। आप चाहें तो सीधे यहीं पर रिप्लाई करके भी बात कर सकते हैं!`;
+              : defaultMsg;
             
             await metaWhatsAppService.sendTextMessage(userId, cleanPhone, messageBody);
             whatsappSent = true;
@@ -278,3 +282,4 @@ export class MissedCallCallbackService {
     }
   }
 }
+

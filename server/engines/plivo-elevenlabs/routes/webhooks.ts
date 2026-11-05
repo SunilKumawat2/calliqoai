@@ -262,9 +262,9 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
               }
             }
 
-            // Missed-Call Auto-Callback & Qualification (Module 1)
-            const isAbandonedInbound = (call.callDirection === 'inbound' && (!durationSeconds || durationSeconds <= 3));
-            const isMissedStatus = ['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus.toLowerCase()) || isAbandonedInbound;
+            // Missed-Call Auto-Callback & Qualification (Module 1 - Inbound & Outbound)
+            const isAbandoned = (!durationSeconds || durationSeconds <= 3);
+            const isMissedStatus = ['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus.toLowerCase()) || isAbandoned;
 
             if (isMissedStatus && call.userId) {
               try {
@@ -278,7 +278,7 @@ export function setupPlivoElevenLabsWebhooks(app: Express, baseUrl: string): voi
                   userId: call.userId,
                   agentId: call.agentId,
                   campaignId: call.campaignId,
-                  status: isAbandonedInbound ? 'missed-call-0-duration' : CallStatus,
+                  status: isAbandoned ? 'abandoned-call-0-duration' : CallStatus,
                 }).catch(err => logger.error(`Missed call callback error: ${err.message}`, undefined, 'PlivoElevenLabs'));
               } catch (err: any) {
                 logger.error(`Failed to invoke MissedCallCallbackService: ${err.message}`, undefined, 'PlivoElevenLabs');
