@@ -1103,19 +1103,19 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
     if (this.isRunning) return;
     this.isRunning = true;
 
-    console.log('⏰ [FollowUpScheduler] Automated Follow-Up Calling Service started (checking every 30s)');
+    console.log('⏰ [FollowUpScheduler] Automated Follow-Up Calling Service started (checking every 10s)');
 
-    // Run check every 30 seconds
+    // Run check every 10 seconds
     this.timer = setInterval(() => {
       this.processDueFollowUps().catch((err) => {
         logger.error(`Scheduler interval error: ${err.message}`, undefined, 'FollowUpScheduler');
       });
-    }, 30000);
+    }, 10000);
 
-    // Also run immediate check on startup after a 10-second delay
+    // Also run immediate check on startup after a 5-second delay
     setTimeout(() => {
       this.processDueFollowUps().catch(() => {});
-    }, 10000);
+    }, 5000);
   }
 
   /**
