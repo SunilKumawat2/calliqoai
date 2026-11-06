@@ -158,26 +158,6 @@ export class MissedCallCallbackService {
             console.log(`[MissedCallService] Skipping auto-callback: Campaign "${camp.name}" (${resolvedCampaignId}) has Missed Call Auto-Callback set to Inactive (missedCallCallbackEnabled: false).`);
             return null;
           }
-
-          // Granular checks for No-Answer vs Busy / Rejected / Call Cut
-          const rawStatus = (status || '').toLowerCase();
-          const rawHangup = (params.hangupCause || '').toUpperCase();
-
-          const isBusyOrRejected = rawStatus === 'busy' || rawStatus === 'rejected' || rawStatus === 'canceled' || 
-                                   rawHangup.includes('BUSY') || rawHangup.includes('REJECT') || rawHangup.includes('DECLINE');
-
-          const isNoAnswer = rawStatus === 'no-answer' || rawStatus === 'timeout' || rawStatus === 'abandoned-call-0-duration' ||
-                             rawHangup.includes('NO_ANSWER') || rawHangup.includes('NO_USER_RESPONSE') || rawHangup.includes('TIMEOUT');
-
-          if (isBusyOrRejected && camp && camp.retryOnBusy === false) {
-            console.log(`[MissedCallService] Skipping auto-callback: Campaign "${camp.name}" has Retry on Busy / Call Cut set to Inactive (retryOnBusy: false).`);
-            return null;
-          }
-
-          if (isNoAnswer && camp && camp.retryOnNoAnswer === false) {
-            console.log(`[MissedCallService] Skipping auto-callback: Campaign "${camp.name}" has Retry on No-Answer set to Inactive (retryOnNoAnswer: false).`);
-            return null;
-          }
         } catch (campErr: any) {
           console.warn(`[MissedCallService] Error checking campaign missedCallCallbackEnabled: ${campErr.message}`);
         }

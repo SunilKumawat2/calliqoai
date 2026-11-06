@@ -316,54 +316,6 @@ export default function CampaignDetail() {
     },
   });
 
-  const toggleRetryOnNoAnswerMutation = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      const res = await apiRequest("PATCH", `/api/campaigns/${id}`, { retryOnNoAnswer: enabled });
-      return res.json();
-    },
-    onSuccess: (_, enabled) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${id}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
-      toast({
-        title: enabled ? "Retry on No-Answer Activated" : "Retry on No-Answer Deactivated",
-        description: enabled 
-          ? "Unanswered calls will automatically be retried." 
-          : "Calls where customer does not answer will NOT be retried.",
-      });
-    },
-    onError: (err: any) => {
-      toast({
-        title: "Update Failed",
-        description: err.message || "Failed to update setting",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const toggleRetryOnBusyMutation = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      const res = await apiRequest("PATCH", `/api/campaigns/${id}`, { retryOnBusy: enabled });
-      return res.json();
-    },
-    onSuccess: (_, enabled) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${id}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
-      toast({
-        title: enabled ? "Retry on Busy / Cut Activated" : "Retry on Busy / Cut Deactivated",
-        description: enabled 
-          ? "Calls where user cuts the call or line is busy will automatically be retried in 90s." 
-          : "Calls cut by user or busy will NOT be retried.",
-      });
-    },
-    onError: (err: any) => {
-      toast({
-        title: "Update Failed",
-        description: err.message || "Failed to update setting",
-        variant: "destructive",
-      });
-    },
-  });
-
   const { data: batchJobData, isLoading: batchLoading } = useQuery<{ batchJob: any; stats: BatchJobStats }>({
     queryKey: [`/api/campaigns/${id}/batch`],
     enabled: !!id && !!campaign?.batchJobId,
@@ -812,53 +764,6 @@ export default function CampaignDetail() {
                 data-testid="switch-campaign-detail-missed-call-callback"
               />
             </div>
-
-            {/* Granular Sub-Toggles: No-Answer vs Busy / Call Cut */}
-            {campaign.missedCallCallbackEnabled !== false && (
-              <div className="pt-4 border-t border-border/50 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Sub-Toggle 1: Retry on No-Answer */}
-                <div className="flex items-center justify-between p-3.5 rounded-xl bg-background/50 border border-border/60">
-                  <div className="space-y-0.5 pr-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">Retry on No-Answer</Label>
-                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${campaign.retryOnNoAnswer !== false ? "text-emerald-500 border-emerald-500/30" : "text-muted-foreground"}`}>
-                        {campaign.retryOnNoAnswer !== false ? "Active" : "Inactive"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      घंटी बजी लेकिन उठाया नहीं (No-Answer / Timeout) - 90s में ऑटो कॉल करे।
-                    </p>
-                  </div>
-                  <Switch
-                    checked={campaign.retryOnNoAnswer !== false}
-                    onCheckedChange={(checked) => toggleRetryOnNoAnswerMutation.mutate(checked)}
-                    disabled={toggleRetryOnNoAnswerMutation.isPending}
-                    data-testid="switch-retry-on-no-answer"
-                  />
-                </div>
-
-                {/* Sub-Toggle 2: Retry on Busy / Call Cut */}
-                <div className="flex items-center justify-between p-3.5 rounded-xl bg-background/50 border border-border/60">
-                  <div className="space-y-0.5 pr-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-sm font-semibold">Retry on Busy / Call Cut</Label>
-                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${campaign.retryOnBusy ? "text-emerald-500 border-emerald-500/30" : "text-muted-foreground"}`}>
-                        {campaign.retryOnBusy ? "Active" : "Inactive"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      यूजर ने कॉल कट/डिक्लाइन किया या लाइन बिजी आई - ऑटो कॉल करे या न करे।
-                    </p>
-                  </div>
-                  <Switch
-                    checked={!!campaign.retryOnBusy}
-                    onCheckedChange={(checked) => toggleRetryOnBusyMutation.mutate(checked)}
-                    disabled={toggleRetryOnBusyMutation.isPending}
-                    data-testid="switch-retry-on-busy"
-                  />
-                </div>
-              </div>
-            )}
           </Card>
 
           {campaign.batchJobId && (

@@ -1153,38 +1153,9 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {formData.missedCallCallbackEnabled 
-                        ? "Active: Leads who don't answer or cut the call will automatically be called back in 90s based on conditions below."
+                        ? "Active: Leads who don't answer (no-answer, busy, or rejected) will automatically be called back in 90 seconds."
                         : "Inactive: Automatic retry callback is completely disabled for unanswered calls on this campaign."}
                     </p>
-
-                    {/* Sub-Toggles: No-Answer vs Busy / Call Cut */}
-                    {formData.missedCallCallbackEnabled && (
-                      <div className="pt-3 pl-4 border-l-2 border-blue-500/40 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label className="text-sm font-medium">Retry on No-Answer (घंटी बजी, नहीं उठाया)</Label>
-                            <p className="text-xs text-muted-foreground">Lead ne call pick up nahi kiya (timeout) toh 90s me call kare.</p>
-                          </div>
-                          <Switch
-                            checked={formData.retryOnNoAnswer}
-                            onCheckedChange={(checked) => setFormData({ ...formData, retryOnNoAnswer: !!checked })}
-                            data-testid="switch-create-retry-no-answer"
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <Label className="text-sm font-medium">Retry on Busy / Call Cut (यूजर ने कट किया)</Label>
-                            <p className="text-xs text-muted-foreground">User ne call decline/cut kiya ya line busy aayi toh call kare.</p>
-                          </div>
-                          <Switch
-                            checked={formData.retryOnBusy}
-                            onCheckedChange={(checked) => setFormData({ ...formData, retryOnBusy: !!checked })}
-                            data-testid="switch-create-retry-busy"
-                          />
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* Automated WhatsApp Follow-Up & Notification */}
