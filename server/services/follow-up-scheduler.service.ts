@@ -558,6 +558,25 @@ export class FollowUpSchedulerService {
         return { success: false, error: 'Follow-up is already in progress or completed' };
       }
 
+      // If this is an automated trigger (not manual button click) and associated with a campaign, check if campaign has autoFollowUpEnabled
+      if (!triggerUserId && followUp.campaignId) {
+        const [camp] = await db
+          .select({ autoFollowUpEnabled: campaigns.autoFollowUpEnabled, name: campaigns.name })
+          .from(campaigns)
+          .where(eq(campaigns.id, followUp.campaignId))
+          .limit(1)
+          .catch(() => []);
+
+        if (camp && camp.autoFollowUpEnabled === false) {
+          logger.info(`[FollowUpScheduler] Skipping automated follow-up ${id}: Campaign "${camp.name}" (${followUp.campaignId}) has autoFollowUpEnabled set to Inactive (false)`, undefined, 'FollowUpScheduler');
+          await db
+            .update(scheduledFollowUps)
+            .set({ status: 'pending', updatedAt: new Date() })
+            .where(eq(scheduledFollowUps.id, id));
+          return { success: false, error: 'Auto-followup is inactive on this campaign' };
+        }
+      }
+
       // Resolve Agent & Telephony Phone Number
       let agentRecord: any = null;
       let resolvedAgentId = followUp.agentId;

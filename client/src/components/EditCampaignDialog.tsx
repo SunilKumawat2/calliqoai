@@ -778,13 +778,13 @@ export function EditCampaignDialog({ open, onOpenChange, campaign }: EditCampaig
             )}
           </div>
 
-          {/* Automated Follow-Up Calls */}
+          {/* Automated Follow-Up & Unanswered Retry Calls */}
           <div className="space-y-4 border-t pt-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <PhoneForwarded className="h-5 w-5 text-amber-500" />
                 <div className="flex items-center gap-2">
-                  <Label className="text-base font-semibold">Automated Follow-Up Calls</Label>
+                  <Label className="text-base font-semibold">Auto-Retry on Unanswered & Follow-Up Calls</Label>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                     formData.autoFollowUpEnabled 
                       ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" 
@@ -793,7 +793,7 @@ export function EditCampaignDialog({ open, onOpenChange, campaign }: EditCampaig
                     {formData.autoFollowUpEnabled ? "Active" : "Inactive"}
                   </span>
                 </div>
-                <InfoTooltip content="When active, if a lead asks to be called back later (e.g., '10 min baad', 'kal 4 baje'), the AI scheduler will automatically trigger the follow-up call at that exact requested time with previous conversation context." />
+                <InfoTooltip content="When active, if a lead doesn't answer (no answer/busy) or asks to be called back later, the AI will automatically retry/call back at the scheduled time with tailored conversation memory. When inactive, no automatic retry or callback calls will be made for this campaign." />
               </div>
               <Switch
                 checked={formData.autoFollowUpEnabled}
@@ -803,8 +803,8 @@ export function EditCampaignDialog({ open, onOpenChange, campaign }: EditCampaig
             </div>
             <p className="text-sm text-muted-foreground">
               {formData.autoFollowUpEnabled 
-                ? "Active: Leads who request a callback will automatically be called at their preferred time with contextual AI pitch."
-                : "Inactive: Callback requests will be saved in pending state, but automatic calls will NOT be placed until triggered manually."}
+                ? "Active: If a lead misses the call (no answer / busy) or requests a callback, the AI will automatically dial them back."
+                : "Inactive: Automatic retry or callback calls will NOT be placed for this campaign."}
             </p>
           </div>
 

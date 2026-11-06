@@ -20,7 +20,9 @@ import {
   phoneNumbers, 
   incomingConnections, 
   campaigns,
-  users
+  users,
+  calls,
+  plivoCalls
 } from '../../shared/schema';
 import { logger } from '../utils/logger';
 
@@ -112,6 +114,47 @@ export class MissedCallCallbackService {
       if (!callbackEnabled) {
         console.log(`[MissedCallService] Auto-callback is disabled for user ${userId}`);
         return null;
+      }
+
+      // 3b. Check Campaign-level Auto-FollowUp / Retry setting (Active vs Inactive)
+      let resolvedCampaignId = params.campaignId || null;
+      if (!resolvedCampaignId && params.callId) {
+        try {
+          const [callRec] = await db
+            .select({ campaignId: calls.campaignId })
+            .from(calls)
+            .where(eq(calls.id, params.callId))
+            .limit(1)
+            .catch(() => []);
+          if (callRec?.campaignId) {
+            resolvedCampaignId = callRec.campaignId;
+          } else {
+            const [plivoRec] = await db
+              .select({ campaignId: plivoCalls.campaignId })
+              .from(plivoCalls)
+              .where(eq(plivoCalls.id, params.callId))
+              .limit(1)
+              .catch(() => []);
+            if (plivoRec?.campaignId) resolvedCampaignId = plivoRec.campaignId;
+          }
+        } catch (_) {}
+      }
+
+      if (resolvedCampaignId) {
+        try {
+          const [camp] = await db
+            .select({ autoFollowUpEnabled: campaigns.autoFollowUpEnabled, name: campaigns.name })
+            .from(campaigns)
+            .where(eq(campaigns.id, resolvedCampaignId))
+            .limit(1);
+
+          if (camp && camp.autoFollowUpEnabled === false) {
+            console.log(`[MissedCallService] Skipping auto-callback: Campaign "${camp.name}" (${resolvedCampaignId}) has Auto-FollowUp / Retry set to Inactive (autoFollowUpEnabled: false).`);
+            return null;
+          }
+        } catch (campErr: any) {
+          console.warn(`[MissedCallService] Error checking campaign autoFollowUpEnabled: ${campErr.message}`);
+        }
       }
 
       // 4. Resolve Agent ID

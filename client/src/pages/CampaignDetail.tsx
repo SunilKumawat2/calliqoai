@@ -690,15 +690,15 @@ export default function CampaignDetail() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-semibold">Automated Follow-Up Calls</h3>
+                    <h3 className="text-base font-semibold">Auto-Retry on Unanswered & Follow-Up Calls</h3>
                     <Badge variant="outline" className={campaign.autoFollowUpEnabled !== false ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-muted text-muted-foreground border-border"}>
                       {campaign.autoFollowUpEnabled !== false ? "Active" : "Inactive"}
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
                     {campaign.autoFollowUpEnabled !== false
-                      ? "Active: When a lead requests a callback (e.g., '10 min baad', 'kal 4 baje'), the AI scheduler will automatically call them back at that exact scheduled time with conversation memory."
-                      : "Inactive: Callback requests will be recorded in pending state, but automatic calls will NOT be placed until manually triggered."}
+                      ? "Active: When a lead doesn't answer (no answer / busy) or requests a callback, the AI scheduler will automatically retry and call them back at the scheduled time."
+                      : "Inactive: Automatic retry and callback calls will NOT be placed for this campaign."}
                   </p>
                 </div>
               </div>
