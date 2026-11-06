@@ -847,6 +847,7 @@ export class PlivoCallService {
       if (isMissedStatus && call.userId) {
         try {
           const { MissedCallCallbackService } = await import('../../../services/missed-call-callback.service');
+          const hangupCause = (data as any)?.HangupCause || (data as any)?.hangup_cause || null;
           MissedCallCallbackService.handleMissedCall({
             callId: call.id,
             engine: 'plivo-openai',
@@ -856,7 +857,8 @@ export class PlivoCallService {
             userId: call.userId,
             agentId: call.agentId,
             campaignId: call.campaignId,
-            status: isAbandoned ? 'abandoned-call-0-duration' : status,
+            status: status || (isAbandoned ? 'abandoned-call-0-duration' : 'no-answer'),
+            hangupCause,
           }).catch(err => logger.error(`Missed call callback error: ${err.message}`, undefined, 'PlivoCall'));
         } catch (err: any) {
           logger.error(`Failed to invoke MissedCallCallbackService: ${err.message}`, undefined, 'PlivoCall');
