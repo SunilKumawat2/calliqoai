@@ -847,7 +847,7 @@ export class PlivoCallService {
       if (isMissedStatus && call.userId) {
         try {
           const { MissedCallCallbackService } = await import('../../../services/missed-call-callback.service');
-          const hangupCause = (data as any)?.HangupCause || (data as any)?.hangup_cause || null;
+          const hangupCause = (metadata as any)?.hangupCause || (metadata as any)?.HangupCause || (metadata as any)?.hangup_cause || null;
           MissedCallCallbackService.handleMissedCall({
             callId: call.id,
             engine: 'plivo-openai',
