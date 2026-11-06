@@ -354,6 +354,7 @@ export const campaigns = pgTable("campaigns", {
   
   // Automated AI Follow-Up Calling Toggle
   autoFollowUpEnabled: boolean("auto_follow_up_enabled").notNull().default(true), // Whether to automatically dial callback requests at scheduled time
+  missedCallCallbackEnabled: boolean("missed_call_callback_enabled").notNull().default(true), // Whether to auto-callback when call is missed/unanswered (no answer/busy retry)
 
   // Automated WhatsApp Notification & Follow-up
   whatsappEnabled: boolean("whatsapp_enabled").notNull().default(false), // Whether to send WhatsApp message post-call

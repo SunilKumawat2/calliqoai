@@ -143,17 +143,21 @@ export class MissedCallCallbackService {
       if (resolvedCampaignId) {
         try {
           const [camp] = await db
-            .select({ autoFollowUpEnabled: campaigns.autoFollowUpEnabled, name: campaigns.name })
+            .select({ 
+              autoFollowUpEnabled: campaigns.autoFollowUpEnabled, 
+              missedCallCallbackEnabled: campaigns.missedCallCallbackEnabled,
+              name: campaigns.name 
+            })
             .from(campaigns)
             .where(eq(campaigns.id, resolvedCampaignId))
             .limit(1);
 
-          if (camp && camp.autoFollowUpEnabled === false) {
-            console.log(`[MissedCallService] Skipping auto-callback: Campaign "${camp.name}" (${resolvedCampaignId}) has Auto-FollowUp / Retry set to Inactive (autoFollowUpEnabled: false).`);
+          if (camp && camp.missedCallCallbackEnabled === false) {
+            console.log(`[MissedCallService] Skipping auto-callback: Campaign "${camp.name}" (${resolvedCampaignId}) has Missed Call Auto-Callback set to Inactive (missedCallCallbackEnabled: false).`);
             return null;
           }
         } catch (campErr: any) {
-          console.warn(`[MissedCallService] Error checking campaign autoFollowUpEnabled: ${campErr.message}`);
+          console.warn(`[MissedCallService] Error checking campaign missedCallCallbackEnabled: ${campErr.message}`);
         }
       }
 

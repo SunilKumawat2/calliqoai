@@ -558,22 +558,40 @@ export class FollowUpSchedulerService {
         return { success: false, error: 'Follow-up is already in progress or completed' };
       }
 
-      // If this is an automated trigger (not manual button click) and associated with a campaign, check if campaign has autoFollowUpEnabled
+      // If this is an automated trigger (not manual button click) and associated with a campaign, check campaign settings
       if (!triggerUserId && followUp.campaignId) {
         const [camp] = await db
-          .select({ autoFollowUpEnabled: campaigns.autoFollowUpEnabled, name: campaigns.name })
+          .select({ 
+            autoFollowUpEnabled: campaigns.autoFollowUpEnabled, 
+            missedCallCallbackEnabled: campaigns.missedCallCallbackEnabled,
+            name: campaigns.name 
+          })
           .from(campaigns)
           .where(eq(campaigns.id, followUp.campaignId))
           .limit(1)
           .catch(() => []);
 
-        if (camp && camp.autoFollowUpEnabled === false) {
-          logger.info(`[FollowUpScheduler] Skipping automated follow-up ${id}: Campaign "${camp.name}" (${followUp.campaignId}) has autoFollowUpEnabled set to Inactive (false)`, undefined, 'FollowUpScheduler');
-          await db
-            .update(scheduledFollowUps)
-            .set({ status: 'pending', updatedAt: new Date() })
-            .where(eq(scheduledFollowUps.id, id));
-          return { success: false, error: 'Auto-followup is inactive on this campaign' };
+        const isMissedCallRetry = followUp.preferredTimeText === 'Outbound Unanswered Auto-Retry' || 
+                                  followUp.preferredTimeText === 'Missed Call Auto-Callback';
+
+        if (camp) {
+          if (isMissedCallRetry && camp.missedCallCallbackEnabled === false) {
+            logger.info(`[FollowUpScheduler] Skipping automated missed-call retry ${id}: Campaign "${camp.name}" (${followUp.campaignId}) has missedCallCallbackEnabled set to Inactive (false)`, undefined, 'FollowUpScheduler');
+            await db
+              .update(scheduledFollowUps)
+              .set({ status: 'pending', updatedAt: new Date() })
+              .where(eq(scheduledFollowUps.id, id));
+            return { success: false, error: 'Missed-call callback is inactive on this campaign' };
+          }
+
+          if (!isMissedCallRetry && camp.autoFollowUpEnabled === false) {
+            logger.info(`[FollowUpScheduler] Skipping automated follow-up ${id}: Campaign "${camp.name}" (${followUp.campaignId}) has autoFollowUpEnabled set to Inactive (false)`, undefined, 'FollowUpScheduler');
+            await db
+              .update(scheduledFollowUps)
+              .set({ status: 'pending', updatedAt: new Date() })
+              .where(eq(scheduledFollowUps.id, id));
+            return { success: false, error: 'Auto-followup is inactive on this campaign' };
+          }
         }
       }
 
@@ -1041,15 +1059,27 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
             // If follow-up belongs to a campaign, check if automatic follow-up is enabled for that campaign
             if (item.campaignId) {
               const [campaignRec] = await db
-                .select({ autoFollowUpEnabled: campaigns.autoFollowUpEnabled })
+                .select({ 
+                  autoFollowUpEnabled: campaigns.autoFollowUpEnabled,
+                  missedCallCallbackEnabled: campaigns.missedCallCallbackEnabled,
+                })
                 .from(campaigns)
                 .where(eq(campaigns.id, item.campaignId))
                 .limit(1)
                 .catch(() => []);
 
-              if (campaignRec && campaignRec.autoFollowUpEnabled === false) {
-                logger.info(`Skipping automated follow-up ${item.id} - autoFollowUpEnabled is inactive/false on campaign ${item.campaignId}`, undefined, 'FollowUpScheduler');
-                continue;
+              const isMissedCall = item.preferredTimeText === 'Outbound Unanswered Auto-Retry' || 
+                                   item.preferredTimeText === 'Missed Call Auto-Callback';
+
+              if (campaignRec) {
+                if (isMissedCall && campaignRec.missedCallCallbackEnabled === false) {
+                  logger.info(`Skipping automated missed-call retry ${item.id} - missedCallCallbackEnabled is inactive/false on campaign ${item.campaignId}`, undefined, 'FollowUpScheduler');
+                  continue;
+                }
+                if (!isMissedCall && campaignRec.autoFollowUpEnabled === false) {
+                  logger.info(`Skipping automated follow-up ${item.id} - autoFollowUpEnabled is inactive/false on campaign ${item.campaignId}`, undefined, 'FollowUpScheduler');
+                  continue;
+                }
               }
             }
 

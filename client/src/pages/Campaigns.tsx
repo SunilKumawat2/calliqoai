@@ -58,6 +58,7 @@ interface Campaign {
   errorMessage?: string | null;
   errorCode?: string | null;
   autoFollowUpEnabled?: boolean;
+  missedCallCallbackEnabled?: boolean;
 }
 
 interface User {
@@ -380,6 +381,7 @@ export default function Campaigns() {
                       currentRetryPass={campaign.currentRetryPass}
                       retryMaxAttempts={campaign.retryMaxAttempts}
                       autoFollowUpEnabled={campaign.autoFollowUpEnabled}
+                      missedCallCallbackEnabled={campaign.missedCallCallbackEnabled}
                       onView={() => setLocation(`/app/campaigns/${campaign.id}`)}
                       onEdit={() => setEditingCampaign(campaign)}
                     />

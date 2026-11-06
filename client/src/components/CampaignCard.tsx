@@ -58,6 +58,7 @@ interface CampaignCardProps {
   currentRetryPass?: number;
   retryMaxAttempts?: number;
   autoFollowUpEnabled?: boolean;
+  missedCallCallbackEnabled?: boolean;
   onView?: () => void;
   onEdit?: () => void;
 }
@@ -77,6 +78,7 @@ export function CampaignCard({
   currentRetryPass,
   retryMaxAttempts,
   autoFollowUpEnabled,
+  missedCallCallbackEnabled,
   onView,
   onEdit,
 }: CampaignCardProps) {
@@ -202,6 +204,11 @@ export function CampaignCard({
             ) : (
               <Badge variant="outline" className="text-xs bg-muted text-muted-foreground" title="Automated Follow-Up: Inactive">
                 Manual Follow-Up
+              </Badge>
+            )}
+            {missedCallCallbackEnabled !== false && (
+              <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/20" title="Missed Call Auto-Callback: Active">
+                Missed-Call Retry
               </Badge>
             )}
           </div>

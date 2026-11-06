@@ -122,6 +122,7 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
     retryOnBusy: false,
     retryOnFailed: false,
     autoFollowUpEnabled: true,
+    missedCallCallbackEnabled: true,
     whatsappEnabled: false,
     whatsappTemplate: "",
     whatsappTriggerCondition: "completed",
@@ -1097,13 +1098,13 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                     )}
                   </div>
 
-                  {/* Automated Follow-Up & Unanswered Retry Calls */}
+                  {/* 1. Automated Follow-Up Calls (Customer-Requested Callback) */}
                   <div className="space-y-4 border-t pt-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <PhoneForwarded className="h-5 w-5 text-amber-500" />
                         <div className="flex items-center gap-2">
-                          <Label className="text-base font-semibold">Auto-Retry on Unanswered & Follow-Up Calls</Label>
+                          <Label className="text-base font-semibold">Automated Follow-Up Calls</Label>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                             formData.autoFollowUpEnabled 
                               ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" 
@@ -1112,7 +1113,7 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                             {formData.autoFollowUpEnabled ? "Active" : "Inactive"}
                           </span>
                         </div>
-                        <InfoTooltip content="When active, if a lead doesn't answer (no answer/busy) or asks to be called back later, the AI will automatically retry/call back at the scheduled time with tailored conversation memory. When inactive, no automatic retry or callback calls will be made for this campaign." />
+                        <InfoTooltip content="When active, if a lead asks to be called back later (e.g., '10 min baad', 'kal 4 baje'), the AI scheduler will automatically trigger the follow-up call at that exact requested time with previous conversation context." />
                       </div>
                       <Switch
                         checked={formData.autoFollowUpEnabled}
@@ -1122,8 +1123,38 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {formData.autoFollowUpEnabled 
-                        ? "Active: If a lead misses the call (no answer / busy) or requests a callback, the AI will automatically dial them back."
-                        : "Inactive: Automatic retry or callback calls will NOT be placed for this campaign."}
+                        ? "Active: Leads who request a callback will automatically be called at their preferred time with contextual AI pitch."
+                        : "Inactive: Callback requests will be saved in pending state, but automatic calls will NOT be placed until triggered manually."}
+                    </p>
+                  </div>
+
+                  {/* 2. Missed / Unanswered Call Auto-Callback (0 Duration / No-Answer / Busy Retry) */}
+                  <div className="space-y-4 border-t pt-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <PhoneForwarded className="h-5 w-5 text-blue-500" />
+                        <div className="flex items-center gap-2">
+                          <Label className="text-base font-semibold">Missed / Unanswered Call Auto-Callback</Label>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            formData.missedCallCallbackEnabled 
+                              ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" 
+                              : "bg-muted text-muted-foreground border border-border"
+                          }`}>
+                            {formData.missedCallCallbackEnabled ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+                        <InfoTooltip content="When active, if a lead misses the call (no-answer, busy, or rejected), the AI will automatically dial them back in 90 seconds to connect and qualify. When inactive, no automatic retry callback will be placed." />
+                      </div>
+                      <Switch
+                        checked={formData.missedCallCallbackEnabled}
+                        onCheckedChange={(checked) => setFormData({ ...formData, missedCallCallbackEnabled: checked })}
+                        data-testid="switch-missed-call-callback-enabled"
+                      />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {formData.missedCallCallbackEnabled 
+                        ? "Active: Leads who don't answer will automatically be called back in 90s to connect and qualify."
+                        : "Inactive: Automatic retry callback is disabled for unanswered calls on this campaign."}
                     </p>
                   </div>
 

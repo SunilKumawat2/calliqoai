@@ -87,6 +87,7 @@ interface Campaign {
   currentRetryPass?: number;
   batchJobHistory?: Array<{ batchJobId: string; pass: number; contactCount: number; createdAt: string }>;
   autoFollowUpEnabled?: boolean;
+  missedCallCallbackEnabled?: boolean;
 }
 
 interface BatchJobStats {
@@ -286,6 +287,30 @@ export default function CampaignDetail() {
       toast({
         title: "Update Failed",
         description: err.message || "Failed to update follow-up setting",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const toggleMissedCallCallbackMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await apiRequest("PATCH", `/api/campaigns/${id}`, { missedCallCallbackEnabled: enabled });
+      return res.json();
+    },
+    onSuccess: (_, enabled) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      toast({
+        title: enabled ? "Missed Call Auto-Callback Activated" : "Missed Call Auto-Callback Deactivated",
+        description: enabled 
+          ? "Unanswered calls will now automatically be dialed back in 90 seconds to connect and qualify." 
+          : "Automatic retry on missed calls paused. No auto-callback will be placed for unanswered calls.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Update Failed",
+        description: err.message || "Failed to update missed call callback setting",
         variant: "destructive",
       });
     },
@@ -681,7 +706,7 @@ export default function CampaignDetail() {
             </div>
           </Card>
 
-          {/* Automated Follow-Up Calls Switch Card */}
+          {/* 1. Automated Follow-Up Calls (Customer-Requested Callback) */}
           <Card className="p-6 border-amber-500/20 bg-gradient-to-r from-amber-500/5 via-transparent to-transparent">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-start gap-3">
@@ -690,15 +715,15 @@ export default function CampaignDetail() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-semibold">Auto-Retry on Unanswered & Follow-Up Calls</h3>
+                    <h3 className="text-base font-semibold">Automated Follow-Up Calls</h3>
                     <Badge variant="outline" className={campaign.autoFollowUpEnabled !== false ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-muted text-muted-foreground border-border"}>
                       {campaign.autoFollowUpEnabled !== false ? "Active" : "Inactive"}
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
                     {campaign.autoFollowUpEnabled !== false
-                      ? "Active: When a lead doesn't answer (no answer / busy) or requests a callback, the AI scheduler will automatically retry and call them back at the scheduled time."
-                      : "Inactive: Automatic retry and callback calls will NOT be placed for this campaign."}
+                      ? "Active: When a lead requests a callback (e.g., '10 min baad', 'kal 4 baje'), the AI scheduler will automatically call them back at that exact requested time with conversation history."
+                      : "Inactive: Callback requests will be recorded in pending state, but automatic calls will NOT be placed until manually triggered."}
                   </p>
                 </div>
               </div>
@@ -707,6 +732,36 @@ export default function CampaignDetail() {
                 onCheckedChange={(checked) => toggleAutoFollowUpMutation.mutate(checked)}
                 disabled={toggleAutoFollowUpMutation.isPending}
                 data-testid="switch-campaign-detail-auto-follow-up"
+              />
+            </div>
+          </Card>
+
+          {/* 2. Missed / Unanswered Call Auto-Callback (0 Duration / No-Answer / Busy Retry) */}
+          <Card className="p-6 border-blue-500/20 bg-gradient-to-r from-blue-500/5 via-transparent to-transparent">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-blue-500/10 rounded-lg text-blue-500 mt-0.5 shrink-0">
+                  <PhoneForwarded className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-semibold">Missed / Unanswered Call Auto-Callback</h3>
+                    <Badge variant="outline" className={campaign.missedCallCallbackEnabled !== false ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-muted text-muted-foreground border-border"}>
+                      {campaign.missedCallCallbackEnabled !== false ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+                    {campaign.missedCallCallbackEnabled !== false
+                      ? "Active: When a customer does not pick up the call (no-answer, busy, or rejected), the AI will automatically dial them back in 90 seconds to connect and qualify."
+                      : "Inactive: Automatic retry callback is disabled. Unanswered calls will NOT trigger any automatic callback."}
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={campaign.missedCallCallbackEnabled !== false}
+                onCheckedChange={(checked) => toggleMissedCallCallbackMutation.mutate(checked)}
+                disabled={toggleMissedCallCallbackMutation.isPending}
+                data-testid="switch-campaign-detail-missed-call-callback"
               />
             </div>
           </Card>
