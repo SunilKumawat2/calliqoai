@@ -75,14 +75,14 @@ export class MissedCallCallbackService {
         return null;
       }
 
-      // 2. Cooldown check: Prevent duplicate callbacks if customer rings multiple times within 1 minute
+      // 2. Cooldown check: Prevent duplicate webhook callbacks if same call emits multiple status events within 15 seconds
       const coolDownKey = `${userId}:${cleanPhone}`;
       if (_recentMissedCallCoolDown.has(coolDownKey)) {
         console.log(`⏳ [MissedCallService] Cooldown active for ${cleanPhone}. Skipping duplicate auto-callback.`);
         return null;
       }
       _recentMissedCallCoolDown.add(coolDownKey);
-      setTimeout(() => _recentMissedCallCoolDown.delete(coolDownKey), 60 * 1000);
+      setTimeout(() => _recentMissedCallCoolDown.delete(coolDownKey), 15 * 1000);
 
       console.log(`🔔 [MissedCallService] Processing missed ${direction} call for ${cleanPhone} (Call: ${callId}, Status: ${status})`);
 
@@ -116,12 +116,12 @@ export class MissedCallCallbackService {
         return null;
       }
 
-      // 3b. Check Campaign-level Auto-FollowUp / Retry setting (Active vs Inactive)
+      // 3b. Check Campaign-level Auto-FollowUp / Retry setting (Active vs Inactive, Max Attempts & Delay)
       let resolvedCampaignId = params.campaignId || null;
       if (!resolvedCampaignId && params.callId) {
         try {
           const [callRec] = await db
-            .select({ campaignId: calls.campaignId })
+            .select({ campaignId: calls.campaignId, metadata: calls.metadata })
             .from(calls)
             .where(eq(calls.id, params.callId))
             .limit(1)
@@ -130,12 +130,25 @@ export class MissedCallCallbackService {
             resolvedCampaignId = callRec.campaignId;
           } else {
             const [plivoRec] = await db
-              .select({ campaignId: plivoCalls.campaignId })
+              .select({ campaignId: plivoCalls.campaignId, metadata: plivoCalls.metadata })
               .from(plivoCalls)
               .where(eq(plivoCalls.id, params.callId))
               .limit(1)
               .catch(() => []);
-            if (plivoRec?.campaignId) resolvedCampaignId = plivoRec.campaignId;
+            if (plivoRec?.campaignId) {
+              resolvedCampaignId = plivoRec.campaignId;
+            } else {
+              const followUpId = (callRec?.metadata as any)?.followUpId || (plivoRec?.metadata as any)?.followUpId;
+              if (followUpId) {
+                const [fuRec] = await db
+                  .select({ campaignId: scheduledFollowUps.campaignId })
+                  .from(scheduledFollowUps)
+                  .where(eq(scheduledFollowUps.id, followUpId))
+                  .limit(1)
+                  .catch(() => []);
+                if (fuRec?.campaignId) resolvedCampaignId = fuRec.campaignId;
+              }
+            }
           }
         } catch (_) {}
       }
@@ -146,6 +159,8 @@ export class MissedCallCallbackService {
             .select({ 
               autoFollowUpEnabled: campaigns.autoFollowUpEnabled, 
               missedCallCallbackEnabled: campaigns.missedCallCallbackEnabled,
+              missedCallMaxAttempts: campaigns.missedCallMaxAttempts,
+              missedCallDelaySeconds: campaigns.missedCallDelaySeconds,
               retryOnNoAnswer: campaigns.retryOnNoAnswer,
               retryOnBusy: campaigns.retryOnBusy,
               name: campaigns.name 
@@ -154,9 +169,40 @@ export class MissedCallCallbackService {
             .where(eq(campaigns.id, resolvedCampaignId))
             .limit(1);
 
-          if (camp && camp.missedCallCallbackEnabled === false) {
-            console.log(`[MissedCallService] Skipping auto-callback: Campaign "${camp.name}" (${resolvedCampaignId}) has Missed Call Auto-Callback set to Inactive (missedCallCallbackEnabled: false).`);
-            return null;
+          if (camp) {
+            if (camp.missedCallCallbackEnabled === false) {
+              console.log(`[MissedCallService] Skipping auto-callback: Campaign "${camp.name}" (${resolvedCampaignId}) has Missed Call Auto-Callback set to Inactive (missedCallCallbackEnabled: false).`);
+              return null;
+            }
+
+            if (camp.missedCallDelaySeconds && camp.missedCallDelaySeconds > 0) {
+              delaySeconds = camp.missedCallDelaySeconds;
+            }
+
+            const maxAttempts = camp.missedCallMaxAttempts && camp.missedCallMaxAttempts > 0 ? camp.missedCallMaxAttempts : 2;
+            const last10 = cleanPhone.replace(/\D/g, '').slice(-10);
+            const pastCallbacks = await db
+              .select({ id: scheduledFollowUps.id })
+              .from(scheduledFollowUps)
+              .where(
+                and(
+                  eq(scheduledFollowUps.userId, userId),
+                  eq(scheduledFollowUps.campaignId, resolvedCampaignId),
+                  eq(scheduledFollowUps.status, 'completed'),
+                  or(
+                    eq(scheduledFollowUps.phoneNumber, cleanPhone),
+                    sql`RIGHT(REGEXP_REPLACE(${scheduledFollowUps.phoneNumber}, '[^0-9]', '', 'g'), 10) = ${last10}`
+                  )
+                )
+              )
+              .catch(() => []);
+
+            const completedCount = pastCallbacks.length;
+            if (completedCount >= maxAttempts) {
+              console.log(`🛑 [MissedCallService] Max auto-callback attempts reached (${completedCount}/${maxAttempts}) for ${cleanPhone} in campaign "${camp.name}" (${resolvedCampaignId}). Stopping further auto-callbacks.`);
+              return null;
+            }
+            console.log(`🔄 [MissedCallService] Campaign "${camp.name}": Scheduling auto-callback attempt ${completedCount + 1}/${maxAttempts} in ${delaySeconds}s for ${cleanPhone}`);
           }
         } catch (campErr: any) {
           console.warn(`[MissedCallService] Error checking campaign missedCallCallbackEnabled: ${campErr.message}`);
@@ -255,7 +301,7 @@ export class MissedCallCallbackService {
 
       // 6. Schedule Auto-Callback in scheduledFollowUps table
       let scheduledFollowUpId: string | undefined;
-      const scheduledAt = new Date(Date.now() + Math.max(30, delaySeconds) * 1000);
+      const scheduledAt = new Date(Date.now() + Math.max(15, delaySeconds) * 1000);
 
       // Verify no pending follow-up is already waiting
       const [existingPending] = await db
@@ -276,6 +322,7 @@ export class MissedCallCallbackService {
           .update(scheduledFollowUps)
           .set({ 
             scheduledAt, 
+            campaignId: resolvedCampaignId || params.campaignId || null,
             preferredTimeText: direction === 'outbound' ? 'Outbound Unanswered Auto-Retry' : 'Missed Call Auto-Callback',
             contextNote: direction === 'outbound'
               ? `Outbound call from ${businessName} at ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })} was not answered (busy/no-answer). Calling back automatically to connect and qualify.`
@@ -290,7 +337,7 @@ export class MissedCallCallbackService {
           .values({
             userId,
             agentId: resolvedAgentId,
-            campaignId: params.campaignId || null,
+            campaignId: resolvedCampaignId || params.campaignId || null,
             callId: params.callId,
             phoneNumber: cleanPhone,
             customerName,

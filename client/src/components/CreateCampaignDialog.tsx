@@ -123,6 +123,8 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
     retryOnFailed: false,
     autoFollowUpEnabled: true,
     missedCallCallbackEnabled: true,
+    missedCallMaxAttempts: 2,
+    missedCallDelaySeconds: 90,
     whatsappEnabled: false,
     whatsappTemplate: "",
     whatsappTriggerCondition: "completed",
@@ -375,6 +377,15 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
       retryOnNoAnswer: true,
       retryOnBusy: false,
       retryOnFailed: false,
+      autoFollowUpEnabled: true,
+      missedCallCallbackEnabled: true,
+      missedCallMaxAttempts: 2,
+      missedCallDelaySeconds: 90,
+      whatsappEnabled: false,
+      whatsappTemplate: "",
+      whatsappTriggerCondition: "completed",
+      whatsappVariables: "",
+      whatsappCustomMessage: "",
     });
     setCsvFile(null);
     setStep(1);
@@ -1153,9 +1164,72 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {formData.missedCallCallbackEnabled 
-                        ? "Active: Leads who don't answer (no-answer, busy, or rejected) will automatically be called back in 90 seconds."
+                        ? `Active: Leads who don't answer (no-answer, busy, or rejected) will automatically be called back after ${
+                            formData.missedCallDelaySeconds < 60
+                              ? `${formData.missedCallDelaySeconds} seconds`
+                              : formData.missedCallDelaySeconds === 60
+                                ? "1 minute"
+                                : formData.missedCallDelaySeconds === 90
+                                  ? "90 seconds"
+                                  : formData.missedCallDelaySeconds < 3600
+                                    ? `${Math.round(formData.missedCallDelaySeconds / 60)} minutes`
+                                    : `${Math.round(formData.missedCallDelaySeconds / 3600)} hour(s)`
+                          } (up to ${formData.missedCallMaxAttempts} time${formData.missedCallMaxAttempts > 1 ? "s" : ""}).`
                         : "Inactive: Automatic retry callback is completely disabled for unanswered calls on this campaign."}
                     </p>
+                    {formData.missedCallCallbackEnabled && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-muted-foreground">
+                            Max Auto-Callback Attempts (If Unanswered)
+                          </Label>
+                          <Select
+                            value={String(formData.missedCallMaxAttempts)}
+                            onValueChange={(v) => setFormData({ ...formData, missedCallMaxAttempts: parseInt(v, 10) })}
+                          >
+                            <SelectTrigger data-testid="select-create-missed-max-attempts">
+                              <SelectValue placeholder="Select max attempts" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">1 Time</SelectItem>
+                              <SelectItem value="2">2 Times (Default)</SelectItem>
+                              <SelectItem value="3">3 Times</SelectItem>
+                              <SelectItem value="4">4 Times</SelectItem>
+                              <SelectItem value="5">5 Times</SelectItem>
+                              <SelectItem value="6">6 Times</SelectItem>
+                              <SelectItem value="10">10 Times</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-muted-foreground">
+                            Callback Time Period (Retry Delay)
+                          </Label>
+                          <Select
+                            value={String(formData.missedCallDelaySeconds)}
+                            onValueChange={(v) => setFormData({ ...formData, missedCallDelaySeconds: parseInt(v, 10) })}
+                          >
+                            <SelectTrigger data-testid="select-create-missed-delay-seconds">
+                              <SelectValue placeholder="Select callback delay" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="30">After 30 Seconds</SelectItem>
+                              <SelectItem value="60">After 1 Minute (60s)</SelectItem>
+                              <SelectItem value="90">After 90 Seconds (1.5 Min - Default)</SelectItem>
+                              <SelectItem value="120">After 2 Minutes</SelectItem>
+                              <SelectItem value="180">After 3 Minutes</SelectItem>
+                              <SelectItem value="300">After 5 Minutes</SelectItem>
+                              <SelectItem value="600">After 10 Minutes</SelectItem>
+                              <SelectItem value="900">After 15 Minutes</SelectItem>
+                              <SelectItem value="1800">After 30 Minutes</SelectItem>
+                              <SelectItem value="3600">After 1 Hour</SelectItem>
+                              <SelectItem value="7200">After 2 Hours</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Automated WhatsApp Follow-Up & Notification */}

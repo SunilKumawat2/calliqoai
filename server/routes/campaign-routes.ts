@@ -142,6 +142,8 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
         scheduleEnabled, scheduleTimeStart, scheduleTimeEnd, scheduleDays, daysOfWeek, scheduleTimezone,
         autoFollowUpEnabled,
         missedCallCallbackEnabled,
+        missedCallMaxAttempts,
+        missedCallDelaySeconds,
         whatsappEnabled, whatsappTemplate, whatsappTriggerCondition, whatsappVariables, whatsappCustomMessage } = req.body;
 
       if (!name || !type) {
@@ -345,6 +347,8 @@ export function createCampaignRoutes(ctx: RouteContext): Router {
         scheduleTimezone: scheduleTimezone || "America/New_York",
         autoFollowUpEnabled: autoFollowUpEnabled !== undefined ? Boolean(autoFollowUpEnabled) : true,
         missedCallCallbackEnabled: missedCallCallbackEnabled !== undefined ? Boolean(missedCallCallbackEnabled) : true,
+        missedCallMaxAttempts: missedCallMaxAttempts !== undefined ? Math.max(1, Number(missedCallMaxAttempts) || 2) : 2,
+        missedCallDelaySeconds: missedCallDelaySeconds !== undefined ? Math.max(15, Number(missedCallDelaySeconds) || 90) : 90,
         whatsappEnabled: whatsappEnabled !== undefined ? Boolean(whatsappEnabled) : false,
         whatsappTemplate: whatsappTemplate || null,
         whatsappTriggerCondition: whatsappTriggerCondition || "completed",

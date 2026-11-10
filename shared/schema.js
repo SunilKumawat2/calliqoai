@@ -360,6 +360,10 @@ const campaigns = pgTable("campaigns", {
   // Whether to automatically dial callback requests at scheduled time
   missedCallCallbackEnabled: boolean("missed_call_callback_enabled").notNull().default(true),
   // Whether to auto-callback when call is missed/unanswered (no answer/busy retry)
+  missedCallMaxAttempts: integer("missed_call_max_attempts").notNull().default(2),
+  // Max auto-callback attempts per contact when unanswered
+  missedCallDelaySeconds: integer("missed_call_delay_seconds").notNull().default(90),
+  // Delay in seconds before placing missed-call auto-callback
   // Automated WhatsApp Notification & Follow-up
   whatsappEnabled: boolean("whatsapp_enabled").notNull().default(false),
   // Whether to send WhatsApp message post-call

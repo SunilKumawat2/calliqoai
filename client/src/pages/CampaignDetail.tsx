@@ -27,6 +27,7 @@ import { ArrowLeft, PhoneCall, Download, CheckCircle2, XCircle, Clock, Loader2, 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -88,6 +89,8 @@ interface Campaign {
   batchJobHistory?: Array<{ batchJobId: string; pass: number; contactCount: number; createdAt: string }>;
   autoFollowUpEnabled?: boolean;
   missedCallCallbackEnabled?: boolean;
+  missedCallMaxAttempts?: number;
+  missedCallDelaySeconds?: number;
 }
 
 interface BatchJobStats {
@@ -303,7 +306,7 @@ export default function CampaignDetail() {
       toast({
         title: enabled ? "Missed Call Auto-Callback Activated" : "Missed Call Auto-Callback Deactivated",
         description: enabled 
-          ? "Unanswered calls will now automatically be dialed back in 90 seconds to connect and qualify." 
+          ? "Unanswered calls will now automatically be dialed back based on your campaign settings." 
           : "Automatic retry on missed calls paused. No auto-callback will be placed for unanswered calls.",
       });
     },
@@ -311,6 +314,28 @@ export default function CampaignDetail() {
       toast({
         title: "Update Failed",
         description: err.message || "Failed to update missed call callback setting",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateMissedCallSettingsMutation = useMutation({
+    mutationFn: async (updates: { missedCallMaxAttempts?: number; missedCallDelaySeconds?: number }) => {
+      const res = await apiRequest("PATCH", `/api/campaigns/${id}`, updates);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${id}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      toast({
+        title: "Auto-Callback Settings Updated",
+        description: "Campaign missed-call retry limits and time period have been saved.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Update Failed",
+        description: err.message || "Failed to update auto-callback settings",
         variant: "destructive",
       });
     },
@@ -752,7 +777,17 @@ export default function CampaignDetail() {
                   </div>
                   <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
                     {campaign.missedCallCallbackEnabled !== false
-                      ? "Active: When a customer does not pick up or cuts the call, the AI can automatically dial them back in 90 seconds to connect and qualify."
+                      ? `Active: When a customer does not pick up or cuts the call, the AI will automatically dial them back after ${
+                          (campaign.missedCallDelaySeconds ?? 90) < 60
+                            ? `${campaign.missedCallDelaySeconds ?? 90} seconds`
+                            : (campaign.missedCallDelaySeconds ?? 90) === 60
+                              ? "1 minute"
+                              : (campaign.missedCallDelaySeconds ?? 90) === 90
+                                ? "90 seconds"
+                                : (campaign.missedCallDelaySeconds ?? 90) < 3600
+                                  ? `${Math.round((campaign.missedCallDelaySeconds ?? 90) / 60)} minutes`
+                                  : `${Math.round((campaign.missedCallDelaySeconds ?? 90) / 3600)} hour(s)`
+                        } (up to ${campaign.missedCallMaxAttempts ?? 2} time${(campaign.missedCallMaxAttempts ?? 2) > 1 ? "s" : ""}) to connect and qualify.`
                       : "Inactive: Automatic retry callback is completely disabled for this campaign."}
                   </p>
                 </div>
@@ -764,6 +799,66 @@ export default function CampaignDetail() {
                 data-testid="switch-campaign-detail-missed-call-callback"
               />
             </div>
+
+            {campaign.missedCallCallbackEnabled !== false && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-blue-500/15">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">
+                    Max Auto-Callback Attempts (If Unanswered)
+                  </Label>
+                  <Select
+                    value={String(campaign.missedCallMaxAttempts ?? 2)}
+                    onValueChange={(val) =>
+                      updateMissedCallSettingsMutation.mutate({ missedCallMaxAttempts: parseInt(val, 10) })
+                    }
+                    disabled={updateMissedCallSettingsMutation.isPending}
+                  >
+                    <SelectTrigger className="h-9 bg-background/60" data-testid="select-campaign-missed-max-attempts">
+                      <SelectValue placeholder="Select max attempts" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 Time</SelectItem>
+                      <SelectItem value="2">2 Times (Default)</SelectItem>
+                      <SelectItem value="3">3 Times</SelectItem>
+                      <SelectItem value="4">4 Times</SelectItem>
+                      <SelectItem value="5">5 Times</SelectItem>
+                      <SelectItem value="6">6 Times</SelectItem>
+                      <SelectItem value="10">10 Times</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">
+                    Callback Time Period (Retry Delay)
+                  </Label>
+                  <Select
+                    value={String(campaign.missedCallDelaySeconds ?? 90)}
+                    onValueChange={(val) =>
+                      updateMissedCallSettingsMutation.mutate({ missedCallDelaySeconds: parseInt(val, 10) })
+                    }
+                    disabled={updateMissedCallSettingsMutation.isPending}
+                  >
+                    <SelectTrigger className="h-9 bg-background/60" data-testid="select-campaign-missed-delay-seconds">
+                      <SelectValue placeholder="Select callback delay" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="30">After 30 Seconds</SelectItem>
+                      <SelectItem value="60">After 1 Minute (60s)</SelectItem>
+                      <SelectItem value="90">After 90 Seconds (1.5 Min - Default)</SelectItem>
+                      <SelectItem value="120">After 2 Minutes</SelectItem>
+                      <SelectItem value="180">After 3 Minutes</SelectItem>
+                      <SelectItem value="300">After 5 Minutes</SelectItem>
+                      <SelectItem value="600">After 10 Minutes</SelectItem>
+                      <SelectItem value="900">After 15 Minutes</SelectItem>
+                      <SelectItem value="1800">After 30 Minutes</SelectItem>
+                      <SelectItem value="3600">After 1 Hour</SelectItem>
+                      <SelectItem value="7200">After 2 Hours</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
           </Card>
 
           {campaign.batchJobId && (
