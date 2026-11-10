@@ -81,6 +81,22 @@ salesTeamRouter.post('/', async (req: Request, res: Response) => {
   }
 });
 
+// ── 2B. PUT /api/sales-team/reminder-automation-config ────────
+// Must be registered BEFORE PUT /:id so it is not captured as a staff ID.
+salesTeamRouter.put('/reminder-automation-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { AppointmentRecoveryService } = await import('../services/appointment-recovery.service');
+    const saved = await AppointmentRecoveryService.saveAutomationConfig(userId, req.body || {});
+    res.json(saved);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error saving reminder automation config: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── 3. PUT /api/sales-team/:id (Update Sales Staff) ───────────
 salesTeamRouter.put('/:id', async (req: Request, res: Response) => {
   const userId = getUserId(req);
@@ -944,19 +960,7 @@ salesTeamRouter.get('/reminder-automation-config', async (req: Request, res: Res
   }
 });
 
-salesTeamRouter.put('/reminder-automation-config', async (req: Request, res: Response) => {
-  const userId = getUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-
-  try {
-    const { AppointmentRecoveryService } = await import('../services/appointment-recovery.service');
-    const saved = await AppointmentRecoveryService.saveAutomationConfig(userId, req.body || {});
-    res.json(saved);
-  } catch (error: any) {
-    logger.error(`[SalesTeam] Error saving reminder automation config: ${error.message}`, error, 'SalesTeam');
-    res.status(500).json({ error: error.message });
-  }
-});
+// NOTE: PUT /reminder-automation-config is registered above PUT /:id (see section 2B)
 
 // ── 14. POST /api/sales-team/site-visits/:id/auto-assign ───────
 salesTeamRouter.post('/site-visits/:id/auto-assign', async (req: Request, res: Response) => {
