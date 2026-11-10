@@ -849,18 +849,16 @@ export function SalesTeamSiteVisits() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0 self-end md:self-center flex-wrap">
-            {staffList.filter((s) => s.isActive).length > 0 && (
-              <Button
-                size="sm"
-                onClick={() => autoAssignAllMutation.mutate()}
-                disabled={autoAssignAllMutation.isPending}
-                className="h-8 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm"
-                title="Automatically assign all unassigned appointments to active staff based on specialty, city, and round-robin workload"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                {autoAssignAllMutation.isPending ? "Auto-Assigning..." : "⚡ Smart Auto-Assign All"}
-              </Button>
-            )}
+            <Button
+              size="sm"
+              onClick={() => autoAssignAllMutation.mutate()}
+              disabled={autoAssignAllMutation.isPending}
+              className="h-8 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm"
+              title="Automatically assign all unassigned appointments to active staff based on specialty, city, and round-robin workload"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {autoAssignAllMutation.isPending ? "Auto-Assigning..." : "⚡ Smart Auto-Assign All"}
+            </Button>
             <Button
               size="sm"
               onClick={() => openAppointModal(unassignedVisits[0])}
@@ -1013,7 +1011,7 @@ export function SalesTeamSiteVisits() {
       </div>
 
       {/* ── ENTERPRISE STATS OVERVIEW CARDS ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         {/* Total Appointments */}
         <Card 
           onClick={() => { setActiveSubTab("visits"); setStatusFilter("all"); }}
@@ -1071,6 +1069,21 @@ export function SalesTeamSiteVisits() {
             </div>
             <div className="text-xl font-bold mt-1 text-indigo-600 dark:text-indigo-400">{upcomingVisits.length}</div>
             <div className="text-[10px] text-muted-foreground mt-0.5">Today & Future</div>
+          </CardContent>
+        </Card>
+
+        {/* Overdue & No-Show (Manager View) */}
+        <Card 
+          onClick={() => { setActiveSubTab("visits"); setStatusFilter("overdue"); }}
+          className={`cursor-pointer transition-all hover:shadow-xs ${statusFilter === "overdue" ? "ring-2 ring-orange-500 bg-orange-500/5" : ""}`}
+        >
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-orange-700 dark:text-orange-400 uppercase tracking-wider">Overdue / No-Show</span>
+              <UserX className="w-4 h-4 text-orange-500" />
+            </div>
+            <div className="text-xl font-bold mt-1 text-orange-600 dark:text-orange-400">{overdueVisits.length}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5">AI Recovery Queue</div>
           </CardContent>
         </Card>
 
@@ -1901,7 +1914,27 @@ export function SalesTeamSiteVisits() {
 
               {/* Staff Select */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Select Staff Member *</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">Select Staff Member *</Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={autoAssignSingleMutation.isPending}
+                    onClick={() => {
+                      if (selectedVisitForAppoint) {
+                        autoAssignSingleMutation.mutate(selectedVisitForAppoint.id, {
+                          onSuccess: () => setAppointDialogOpen(false),
+                        });
+                      }
+                    }}
+                    className="h-6 text-[11px] px-2 border-indigo-500/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 font-semibold gap-1"
+                    title="Automatically pick & assign the best staff member based on specialty, city & workload"
+                  >
+                    <Sparkles className="w-3 h-3 text-indigo-500" />
+                    {autoAssignSingleMutation.isPending ? "Auto-Assigning..." : "⚡ Smart Auto-Assign Best Staff"}
+                  </Button>
+                </div>
                 <Select
                   value={appointForm.staffId}
                   onValueChange={(val) => setAppointForm({ ...appointForm, staffId: val })}

@@ -2871,6 +2871,26 @@ export default function CRMPage() {
           <div className="flex items-center gap-2 shrink-0">
             <Button
               size="sm"
+              onClick={async () => {
+                try {
+                  const res = await apiRequest("POST", "/api/sales-team/site-visits/auto-assign-all");
+                  const data = await res.json();
+                  queryClientRef.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+                  queryClientRef.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+                  toast({
+                    title: "⚡ Smart Auto-Assign Complete",
+                    description: `Automatically assigned ${data.assignedCount || 0} appointment(s) to your active staff members!`,
+                  });
+                } catch (err: any) {
+                  toast({ title: "Auto-Assign Failed", description: err.message, variant: "destructive" });
+                }
+              }}
+              className="h-7 text-xs px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white gap-1 font-medium shadow-sm"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> ⚡ Smart Auto-Assign All
+            </Button>
+            <Button
+              size="sm"
               onClick={() => setViewMode("sales_team")}
               className="h-7 text-xs px-2.5 bg-amber-600 hover:bg-amber-700 text-white gap-1 font-medium shadow-sm"
             >
