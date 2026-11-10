@@ -133,6 +133,11 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
   });
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [step, setStep] = useState(1);
+  const [showCustomDelay, setShowCustomDelay] = useState(false);
+  const [customDelayValue, setCustomDelayValue] = useState<string>("5");
+  const [customDelayUnit, setCustomDelayUnit] = useState<"seconds" | "minutes" | "hours">("minutes");
+  const [showCustomAttempts, setShowCustomAttempts] = useState(false);
+  const [customAttemptsValue, setCustomAttemptsValue] = useState<string>("3");
   const [conflictDialog, setConflictDialog] = useState<PhoneConflictState>(initialPhoneConflictState);
   const [showTimezoneModal, setShowTimezoneModal] = useState(false);
   const [contactSource, setContactSource] = useState<'google_sheet' | 'csv'>('google_sheet');
@@ -1177,59 +1182,165 @@ export function CreateCampaignDialog({ open, onOpenChange }: CreateCampaignDialo
                           } (up to ${formData.missedCallMaxAttempts} time${formData.missedCallMaxAttempts > 1 ? "s" : ""}).`
                         : "Inactive: Automatic retry callback is completely disabled for unanswered calls on this campaign."}
                     </p>
-                    {formData.missedCallCallbackEnabled && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">
-                            Max Auto-Callback Attempts (If Unanswered)
-                          </Label>
-                          <Select
-                            value={String(formData.missedCallMaxAttempts)}
-                            onValueChange={(v) => setFormData({ ...formData, missedCallMaxAttempts: parseInt(v, 10) })}
-                          >
-                            <SelectTrigger data-testid="select-create-missed-max-attempts">
-                              <SelectValue placeholder="Select max attempts" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1 Time</SelectItem>
-                              <SelectItem value="2">2 Times (Default)</SelectItem>
-                              <SelectItem value="3">3 Times</SelectItem>
-                              <SelectItem value="4">4 Times</SelectItem>
-                              <SelectItem value="5">5 Times</SelectItem>
-                              <SelectItem value="6">6 Times</SelectItem>
-                              <SelectItem value="10">10 Times</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                    {formData.missedCallCallbackEnabled && (() => {
+                      const presetAttempts = [1, 2, 3, 4, 5, 6, 10];
+                      const isCustomAttempts = showCustomAttempts || !presetAttempts.includes(formData.missedCallMaxAttempts);
 
-                        <div className="space-y-1.5">
-                          <Label className="text-xs font-medium text-muted-foreground">
-                            Callback Time Period (Retry Delay)
-                          </Label>
-                          <Select
-                            value={String(formData.missedCallDelaySeconds)}
-                            onValueChange={(v) => setFormData({ ...formData, missedCallDelaySeconds: parseInt(v, 10) })}
-                          >
-                            <SelectTrigger data-testid="select-create-missed-delay-seconds">
-                              <SelectValue placeholder="Select callback delay" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="30">After 30 Seconds</SelectItem>
-                              <SelectItem value="60">After 1 Minute (60s)</SelectItem>
-                              <SelectItem value="90">After 90 Seconds (1.5 Min - Default)</SelectItem>
-                              <SelectItem value="120">After 2 Minutes</SelectItem>
-                              <SelectItem value="180">After 3 Minutes</SelectItem>
-                              <SelectItem value="300">After 5 Minutes</SelectItem>
-                              <SelectItem value="600">After 10 Minutes</SelectItem>
-                              <SelectItem value="900">After 15 Minutes</SelectItem>
-                              <SelectItem value="1800">After 30 Minutes</SelectItem>
-                              <SelectItem value="3600">After 1 Hour</SelectItem>
-                              <SelectItem value="7200">After 2 Hours</SelectItem>
-                            </SelectContent>
-                          </Select>
+                      const presetDelays = [30, 60, 90, 120, 180, 300, 600, 900, 1800, 3600, 7200];
+                      const isCustomDelay = showCustomDelay || !presetDelays.includes(formData.missedCallDelaySeconds);
+
+                      const formatCustomDelayLabel = (sec: number) => {
+                        if (sec % 3600 === 0) return `${sec / 3600} Hour(s)`;
+                        if (sec % 60 === 0) return `${sec / 60} Minute(s)`;
+                        return `${sec} Seconds`;
+                      };
+
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                          <div className="space-y-2">
+                            <Label className="text-xs font-medium text-muted-foreground">
+                              Max Auto-Callback Attempts (If Unanswered)
+                            </Label>
+                            <Select
+                              value={isCustomAttempts ? "custom" : String(formData.missedCallMaxAttempts)}
+                              onValueChange={(v) => {
+                                if (v === "custom") {
+                                  setCustomAttemptsValue(String(formData.missedCallMaxAttempts));
+                                  setShowCustomAttempts(true);
+                                } else {
+                                  setShowCustomAttempts(false);
+                                  setFormData({ ...formData, missedCallMaxAttempts: parseInt(v, 10) });
+                                }
+                              }}
+                            >
+                              <SelectTrigger data-testid="select-create-missed-max-attempts">
+                                <SelectValue placeholder="Select max attempts" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1">1 Time</SelectItem>
+                                <SelectItem value="2">2 Times (Default)</SelectItem>
+                                <SelectItem value="3">3 Times</SelectItem>
+                                <SelectItem value="4">4 Times</SelectItem>
+                                <SelectItem value="5">5 Times</SelectItem>
+                                <SelectItem value="6">6 Times</SelectItem>
+                                <SelectItem value="10">10 Times</SelectItem>
+                                <SelectItem value="custom">
+                                  {!presetAttempts.includes(formData.missedCallMaxAttempts)
+                                    ? `Custom (${formData.missedCallMaxAttempts} Times)`
+                                    : "Custom Attempts..."}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+
+                            {isCustomAttempts && (
+                              <div className="flex items-center gap-2 pt-1">
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={50}
+                                  value={customAttemptsValue}
+                                  onChange={(e) => {
+                                    setCustomAttemptsValue(e.target.value);
+                                    const parsed = Math.max(1, parseInt(e.target.value, 10) || 2);
+                                    setFormData({ ...formData, missedCallMaxAttempts: parsed });
+                                  }}
+                                  className="h-9 w-28"
+                                  placeholder="e.g. 7"
+                                />
+                                <span className="text-xs text-muted-foreground">Times</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="text-xs font-medium text-muted-foreground">
+                              Callback Time Period (Retry Delay)
+                            </Label>
+                            <Select
+                              value={isCustomDelay ? "custom" : String(formData.missedCallDelaySeconds)}
+                              onValueChange={(v) => {
+                                if (v === "custom") {
+                                  if (formData.missedCallDelaySeconds % 3600 === 0) {
+                                    setCustomDelayValue(String(formData.missedCallDelaySeconds / 3600));
+                                    setCustomDelayUnit("hours");
+                                  } else if (formData.missedCallDelaySeconds % 60 === 0) {
+                                    setCustomDelayValue(String(formData.missedCallDelaySeconds / 60));
+                                    setCustomDelayUnit("minutes");
+                                  } else {
+                                    setCustomDelayValue(String(formData.missedCallDelaySeconds));
+                                    setCustomDelayUnit("seconds");
+                                  }
+                                  setShowCustomDelay(true);
+                                } else {
+                                  setShowCustomDelay(false);
+                                  setFormData({ ...formData, missedCallDelaySeconds: parseInt(v, 10) });
+                                }
+                              }}
+                            >
+                              <SelectTrigger data-testid="select-create-missed-delay-seconds">
+                                <SelectValue placeholder="Select callback delay" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="30">After 30 Seconds</SelectItem>
+                                <SelectItem value="60">After 1 Minute (60s)</SelectItem>
+                                <SelectItem value="90">After 90 Seconds (1.5 Min - Default)</SelectItem>
+                                <SelectItem value="120">After 2 Minutes</SelectItem>
+                                <SelectItem value="180">After 3 Minutes</SelectItem>
+                                <SelectItem value="300">After 5 Minutes</SelectItem>
+                                <SelectItem value="600">After 10 Minutes</SelectItem>
+                                <SelectItem value="900">After 15 Minutes</SelectItem>
+                                <SelectItem value="1800">After 30 Minutes</SelectItem>
+                                <SelectItem value="3600">After 1 Hour</SelectItem>
+                                <SelectItem value="7200">After 2 Hours</SelectItem>
+                                <SelectItem value="custom">
+                                  {!presetDelays.includes(formData.missedCallDelaySeconds)
+                                    ? `Custom (After ${formatCustomDelayLabel(formData.missedCallDelaySeconds)})`
+                                    : "Custom Time Duration..."}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+
+                            {isCustomDelay && (
+                              <div className="flex items-center gap-2 pt-1">
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={customDelayValue}
+                                  onChange={(e) => {
+                                    setCustomDelayValue(e.target.value);
+                                    const num = Math.max(1, parseFloat(e.target.value) || 1);
+                                    const multiplier = customDelayUnit === "hours" ? 3600 : customDelayUnit === "minutes" ? 60 : 1;
+                                    const totalSeconds = Math.max(15, Math.round(num * multiplier));
+                                    setFormData({ ...formData, missedCallDelaySeconds: totalSeconds });
+                                  }}
+                                  className="h-9 w-24"
+                                  placeholder="Enter time"
+                                />
+                                <Select
+                                  value={customDelayUnit}
+                                  onValueChange={(u: "seconds" | "minutes" | "hours") => {
+                                    setCustomDelayUnit(u);
+                                    const num = Math.max(1, parseFloat(customDelayValue) || 1);
+                                    const multiplier = u === "hours" ? 3600 : u === "minutes" ? 60 : 1;
+                                    const totalSeconds = Math.max(15, Math.round(num * multiplier));
+                                    setFormData({ ...formData, missedCallDelaySeconds: totalSeconds });
+                                  }}
+                                >
+                                  <SelectTrigger className="h-9 w-28">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="seconds">Seconds</SelectItem>
+                                    <SelectItem value="minutes">Minutes</SelectItem>
+                                    <SelectItem value="hours">Hours</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
 
                   {/* Automated WhatsApp Follow-Up & Notification */}

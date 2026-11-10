@@ -111,6 +111,11 @@ export default function CampaignDetail() {
   const { toast } = useToast();
   const currentUser = AuthStorage.getUser();
   const isAdmin = currentUser?.role === 'admin';
+  const [showCustomDelay, setShowCustomDelay] = useState(false);
+  const [customDelayValue, setCustomDelayValue] = useState<string>("5");
+  const [customDelayUnit, setCustomDelayUnit] = useState<"seconds" | "minutes" | "hours">("minutes");
+  const [showCustomAttempts, setShowCustomAttempts] = useState(false);
+  const [customAttemptsValue, setCustomAttemptsValue] = useState<string>("3");
 
   const { data: campaign, isLoading: campaignLoading } = useQuery<Campaign>({
     queryKey: [`/api/campaigns/${id}`],
@@ -800,65 +805,183 @@ export default function CampaignDetail() {
               />
             </div>
 
-            {campaign.missedCallCallbackEnabled !== false && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-blue-500/15">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">
-                    Max Auto-Callback Attempts (If Unanswered)
-                  </Label>
-                  <Select
-                    value={String(campaign.missedCallMaxAttempts ?? 2)}
-                    onValueChange={(val) =>
-                      updateMissedCallSettingsMutation.mutate({ missedCallMaxAttempts: parseInt(val, 10) })
-                    }
-                    disabled={updateMissedCallSettingsMutation.isPending}
-                  >
-                    <SelectTrigger className="h-9 bg-background/60" data-testid="select-campaign-missed-max-attempts">
-                      <SelectValue placeholder="Select max attempts" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">1 Time</SelectItem>
-                      <SelectItem value="2">2 Times (Default)</SelectItem>
-                      <SelectItem value="3">3 Times</SelectItem>
-                      <SelectItem value="4">4 Times</SelectItem>
-                      <SelectItem value="5">5 Times</SelectItem>
-                      <SelectItem value="6">6 Times</SelectItem>
-                      <SelectItem value="10">10 Times</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+            {campaign.missedCallCallbackEnabled !== false && (() => {
+              const presetAttempts = [1, 2, 3, 4, 5, 6, 10];
+              const currentAttempts = campaign.missedCallMaxAttempts ?? 2;
+              const isCustomAttempts = showCustomAttempts || !presetAttempts.includes(currentAttempts);
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium text-muted-foreground">
-                    Callback Time Period (Retry Delay)
-                  </Label>
-                  <Select
-                    value={String(campaign.missedCallDelaySeconds ?? 90)}
-                    onValueChange={(val) =>
-                      updateMissedCallSettingsMutation.mutate({ missedCallDelaySeconds: parseInt(val, 10) })
-                    }
-                    disabled={updateMissedCallSettingsMutation.isPending}
-                  >
-                    <SelectTrigger className="h-9 bg-background/60" data-testid="select-campaign-missed-delay-seconds">
-                      <SelectValue placeholder="Select callback delay" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="30">After 30 Seconds</SelectItem>
-                      <SelectItem value="60">After 1 Minute (60s)</SelectItem>
-                      <SelectItem value="90">After 90 Seconds (1.5 Min - Default)</SelectItem>
-                      <SelectItem value="120">After 2 Minutes</SelectItem>
-                      <SelectItem value="180">After 3 Minutes</SelectItem>
-                      <SelectItem value="300">After 5 Minutes</SelectItem>
-                      <SelectItem value="600">After 10 Minutes</SelectItem>
-                      <SelectItem value="900">After 15 Minutes</SelectItem>
-                      <SelectItem value="1800">After 30 Minutes</SelectItem>
-                      <SelectItem value="3600">After 1 Hour</SelectItem>
-                      <SelectItem value="7200">After 2 Hours</SelectItem>
-                    </SelectContent>
-                  </Select>
+              const presetDelays = [30, 60, 90, 120, 180, 300, 600, 900, 1800, 3600, 7200];
+              const currentDelay = campaign.missedCallDelaySeconds ?? 90;
+              const isCustomDelay = showCustomDelay || !presetDelays.includes(currentDelay);
+
+              const formatCustomDelayLabel = (sec: number) => {
+                if (sec % 3600 === 0) return `${sec / 3600} Hour(s)`;
+                if (sec % 60 === 0) return `${sec / 60} Minute(s)`;
+                return `${sec} Seconds`;
+              };
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-blue-500/15">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Max Auto-Callback Attempts (If Unanswered)
+                    </Label>
+                    <Select
+                      value={isCustomAttempts ? "custom" : String(currentAttempts)}
+                      onValueChange={(val) => {
+                        if (val === "custom") {
+                          setCustomAttemptsValue(String(currentAttempts));
+                          setShowCustomAttempts(true);
+                        } else {
+                          setShowCustomAttempts(false);
+                          updateMissedCallSettingsMutation.mutate({ missedCallMaxAttempts: parseInt(val, 10) });
+                        }
+                      }}
+                      disabled={updateMissedCallSettingsMutation.isPending}
+                    >
+                      <SelectTrigger className="h-9 bg-background/60" data-testid="select-campaign-missed-max-attempts">
+                        <SelectValue placeholder="Select max attempts" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 Time</SelectItem>
+                        <SelectItem value="2">2 Times (Default)</SelectItem>
+                        <SelectItem value="3">3 Times</SelectItem>
+                        <SelectItem value="4">4 Times</SelectItem>
+                        <SelectItem value="5">5 Times</SelectItem>
+                        <SelectItem value="6">6 Times</SelectItem>
+                        <SelectItem value="10">10 Times</SelectItem>
+                        <SelectItem value="custom">
+                          {!presetAttempts.includes(currentAttempts)
+                            ? `Custom (${currentAttempts} Times)`
+                            : "Custom Attempts..."}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {isCustomAttempts && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={customAttemptsValue}
+                          onChange={(e) => setCustomAttemptsValue(e.target.value)}
+                          className="h-9 w-28 bg-background/60"
+                          placeholder="e.g. 7"
+                          data-testid="input-campaign-custom-attempts"
+                        />
+                        <span className="text-xs text-muted-foreground">Times</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-9 px-3"
+                          disabled={updateMissedCallSettingsMutation.isPending}
+                          onClick={() => {
+                            const parsed = Math.max(1, parseInt(customAttemptsValue, 10) || 2);
+                            updateMissedCallSettingsMutation.mutate({ missedCallMaxAttempts: parsed });
+                          }}
+                          data-testid="button-apply-custom-attempts"
+                        >
+                          Apply
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Callback Time Period (Retry Delay)
+                    </Label>
+                    <Select
+                      value={isCustomDelay ? "custom" : String(currentDelay)}
+                      onValueChange={(val) => {
+                        if (val === "custom") {
+                          if (currentDelay % 3600 === 0) {
+                            setCustomDelayValue(String(currentDelay / 3600));
+                            setCustomDelayUnit("hours");
+                          } else if (currentDelay % 60 === 0) {
+                            setCustomDelayValue(String(currentDelay / 60));
+                            setCustomDelayUnit("minutes");
+                          } else {
+                            setCustomDelayValue(String(currentDelay));
+                            setCustomDelayUnit("seconds");
+                          }
+                          setShowCustomDelay(true);
+                        } else {
+                          setShowCustomDelay(false);
+                          updateMissedCallSettingsMutation.mutate({ missedCallDelaySeconds: parseInt(val, 10) });
+                        }
+                      }}
+                      disabled={updateMissedCallSettingsMutation.isPending}
+                    >
+                      <SelectTrigger className="h-9 bg-background/60" data-testid="select-campaign-missed-delay-seconds">
+                        <SelectValue placeholder="Select callback delay" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="30">After 30 Seconds</SelectItem>
+                        <SelectItem value="60">After 1 Minute (60s)</SelectItem>
+                        <SelectItem value="90">After 90 Seconds (1.5 Min - Default)</SelectItem>
+                        <SelectItem value="120">After 2 Minutes</SelectItem>
+                        <SelectItem value="180">After 3 Minutes</SelectItem>
+                        <SelectItem value="300">After 5 Minutes</SelectItem>
+                        <SelectItem value="600">After 10 Minutes</SelectItem>
+                        <SelectItem value="900">After 15 Minutes</SelectItem>
+                        <SelectItem value="1800">After 30 Minutes</SelectItem>
+                        <SelectItem value="3600">After 1 Hour</SelectItem>
+                        <SelectItem value="7200">After 2 Hours</SelectItem>
+                        <SelectItem value="custom">
+                          {!presetDelays.includes(currentDelay)
+                            ? `Custom (After ${formatCustomDelayLabel(currentDelay)})`
+                            : "Custom Time Duration..."}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {isCustomDelay && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={customDelayValue}
+                          onChange={(e) => setCustomDelayValue(e.target.value)}
+                          className="h-9 w-24 bg-background/60"
+                          placeholder="Enter time"
+                          data-testid="input-campaign-custom-delay-value"
+                        />
+                        <Select
+                          value={customDelayUnit}
+                          onValueChange={(u: "seconds" | "minutes" | "hours") => setCustomDelayUnit(u)}
+                        >
+                          <SelectTrigger className="h-9 w-28 bg-background/60" data-testid="select-campaign-custom-delay-unit">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="seconds">Seconds</SelectItem>
+                            <SelectItem value="minutes">Minutes</SelectItem>
+                            <SelectItem value="hours">Hours</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-9 px-3"
+                          disabled={updateMissedCallSettingsMutation.isPending}
+                          onClick={() => {
+                            const num = Math.max(1, parseFloat(customDelayValue) || 1);
+                            const multiplier = customDelayUnit === "hours" ? 3600 : customDelayUnit === "minutes" ? 60 : 1;
+                            const totalSeconds = Math.max(15, Math.round(num * multiplier));
+                            updateMissedCallSettingsMutation.mutate({ missedCallDelaySeconds: totalSeconds });
+                          }}
+                          data-testid="button-apply-custom-delay"
+                        >
+                          Apply
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </Card>
 
           {campaign.batchJobId && (
