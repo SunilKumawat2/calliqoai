@@ -295,6 +295,24 @@ salesTeamRouter.put('/site-visits/:id/assign', async (req: Request, res: Respons
       });
     }
 
+    // ── Two-Way Sync to External CRM (Zoho / HubSpot / Custom Webhook) ──
+    import('../services/appointment-recovery.service')
+      .then(({ AppointmentRecoveryService }) =>
+        AppointmentRecoveryService.pushEventToExternalCrm(userId, `appointment.${updatedAppointment.status}`, {
+          appointmentId: updatedAppointment.id,
+          contactName: updatedAppointment.contactName,
+          contactPhone: updatedAppointment.contactPhone,
+          contactEmail: updatedAppointment.contactEmail,
+          appointmentDate: updatedAppointment.appointmentDate,
+          appointmentTime: updatedAppointment.appointmentTime,
+          serviceName: updatedAppointment.serviceName,
+          status: updatedAppointment.status,
+          statusReason: updatedAppointment.statusReason,
+          assignedStaffName: updatedAppointment.assignedStaffName,
+        })
+      )
+      .catch(() => {});
+
     res.json(updatedAppointment);
   } catch (error: any) {
     logger.error(`[SalesTeam] Error assigning staff: ${error.message}`, error, 'SalesTeam');
@@ -349,6 +367,24 @@ salesTeamRouter.put('/site-visits/:id/status', async (req: Request, res: Respons
         logger.warn(`[SalesTeam] Google Calendar status sync error: ${err.message}`, undefined, 'SalesTeam');
       });
     }
+
+    // ── Two-Way Sync to External CRM (Zoho / HubSpot / Custom Webhook) ──
+    import('../services/appointment-recovery.service')
+      .then(({ AppointmentRecoveryService }) =>
+        AppointmentRecoveryService.pushEventToExternalCrm(userId, `appointment.${updatedAppointment.status}`, {
+          appointmentId: updatedAppointment.id,
+          contactName: updatedAppointment.contactName,
+          contactPhone: updatedAppointment.contactPhone,
+          contactEmail: updatedAppointment.contactEmail,
+          appointmentDate: updatedAppointment.appointmentDate,
+          appointmentTime: updatedAppointment.appointmentTime,
+          serviceName: updatedAppointment.serviceName,
+          status: updatedAppointment.status,
+          statusReason: updatedAppointment.statusReason,
+          assignedStaffName: updatedAppointment.assignedStaffName,
+        })
+      )
+      .catch(() => {});
 
     res.json(updatedAppointment);
   } catch (error: any) {
@@ -415,6 +451,24 @@ salesTeamRouter.put('/site-visits/:id/confirm', async (req: Request, res: Respon
       }).catch(() => {});
     }
 
+    // ── Two-Way Sync to External CRM (Zoho / HubSpot / Custom Webhook) ──
+    import('../services/appointment-recovery.service')
+      .then(({ AppointmentRecoveryService }) =>
+        AppointmentRecoveryService.pushEventToExternalCrm(userId, `appointment.${updatedAppointment.status}`, {
+          appointmentId: updatedAppointment.id,
+          contactName: updatedAppointment.contactName,
+          contactPhone: updatedAppointment.contactPhone,
+          contactEmail: updatedAppointment.contactEmail,
+          appointmentDate: updatedAppointment.appointmentDate,
+          appointmentTime: updatedAppointment.appointmentTime,
+          serviceName: updatedAppointment.serviceName,
+          status: updatedAppointment.status,
+          statusReason: updatedAppointment.statusReason,
+          assignedStaffName: updatedAppointment.assignedStaffName,
+        })
+      )
+      .catch(() => {});
+
     res.json(updatedAppointment);
   } catch (error: any) {
     logger.error(`[SalesTeam] Error confirming visit: ${error.message}`, error, 'SalesTeam');
@@ -462,6 +516,24 @@ salesTeamRouter.put('/site-visits/:id/cancel', async (req: Request, res: Respons
         assignedStaffPhone: updatedAppointment.assignedStaffPhone,
       }).catch(() => {});
     }
+
+    // ── Two-Way Sync to External CRM (Zoho / HubSpot / Custom Webhook) ──
+    import('../services/appointment-recovery.service')
+      .then(({ AppointmentRecoveryService }) =>
+        AppointmentRecoveryService.pushEventToExternalCrm(userId, `appointment.${updatedAppointment.status}`, {
+          appointmentId: updatedAppointment.id,
+          contactName: updatedAppointment.contactName,
+          contactPhone: updatedAppointment.contactPhone,
+          contactEmail: updatedAppointment.contactEmail,
+          appointmentDate: updatedAppointment.appointmentDate,
+          appointmentTime: updatedAppointment.appointmentTime,
+          serviceName: updatedAppointment.serviceName,
+          status: updatedAppointment.status,
+          statusReason: updatedAppointment.statusReason,
+          assignedStaffName: updatedAppointment.assignedStaffName,
+        })
+      )
+      .catch(() => {});
 
     res.json(updatedAppointment);
   } catch (error: any) {
@@ -515,6 +587,24 @@ salesTeamRouter.put('/site-visits/:id/reschedule', async (req: Request, res: Res
         assignedStaffPhone: updatedAppointment.assignedStaffPhone,
       }).catch(() => {});
     }
+
+    // ── Two-Way Sync to External CRM (Zoho / HubSpot / Custom Webhook) ──
+    import('../services/appointment-recovery.service')
+      .then(({ AppointmentRecoveryService }) =>
+        AppointmentRecoveryService.pushEventToExternalCrm(userId, `appointment.${updatedAppointment.status}`, {
+          appointmentId: updatedAppointment.id,
+          contactName: updatedAppointment.contactName,
+          contactPhone: updatedAppointment.contactPhone,
+          contactEmail: updatedAppointment.contactEmail,
+          appointmentDate: updatedAppointment.appointmentDate,
+          appointmentTime: updatedAppointment.appointmentTime,
+          serviceName: updatedAppointment.serviceName,
+          status: updatedAppointment.status,
+          statusReason: updatedAppointment.statusReason,
+          assignedStaffName: updatedAppointment.assignedStaffName,
+        })
+      )
+      .catch(() => {});
 
     res.json(updatedAppointment);
   } catch (error: any) {
@@ -785,4 +875,83 @@ salesTeamRouter.put('/site-visits/:id/unassign', async (req: Request, res: Respo
     res.status(500).json({ error: error.message });
   }
 });
+
+// ── 12. POST /api/sales-team/site-visits/:id/send-reminder ─────
+salesTeamRouter.post('/site-visits/:id/send-reminder', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { id } = req.params;
+    const { triggerVoiceCall } = req.body || {};
+    const { AppointmentRecoveryService } = await import('../services/appointment-recovery.service');
+    const result = await AppointmentRecoveryService.sendAppointmentReminder({
+      appointmentId: id,
+      userId,
+      reminderType: 'manual',
+      triggerVoiceCall: Boolean(triggerVoiceCall),
+    });
+    res.json(result);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error sending appointment reminder: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 13. POST /api/sales-team/site-visits/:id/no-show-recovery ──
+salesTeamRouter.post('/site-visits/:id/no-show-recovery', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { id } = req.params;
+    const { delaySeconds, notes } = req.body || {};
+    const { AppointmentRecoveryService } = await import('../services/appointment-recovery.service');
+    const result = await AppointmentRecoveryService.triggerNoShowRecovery({
+      appointmentId: id,
+      userId,
+      delaySeconds: delaySeconds ? Number(delaySeconds) : 30,
+      notes,
+    });
+    res.json(result);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error triggering no-show recovery: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 14. POST /api/sales-team/site-visits/:id/auto-assign ───────
+salesTeamRouter.post('/site-visits/:id/auto-assign', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { id } = req.params;
+    const { AppointmentRecoveryService } = await import('../services/appointment-recovery.service');
+    const assigned = await AppointmentRecoveryService.autoAssignAppointment(userId, id);
+    if (!assigned) {
+      return res.status(400).json({ error: 'No active sales team members available for auto-assignment' });
+    }
+    res.json(assigned);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error auto-assigning visit: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 15. POST /api/sales-team/site-visits/auto-assign-all ───────
+salesTeamRouter.post('/site-visits/auto-assign-all', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { AppointmentRecoveryService } = await import('../services/appointment-recovery.service');
+    const result = await AppointmentRecoveryService.autoAssignAllUnassigned(userId);
+    res.json(result);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error bulk auto-assigning visits: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
 

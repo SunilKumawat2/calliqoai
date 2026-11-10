@@ -220,6 +220,99 @@ leadSourceRouter.post('/v1/integrations/zoho/:webhookKey', async (req: Request, 
   }
 });
 
+/**
+ * 2-Way External CRM Status Sync Webhook (Zoho CRM / HubSpot / Custom CRM -> Calliqo AI)
+ * Updates lead stage, notes, or appointment status when modified in External CRM
+ */
+leadSourceRouter.post('/v1/integrations/crm-status-sync/:webhookKey', async (req: Request, res: Response) => {
+  try {
+    const { webhookKey } = req.params;
+    const integration = await LeadSourceService.getIntegrationByWebhookKey(webhookKey);
+
+    if (!integration) {
+      return res.status(404).json({ success: false, error: 'Integration webhook key not found' });
+    }
+
+    const payload = (req.body && Object.keys(req.body).length > 0) ? req.body : req.query;
+    const { db } = await import('../db');
+    const { leads, appointments } = await import('@shared/schema');
+    const { eq, and, or, sql } = await import('drizzle-orm');
+
+    const rawPhone = String(payload.phone || payload.Phone || payload.Mobile || payload.contactPhone || '').trim();
+    const last10 = rawPhone.replace(/\D/g, '').slice(-10);
+    const stage = String(payload.stage || payload.Lead_Status || payload.status || '').trim().toLowerCase();
+    const appointmentStatus = String(payload.appointmentStatus || payload.visitStatus || '').trim().toLowerCase();
+
+    let updatedLeadId: string | null = null;
+    let updatedAppointmentId: string | null = null;
+
+    if (last10.length >= 6 && stage) {
+      const stageMap: Record<string, string> = {
+        new: 'new',
+        contacted: 'contacted',
+        qualified: 'qualified',
+        'site visit scheduled': 'appointment_booked',
+        appointment_booked: 'appointment_booked',
+        visited: 'proposal_sent',
+        'closed won': 'won',
+        won: 'won',
+        'closed lost': 'lost',
+        lost: 'lost',
+      };
+      const mappedStage = stageMap[stage] || stage;
+
+      const [existingLead] = await db
+        .select()
+        .from(leads)
+        .where(
+          and(
+            eq(leads.userId, integration.userId),
+            sql`RIGHT(REGEXP_REPLACE(${leads.phone}, '[^0-9]', '', 'g'), 10) = ${last10}`
+          )
+        )
+        .limit(1);
+
+      if (existingLead) {
+        await db
+          .update(leads)
+          .set({ stage: mappedStage, updatedAt: new Date() })
+          .where(eq(leads.id, existingLead.id));
+        updatedLeadId = existingLead.id;
+      }
+    }
+
+    if (last10.length >= 6 && appointmentStatus) {
+      const [existingApt] = await db
+        .select()
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.userId, integration.userId),
+            sql`RIGHT(REGEXP_REPLACE(${appointments.contactPhone}, '[^0-9]', '', 'g'), 10) = ${last10}`
+          )
+        )
+        .limit(1);
+
+      if (existingApt) {
+        await db
+          .update(appointments)
+          .set({ status: appointmentStatus, updatedAt: new Date() })
+          .where(eq(appointments.id, existingApt.id));
+        updatedAppointmentId = existingApt.id;
+      }
+    }
+
+    return res.json({
+      success: true,
+      service: '2-Way External CRM Status Sync',
+      updatedLeadId,
+      updatedAppointmentId,
+    });
+  } catch (err: any) {
+    return res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // ============================================================
 // Authenticated Management Endpoints (Requires Login)
 // ============================================================

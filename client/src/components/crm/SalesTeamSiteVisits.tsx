@@ -82,7 +82,7 @@ export function SalesTeamSiteVisits() {
 
   const [activeSubTab, setActiveSubTab] = useState<"visits" | "team" | "email">("visits");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "new" | "confirmed" | "upcoming" | "past" | "cancelled" | "unassigned">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "new" | "confirmed" | "upcoming" | "past" | "cancelled" | "unassigned" | "overdue">("all");
 
   // Staff Dialog
   const [staffDialogOpen, setStaffDialogOpen] = useState(false);
@@ -523,6 +523,99 @@ export function SalesTeamSiteVisits() {
     },
   });
 
+  // 10. Pre-Appointment Reminder Mutation (WhatsApp + Email + Optional AI Voice Call)
+  const sendReminderMutation = useMutation({
+    mutationFn: async ({ visitId, triggerVoiceCall }: { visitId: string; triggerVoiceCall?: boolean }) => {
+      const res = await apiRequest("POST", `/api/sales-team/site-visits/${visitId}/send-reminder`, {
+        reminderType: "manual",
+        triggerVoiceCall: Boolean(triggerVoiceCall),
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      const channels = [
+        data.whatsappSent ? "WhatsApp" : null,
+        data.emailSent ? "Email" : null,
+        data.voiceCallScheduled ? "AI Voice Reminder Call" : null,
+      ].filter(Boolean);
+      toast({
+        title: "🔔 Appointment Reminder Dispatched",
+        description: channels.length > 0
+          ? `Sent via ${channels.join(" + ")}.`
+          : "Reminder recorded for this appointment.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Reminder Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // 11. No-Show Recovery Mutation (Marks No-Show + Schedules AI Recovery Call + WhatsApp Recovery)
+  const noShowRecoveryMutation = useMutation({
+    mutationFn: async ({ visitId, notes }: { visitId: string; notes?: string }) => {
+      const res = await apiRequest("POST", `/api/sales-team/site-visits/${visitId}/no-show-recovery`, {
+        delaySeconds: 30,
+        notes: notes || "Customer did not attend appointment (No-Show) - AI Recovery triggered",
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      setCompleteDialogOpen(false);
+      toast({
+        title: "🔄 No-Show Recovery Triggered",
+        description: data.voiceRecoveryScheduled
+          ? "Marked as No-Show. AI Recovery Call scheduled in 30s & WhatsApp reschedule message sent!"
+          : "Marked as No-Show & recovery notifications dispatched.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "No-Show Recovery Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // 12. Smart Auto-Assign Single Appointment Mutation
+  const autoAssignSingleMutation = useMutation({
+    mutationFn: async (visitId: string) => {
+      const res = await apiRequest("POST", `/api/sales-team/site-visits/${visitId}/auto-assign`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      toast({
+        title: "⚡ Smart Auto-Assigned",
+        description: `Assigned to ${data.staff?.name || "Staff Member"} (${data.staff?.role || "Consultant"}) based on specialty & round-robin workload.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Auto-Assign Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // 13. Smart Auto-Assign All Unassigned Appointments Mutation
+  const autoAssignAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/sales-team/site-visits/auto-assign-all`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/notifications/stats"] });
+      toast({
+        title: "⚡ Smart Auto-Assign Complete",
+        description: `Automatically assigned ${data.assignedCount || 0} appointment(s) across your active team members.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Auto-Assign All Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   // Helpers
   const resetStaffForm = () => {
     setEditingStaff(null);
@@ -622,7 +715,10 @@ export function SalesTeamSiteVisits() {
   const todayStr = new Date().toISOString().split("T")[0];
 
   const isCancelled = (v: SiteVisit) => v.status === "cancelled";
+  const isNoShow = (v: SiteVisit) => v.status === "no_show";
   const isCompleted = (v: SiteVisit) => ["completed", "completed_visited", "deal_won"].includes(v.status);
+  const isOverdueOrNoShow = (v: SiteVisit) =>
+    isNoShow(v) || (v.appointmentDate < todayStr && !isCancelled(v) && !isCompleted(v));
   const isPast = (v: SiteVisit) => (v.appointmentDate < todayStr && !isCancelled(v)) || isCompleted(v);
   const isConfirmed = (v: SiteVisit) => v.status === "confirmed" && !isPast(v) && !isCancelled(v);
   const isNew = (v: SiteVisit) => !isCancelled(v) && !isCompleted(v) && !isConfirmed(v) && v.appointmentDate >= todayStr;
@@ -636,6 +732,7 @@ export function SalesTeamSiteVisits() {
   const pastVisits = visitsList.filter(isPast);
   const cancelledVisits = visitsList.filter(isCancelled);
   const unassignedVisits = visitsList.filter(isUnassigned);
+  const overdueVisits = visitsList.filter(isOverdueOrNoShow);
 
   // Active Filter Applied
   const filteredVisits = visitsList.filter((v) => {
@@ -654,6 +751,7 @@ export function SalesTeamSiteVisits() {
     if (statusFilter === "past") return isPast(v);
     if (statusFilter === "cancelled") return isCancelled(v);
     if (statusFilter === "unassigned") return isUnassigned(v);
+    if (statusFilter === "overdue") return isOverdueOrNoShow(v);
     return true; // "all"
   });
 
@@ -750,7 +848,19 @@ export function SalesTeamSiteVisits() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+          <div className="flex items-center gap-2 shrink-0 self-end md:self-center flex-wrap">
+            {staffList.filter((s) => s.isActive).length > 0 && (
+              <Button
+                size="sm"
+                onClick={() => autoAssignAllMutation.mutate()}
+                disabled={autoAssignAllMutation.isPending}
+                className="h-8 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm"
+                title="Automatically assign all unassigned appointments to active staff based on specialty, city, and round-robin workload"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {autoAssignAllMutation.isPending ? "Auto-Assigning..." : "⚡ Smart Auto-Assign All"}
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={() => openAppointModal(unassignedVisits[0])}
@@ -1147,6 +1257,23 @@ export function SalesTeamSiteVisits() {
                 Needs Staff ({unassignedVisits.length})
               </Button>
 
+              {/* Overdue & No-Show Filter (Manager View) */}
+              <Button
+                variant={statusFilter === "overdue" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setStatusFilter("overdue")}
+                className={`h-7 text-xs px-2.5 gap-1.5 ${
+                  statusFilter === "overdue"
+                    ? "bg-orange-600 hover:bg-orange-700 text-white"
+                    : overdueVisits.length > 0
+                    ? "border-orange-500/40 text-orange-700 dark:text-orange-400 font-semibold"
+                    : ""
+                }`}
+              >
+                <UserX className="w-3 h-3 text-orange-500" />
+                Overdue & No-Show ({overdueVisits.length})
+              </Button>
+
               {/* All */}
               <Button
                 variant={statusFilter === "all" ? "secondary" : "ghost"}
@@ -1295,6 +1422,11 @@ export function SalesTeamSiteVisits() {
                               <XCircle className="w-3.5 h-3.5 text-red-600" />
                               Cancelled
                             </Badge>
+                          ) : visit.status === "no_show" ? (
+                            <Badge className="bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/30 text-xs gap-1 py-1 px-2.5 font-semibold">
+                              <UserX className="w-3.5 h-3.5 text-orange-600" />
+                              No-Show (AI Recovery)
+                            </Badge>
                           ) : completed ? (
                             <Badge className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 text-xs gap-1 py-1 px-2.5 font-semibold">
                               <CalendarCheck className="w-3.5 h-3.5 text-purple-600" />
@@ -1342,9 +1474,9 @@ export function SalesTeamSiteVisits() {
                             Assigned Staff Member
                           </span>
                           {unassigned ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-amber-600 dark:text-amber-400 font-medium text-xs">
-                                No staff assigned yet
+                                No staff assigned
                               </span>
                               <Button
                                 size="sm"
@@ -1353,6 +1485,19 @@ export function SalesTeamSiteVisits() {
                               >
                                 + Appoint Staff
                               </Button>
+                              {staffList.filter((s) => s.isActive).length > 0 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={autoAssignSingleMutation.isPending}
+                                  onClick={() => autoAssignSingleMutation.mutate(visit.id)}
+                                  className="h-6 text-[11px] px-2 border-indigo-500/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 font-medium gap-1"
+                                  title="Smart auto-assign based on specialty, city & lowest workload"
+                                >
+                                  <Sparkles className="w-3 h-3 text-indigo-600" />
+                                  Auto-Assign
+                                </Button>
+                              )}
                             </div>
                           ) : (
                             <div className="flex items-center justify-between">
@@ -1477,6 +1622,40 @@ export function SalesTeamSiteVisits() {
                             >
                               <CalendarCheck className="w-3.5 h-3.5 text-purple-600" />
                               Mark Attended / Completed
+                            </Button>
+                          )}
+
+                          {/* Send Reminder Button (WhatsApp + Email) */}
+                          {!completed && !cancelled && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={sendReminderMutation.isPending}
+                              onClick={() => sendReminderMutation.mutate({ visitId: visit.id, triggerVoiceCall: false })}
+                              className="h-7 text-xs gap-1 border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                              title="Send automated WhatsApp & Email appointment reminder to client"
+                            >
+                              <Bell className="w-3.5 h-3.5 text-amber-600" />
+                              Send Reminder
+                            </Button>
+                          )}
+
+                          {/* No-Show Recovery Button (AI Recovery Call + WhatsApp Reschedule) */}
+                          {!completed && !cancelled && visit.status !== "no_show" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={noShowRecoveryMutation.isPending}
+                              onClick={() => {
+                                if (confirm(`Mark ${visit.contactName} as No-Show and trigger AI Recovery Call + WhatsApp reschedule message?`)) {
+                                  noShowRecoveryMutation.mutate({ visitId: visit.id });
+                                }
+                              }}
+                              className="h-7 text-xs gap-1 border-orange-500/40 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/40"
+                              title="Mark as No-Show and automatically schedule an AI Voice Call & WhatsApp to reschedule"
+                            >
+                              <UserX className="w-3.5 h-3.5 text-orange-600" />
+                              No-Show (AI Recovery)
                             </Button>
                           )}
 
@@ -2014,19 +2193,26 @@ export function SalesTeamSiteVisits() {
             </Button>
             <Button
               size="sm"
-              disabled={completeAppointmentMutation.isPending}
+              disabled={completeAppointmentMutation.isPending || noShowRecoveryMutation.isPending}
               onClick={() => {
                 if (selectedVisitForComplete) {
-                  completeAppointmentMutation.mutate({
-                    visitId: selectedVisitForComplete.id,
-                    status: completeOutcome,
-                    statusReason: completeNotes,
-                  });
+                  if (completeOutcome === "no_show") {
+                    noShowRecoveryMutation.mutate({
+                      visitId: selectedVisitForComplete.id,
+                      notes: completeNotes,
+                    });
+                  } else {
+                    completeAppointmentMutation.mutate({
+                      visitId: selectedVisitForComplete.id,
+                      status: completeOutcome,
+                      statusReason: completeNotes,
+                    });
+                  }
                 }
               }}
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
-              {completeAppointmentMutation.isPending ? "Saving..." : "Save Outcome"}
+              {completeAppointmentMutation.isPending || noShowRecoveryMutation.isPending ? "Saving..." : "Save Outcome"}
             </Button>
           </DialogFooter>
         </DialogContent>

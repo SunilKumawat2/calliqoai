@@ -101,6 +101,7 @@ export function CRMIntegrationsDashboard() {
     id: string;
     name: string;
     sourceType: string;
+    webhookKey?: string;
     campaignId: string;
     agentId: string;
     spreadsheetId: string;
@@ -109,6 +110,7 @@ export function CRMIntegrationsDashboard() {
     customGreeting: string;
     propertyName: string;
     city: string;
+    outboundWebhookUrl: string;
   } | null>(null);
 
   // Inbound Form Simulator Dialog state
@@ -138,6 +140,7 @@ export function CRMIntegrationsDashboard() {
     customGreeting: "",
     propertyName: "",
     city: "",
+    outboundWebhookUrl: "",
   });
 
   // Column mapping form state for Google Sheets
@@ -276,6 +279,7 @@ export function CRMIntegrationsDashboard() {
       id: source.id,
       name: source.name,
       sourceType: source.sourceType,
+      webhookKey: source.webhookKey,
       campaignId: source.campaignId || "none",
       agentId: source.agentId || "none",
       spreadsheetId: source.spreadsheetId || "none",
@@ -284,6 +288,7 @@ export function CRMIntegrationsDashboard() {
       customGreeting: source.customGreeting || "",
       propertyName: source.portalConfig?.propertyName || "",
       city: source.portalConfig?.city || "",
+      outboundWebhookUrl: source.portalConfig?.outboundWebhookUrl || "",
     });
     setEditDialogOpen(true);
   };
@@ -465,6 +470,7 @@ export function CRMIntegrationsDashboard() {
         portalConfig: {
           propertyName: newLeadSource.propertyName || undefined,
           city: newLeadSource.city || undefined,
+          outboundWebhookUrl: newLeadSource.outboundWebhookUrl || undefined,
         },
       };
       const res = await apiRequest("POST", "/api/lead-sources", payload);
@@ -487,6 +493,7 @@ export function CRMIntegrationsDashboard() {
         customGreeting: "",
         propertyName: "",
         city: "",
+        outboundWebhookUrl: "",
       });
       refetchLeadSources();
       queryClient.invalidateQueries({ queryKey: ["/api/lead-sources"] });
@@ -512,6 +519,7 @@ export function CRMIntegrationsDashboard() {
         portalConfig: {
           propertyName: editingSource.propertyName || undefined,
           city: editingSource.city || undefined,
+          outboundWebhookUrl: editingSource.outboundWebhookUrl || undefined,
         },
       };
       const res = await apiRequest("PATCH", `/api/lead-sources/${editingSource.id}`, payload);
@@ -1941,6 +1949,23 @@ export function CRMIntegrationsDashboard() {
                 className="text-xs"
               />
             </div>
+
+            {/* 2-Way External CRM Sync (Outbound Webhook Push) */}
+            <div className="space-y-1.5 p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
+              <Label className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
+                2-Way External CRM Sync — Outbound Webhook URL (Optional)
+              </Label>
+              <Input
+                placeholder="https://hooks.zapier.com/... or Zoho / HubSpot Incoming Webhook URL"
+                value={newLeadSource.outboundWebhookUrl}
+                onChange={(e) => setNewLeadSource({ ...newLeadSource, outboundWebhookUrl: e.target.value })}
+                className="h-8 text-xs bg-background font-mono"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Whenever an appointment is confirmed, attended, marked No-Show, or Deal Won, {brandName} will automatically push the live status to your external CRM.
+              </p>
+            </div>
           </div>
 
           <div className="p-4 px-6 border-t border-border/50 bg-muted/20 shrink-0">
@@ -2524,6 +2549,58 @@ export function CRMIntegrationsDashboard() {
                   rows={2}
                   className="text-xs"
                 />
+              </div>
+
+              {/* 2-Way External CRM Sync (Outbound + Inbound Status Sync) */}
+              <div className="space-y-2.5 p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                <div className="space-y-1">
+                  <Label className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                    <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
+                    2-Way External CRM Sync — Outbound Status Push URL
+                  </Label>
+                  <Input
+                    placeholder="https://hooks.zapier.com/... or Zoho / HubSpot Webhook URL"
+                    value={editingSource.outboundWebhookUrl}
+                    onChange={(e) => setEditingSource({ ...editingSource, outboundWebhookUrl: e.target.value })}
+                    className="h-8 text-xs bg-background font-mono"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Automatically pushes appointment & lead status updates (Confirmed, Visited, No-Show, Deal Won) back to your External CRM.
+                  </p>
+                </div>
+
+                {editingSource.webhookKey && (
+                  <div className="space-y-1 pt-2 border-t border-blue-500/15">
+                    <Label className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">
+                      Inbound 2-Way Status Sync Endpoint (External CRM → {brandName}):
+                    </Label>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        readOnly
+                        value={`${baseUrl}/api/v1/integrations/crm-status-sync/${editingSource.webhookKey}`}
+                        className="h-8 text-[11px] font-mono bg-background"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2.5 shrink-0"
+                        onClick={() =>
+                          copyToClipboard(
+                            `${baseUrl}/api/v1/integrations/crm-status-sync/${editingSource.webhookKey}`,
+                            `sync-${editingSource.id}`
+                          )
+                        }
+                      >
+                        {copiedKey === `sync-${editingSource.id}` ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

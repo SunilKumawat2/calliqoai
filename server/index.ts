@@ -655,6 +655,11 @@ app.use((req, res, next) => {
       // Start Automated AI Follow-Up Calling Service
       FollowUpSchedulerService.startScheduler();
 
+      // Start Pre-Appointment Reminder & No-Show Recovery Service
+      import('./services/appointment-recovery.service')
+        .then(({ AppointmentRecoveryService }) => AppointmentRecoveryService.startScheduler())
+        .catch(() => {});
+
       // Start worker that retries failed provider phone-number releases
       startPhoneReleaseRetryWorker();
       
