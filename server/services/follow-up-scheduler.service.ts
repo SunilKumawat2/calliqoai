@@ -716,13 +716,18 @@ export class FollowUpSchedulerService {
         if (wl?.businessName) businessName = wl.businessName;
       } catch (_) {}
 
-      const isOutboundMissed = (followUp.preferredTimeText === 'Outbound Unanswered Auto-Retry') || 
-                               (contextNote.toLowerCase().includes('outbound')) ||
-                               (contextNote.toLowerCase().includes('unanswered'));
+      const isNoShowRecovery = followUp.preferredTimeText === 'Appointment No-Show Recovery';
+      const isAppointmentReminder = Boolean(followUp.preferredTimeText && followUp.preferredTimeText.startsWith('Appointment Reminder'));
 
-      const isMissedCall = (followUp.preferredTimeText === 'Missed Call Auto-Callback') || 
+      const isOutboundMissed = !isNoShowRecovery && !isAppointmentReminder && (
+                               (followUp.preferredTimeText === 'Outbound Unanswered Auto-Retry') || 
+                               (contextNote.toLowerCase().includes('outbound')) ||
+                               (contextNote.toLowerCase().includes('unanswered')));
+
+      const isMissedCall = !isNoShowRecovery && !isAppointmentReminder && (
+                           (followUp.preferredTimeText === 'Missed Call Auto-Callback') || 
                            isOutboundMissed ||
-                           (contextNote.toLowerCase().includes('missed'));
+                           (contextNote.toLowerCase().includes('missed')));
 
       // Detect language preference (Hindi vs English)
       const isHindi = (agentRecord.language === 'hi') || 
@@ -732,7 +737,27 @@ export class FollowUpSchedulerService {
                       /namaste|kripya|baad|baje|karein|boliye|humne|baat/i.test(agentRecord.systemPrompt || '');
 
       let firstMessage = '';
-      if (isOutboundMissed) {
+      if (isNoShowRecovery) {
+        if (isHindi) {
+          firstMessage = customerName
+            ? `नमस्ते ${customerName} जी, मैं ${businessName} से बात कर रहा हूँ। आपकी अपॉइंटमेंट हमारे साथ शेड्यूल थी लेकिन शायद व्यस्तता के कारण आप नहीं आ पाए। क्या मैं आपकी अपॉइंटमेंट किसी नए समय के लिए री-शेड्यूल कर दूँ?`
+            : `नमस्ते, मैं ${businessName} से बात कर रहा हूँ। आपकी अपॉइंटमेंट हमारे साथ शेड्यूल थी लेकिन शायद आप नहीं आ पाए। क्या मैं आपकी अपॉइंटमेंट किसी नए समय के लिए री-शेड्यूल कर दूँ?`;
+        } else {
+          firstMessage = customerName
+            ? `Hello ${customerName}, I am calling from ${businessName}. You had an appointment scheduled with us that you couldn't attend. Would you like me to reschedule your appointment for a convenient date and time?`
+            : `Hello, I am calling from ${businessName} regarding your missed appointment. Would you like me to reschedule your slot for a new date and time?`;
+        }
+      } else if (isAppointmentReminder) {
+        if (isHindi) {
+          firstMessage = customerName
+            ? `नमस्ते ${customerName} जी, मैं ${businessName} से बात कर रहा हूँ। यह आपकी अपॉइंटमेंट के रिमाइंडर के लिए कॉल है। क्या आप निर्धारित समय पर आ रहे हैं, या इसे री-शेड्यूल करना चाहेंगे?`
+            : `नमस्ते, मैं ${businessName} से बात कर रहा हूँ। यह आपकी आगामी अपॉइंटमेंट के रिमाइंडर के लिए कॉल है। क्या आप निर्धारित समय पर आ रहे हैं?`;
+        } else {
+          firstMessage = customerName
+            ? `Hello ${customerName}, this is a reminder call from ${businessName} regarding your upcoming appointment. Will you be able to attend as scheduled, or would you like to reschedule?`
+            : `Hello, this is a reminder call from ${businessName} regarding your upcoming appointment. Will you be able to attend as scheduled?`;
+        }
+      } else if (isOutboundMissed) {
         if (isHindi) {
           firstMessage = customerName
             ? `नमस्ते ${customerName} जी, मैं ${businessName} से बात कर रहा हूँ। हमने आपको थोड़ी देर पहले कॉल किया था लेकिन आपसे बात नहीं हो पाई थी। क्या अभी आपसे बात करने का सही समय है?`

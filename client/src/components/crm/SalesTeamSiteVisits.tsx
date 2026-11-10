@@ -1638,15 +1638,15 @@ export function SalesTeamSiteVisits() {
                             </Button>
                           )}
 
-                          {/* Send Reminder Button (WhatsApp + Email) */}
+                          {/* Send Reminder Button (AI Reminder Call + WhatsApp + Email) */}
                           {!completed && !cancelled && (
                             <Button
                               size="sm"
                               variant="outline"
                               disabled={sendReminderMutation.isPending}
-                              onClick={() => sendReminderMutation.mutate({ visitId: visit.id, triggerVoiceCall: false })}
+                              onClick={() => sendReminderMutation.mutate({ visitId: visit.id, triggerVoiceCall: true })}
                               className="h-7 text-xs gap-1 border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40"
-                              title="Send automated WhatsApp & Email appointment reminder to client"
+                              title="Send automated AI Voice Reminder Call, WhatsApp & Email reminder to client"
                             >
                               <Bell className="w-3.5 h-3.5 text-amber-600" />
                               Send Reminder

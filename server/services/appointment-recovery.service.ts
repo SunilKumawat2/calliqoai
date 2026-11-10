@@ -143,21 +143,21 @@ export class AppointmentRecoveryService {
     let voiceCallScheduled = false;
     if (triggerVoiceCall && cleanPhone) {
       try {
-        const [firstAgent] = await db
-          .select({ id: agents.id })
+        const userAgents = await db
+          .select({ id: agents.id, elevenLabsAgentId: agents.elevenLabsAgentId })
           .from(agents)
-          .where(eq(agents.userId, userId))
-          .limit(1);
+          .where(eq(agents.userId, userId));
+        const preferredAgent = userAgents.find((a) => Boolean(a.elevenLabsAgentId)) || userAgents[0];
 
         await db.insert(scheduledFollowUps).values({
           userId,
-          agentId: firstAgent?.id || null,
+          agentId: apt.callId ? null : (preferredAgent?.id || null),
           callId: apt.callId || null,
           phoneNumber: cleanPhone,
           customerName: apt.contactName,
           preferredTimeText: `Appointment Reminder (${apt.appointmentDate} ${apt.appointmentTime})`,
           contextNote: `Appointment Reminder Call for ${apt.contactName}. Scheduled ${appointmentTerm} with ${businessName} on ${apt.appointmentDate} at ${apt.appointmentTime}${apt.assignedStaffName ? ` (Assigned Staff: ${apt.assignedStaffName})` : ''}. Politely remind the customer, confirm their attendance, or offer to reschedule if needed.`,
-          scheduledAt: new Date(Date.now() + 15 * 1000),
+          scheduledAt: new Date(Date.now() + 10 * 1000),
           status: 'pending',
         });
         voiceCallScheduled = true;
@@ -278,23 +278,23 @@ export class AppointmentRecoveryService {
     let scheduledFollowUpId: string | undefined;
     if (cleanPhone) {
       try {
-        const [firstAgent] = await db
-          .select({ id: agents.id })
+        const userAgents = await db
+          .select({ id: agents.id, elevenLabsAgentId: agents.elevenLabsAgentId })
           .from(agents)
-          .where(eq(agents.userId, userId))
-          .limit(1);
+          .where(eq(agents.userId, userId));
+        const preferredAgent = userAgents.find((a) => Boolean(a.elevenLabsAgentId)) || userAgents[0];
 
         const [newFollowUp] = await db
           .insert(scheduledFollowUps)
           .values({
             userId,
-            agentId: firstAgent?.id || null,
+            agentId: apt.callId ? null : (preferredAgent?.id || null),
             callId: apt.callId || null,
             phoneNumber: cleanPhone,
             customerName: apt.contactName,
             preferredTimeText: 'Appointment No-Show Recovery',
             contextNote: `NO-SHOW RECOVERY CALL: Customer ${apt.contactName} had booked a ${appointmentTerm} with ${businessName} on ${apt.appointmentDate} at ${apt.appointmentTime}, but could not attend. Politely check in with them, ask if they were busy, and offer to reschedule their ${appointmentTerm} to a new convenient date and time.`,
-            scheduledAt: new Date(Date.now() + Math.max(15, delaySeconds) * 1000),
+            scheduledAt: new Date(Date.now() + 10 * 1000),
             status: 'pending',
           })
           .returning();
