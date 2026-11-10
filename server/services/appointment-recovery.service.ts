@@ -1,7 +1,7 @@
 'use strict';
 /**
  * ============================================================
- * Calliqo AI - Appointment Reminders, No-Show Recovery,
+ * Calliqo AI - Dynamic Appointment Reminders, No-Show Recovery,
  * Smart Auto-Assignment & 2-Way External CRM Sync Service
  * ============================================================
  */
@@ -14,7 +14,7 @@ import {
   leads,
   crmWhitelabelConfigs,
   leadSourceIntegrations,
-  notifications,
+  userEmailTemplates,
   agents,
 } from '@shared/schema';
 import { eq, and, desc, or, sql } from 'drizzle-orm';
@@ -22,9 +22,238 @@ import { logger } from '../utils/logger';
 import { sendStaffAssignmentEmail, sendClientConfirmationEmail } from './sales-team-email';
 import { updateCalendarEvent } from './google-calendar/google-calendar.service';
 
+export interface BookingTypeTemplate {
+  id: string;
+  label: string;
+  serviceKeywords: string;
+  voiceScript: string;
+  whatsappMessage: string;
+}
+
+export interface ReminderAutomationConfig {
+  // 1. Automated Pre-Appointment Reminder Rules
+  autoReminderEnabled: boolean;
+  reminder1OffsetMinutes: number; // e.g., 1440 (24h), 120 (2h), 60 (1h), 30 (30m), or custom
+  reminder2Enabled: boolean;
+  reminder2OffsetMinutes: number; // e.g., 60 (1h), 30 (30m), or custom
+  reminderVoiceCallEnabled: boolean;
+  reminderAgentId: string;        // 'default' or specific agent UUID
+  reminderWhatsappEnabled: boolean;
+  reminderEmailEnabled: boolean;
+  activeBookingPreset: string;    // 'default' | 'doctor_clinic' | 'real_estate' | 'custom'
+  bookingTypeTemplates: BookingTypeTemplate[];
+
+  // 2. Automated No-Show Recovery Rules
+  autoNoShowEnabled: boolean;
+  noShowAfterMinutes: number;     // e.g., 30, 60, 120, or custom minutes after appointment time
+  noShowVoiceCallEnabled: boolean;
+  noShowAgentId: string;          // 'default' or specific agent UUID
+  noShowWhatsappEnabled: boolean;
+  noShowVoiceScript: string;
+  noShowWhatsappMessage: string;
+}
+
+const CONFIG_TEMPLATE_NAME = '__CRM_AUTO_REMINDER_CONFIG__';
+
 export class AppointmentRecoveryService {
   private static isSchedulerRunning = false;
   private static schedulerTimer: NodeJS.Timeout | null = null;
+
+  static getDefaultAutomationConfig(): ReminderAutomationConfig {
+    return {
+      autoReminderEnabled: true,
+      reminder1OffsetMinutes: 1440, // 24 Hours Before
+      reminder2Enabled: true,
+      reminder2OffsetMinutes: 60,   // 1 Hour Before
+      reminderVoiceCallEnabled: true,
+      reminderAgentId: 'default',
+      reminderWhatsappEnabled: true,
+      reminderEmailEnabled: true,
+      activeBookingPreset: 'default',
+      bookingTypeTemplates: [
+        {
+          id: 'default',
+          label: 'General Appointment / Service Booking (Default)',
+          serviceKeywords: 'appointment, consultation, meeting, general, booking',
+          voiceScript:
+            'नमस्ते {customer_name} जी, मैं {business_name} से बात कर रहा हूँ। यह आपकी आगामी {service_name} अपॉइंटमेंट ({date} को {time} बजे) के रिमाइंडर के लिए कॉल है। क्या आप निर्धारित समय पर आ रहे हैं, या इसे री-शेड्यूल करना चाहेंगे?',
+          whatsappMessage:
+            'नमस्ते {customer_name} जी! 🔔\n\nयह *{business_name}* की ओर से आपकी आगामी *{service_name}* अपॉइंटमेंट का रिमाइंडर है:\n📅 तारीख: {date}\n⏰ समय: {time}\n👤 एग्जीक्यूटिव: {staff_name}\n\nयदि आप समय बदलना (Reschedule) चाहते हैं, तो कृपया इसी मैसेज का रिप्लाई करें। धन्यवाद!',
+        },
+        {
+          id: 'doctor_clinic',
+          label: '🏥 Doctor / Hospital / Clinic Consultation',
+          serviceKeywords: 'doctor, clinic, hospital, opd, checkup, dental, neurology, cardiology, patient',
+          voiceScript:
+            'नमस्ते {customer_name} जी, मैं {business_name} क्लिनिक से बात कर रहा हूँ। आपकी {service_name} की अपॉइंटमेंट {date} को {time} बजे {staff_name} के साथ निर्धारित है। कृपया पुष्टि करें कि क्या आप समय पर क्लिनिक आ रहे हैं?',
+          whatsappMessage:
+            'नमस्ते {customer_name} जी! 🏥\n\n*{business_name}* में आपकी *{service_name}* अपॉइंटमेंट का रिमाइंडर:\n📅 तारीख: {date}\n⏰ समय: {time}\n👨‍⚕️ डॉक्टर/विशेषज्ञ: {staff_name}\n\nकृपया समय से 10 मिनट पहले पधारें। समय बदलने के लिए रिप्लाई करें।',
+        },
+        {
+          id: 'real_estate',
+          label: '🏢 Real Estate / Property Site Visit',
+          serviceKeywords: 'site visit, property, flat, villa, plot, real estate, bhk, project, home',
+          voiceScript:
+            'नमस्ते {customer_name} जी, मैं {business_name} से बात कर रहा हूँ। आपकी {service_name} प्रॉपर्टी साइट विजिट {date} को {time} बजे शेड्यूल है, और हमारे एग्जीक्यूटिव {staff_name} आपको अटेंड करेंगे। क्या आप निर्धारित समय पर साइट विजिट के लिए आ रहे हैं?',
+          whatsappMessage:
+            'नमस्ते {customer_name} जी! 🏢\n\n*{business_name}* के साथ आपकी *{service_name}* प्रॉपर्टी साइट विजिट का रिमाइंडर:\n📅 तारीख: {date}\n⏰ समय: {time}\n👤 साइट एग्जीक्यूटिव: {staff_name} ({staff_phone})\n\nलोकेशन या समय बदलने के लिए इसी मैसेज पर रिप्लाई करें!',
+        },
+        {
+          id: 'custom',
+          label: '✏️ Custom Booking Type / Special Campaign',
+          serviceKeywords: 'custom, special, vip',
+          voiceScript:
+            'नमस्ते {customer_name} जी, मैं {business_name} से बात कर रहा हूँ। आपकी {service_name} बुकिंग {date} को {time} बजे शेड्यूल है। क्या आप निर्धारित समय पर उपलब्ध रहेंगे?',
+          whatsappMessage:
+            'नमस्ते {customer_name} जी! 🔔\n\n*{business_name}* में आपकी *{service_name}* बुकिंग ({date} को {time} बजे) का रिमाइंडर। किसी भी सहायता के लिए रिप्लाई करें!',
+        },
+      ],
+      autoNoShowEnabled: true,
+      noShowAfterMinutes: 30, // 30 Minutes After Missed Appointment Time
+      noShowVoiceCallEnabled: true,
+      noShowAgentId: 'default',
+      noShowWhatsappEnabled: true,
+      noShowVoiceScript:
+        'नमस्ते {customer_name} जी, मैं {business_name} से बात कर रहा हूँ। आज {date} को {time} बजे आपकी {service_name} अपॉइंटमेंट शेड्यूल थी, लेकिन शायद व्यस्तता के कारण आप नहीं आ पाए। क्या मैं आपकी अपॉइंटमेंट किसी नए समय या कल के लिए री-शेड्यूल कर दूँ?',
+      noShowWhatsappMessage:
+        'नमस्ते {customer_name} जी! 🙏\n\nआज {date} को {time} बजे *{business_name}* के साथ आपकी *{service_name}* अपॉइंटमेंट शेड्यूल थी, लेकिन शायद व्यस्तता के कारण आप नहीं आ पाए।\n\nहमारा AI असिस्टेंट आपका नया समय (Reschedule) बुक करने के लिए आपको कॉल कर रहा है, या आप सीधे यहीं अपना पसंदीदा दिन और समय रिप्लाई कर सकते हैं!',
+    };
+  }
+
+  /**
+   * Load Tenant/User Reminder & No-Show Automation Config
+   */
+  static async getAutomationConfig(userId: string): Promise<ReminderAutomationConfig> {
+    const defaults = this.getDefaultAutomationConfig();
+    try {
+      const [row] = await db
+        .select()
+        .from(userEmailTemplates)
+        .where(and(eq(userEmailTemplates.userId, userId), eq(userEmailTemplates.name, CONFIG_TEMPLATE_NAME)))
+        .limit(1);
+
+      if (row && row.designJson && typeof row.designJson === 'object') {
+        const saved = row.designJson as Partial<ReminderAutomationConfig>;
+        return {
+          ...defaults,
+          ...saved,
+          bookingTypeTemplates:
+            Array.isArray(saved.bookingTypeTemplates) && saved.bookingTypeTemplates.length > 0
+              ? saved.bookingTypeTemplates
+              : defaults.bookingTypeTemplates,
+        };
+      }
+    } catch (err: any) {
+      logger.warn(`[AppointmentRecovery] Error loading config for ${userId}: ${err?.message}`);
+    }
+    return defaults;
+  }
+
+  /**
+   * Save Tenant/User Reminder & No-Show Automation Config
+   */
+  static async saveAutomationConfig(
+    userId: string,
+    partialConfig: Partial<ReminderAutomationConfig>
+  ): Promise<ReminderAutomationConfig> {
+    const current = await this.getAutomationConfig(userId);
+    const merged: ReminderAutomationConfig = {
+      ...current,
+      ...partialConfig,
+      bookingTypeTemplates:
+        Array.isArray(partialConfig.bookingTypeTemplates) && partialConfig.bookingTypeTemplates.length > 0
+          ? partialConfig.bookingTypeTemplates
+          : current.bookingTypeTemplates,
+    };
+
+    const [existing] = await db
+      .select({ id: userEmailTemplates.id })
+      .from(userEmailTemplates)
+      .where(and(eq(userEmailTemplates.userId, userId), eq(userEmailTemplates.name, CONFIG_TEMPLATE_NAME)))
+      .limit(1);
+
+    if (existing) {
+      await db
+        .update(userEmailTemplates)
+        .set({
+          designJson: merged as any,
+          updatedAt: new Date(),
+        })
+        .where(eq(userEmailTemplates.id, existing.id));
+    } else {
+      await db.insert(userEmailTemplates).values({
+        userId,
+        name: CONFIG_TEMPLATE_NAME,
+        subject: 'CRM Auto Reminder & No-Show Automation Config',
+        htmlBody: 'JSON_CONFIG',
+        variables: [],
+        isActive: true,
+        designJson: merged as any,
+      });
+    }
+
+    return merged;
+  }
+
+  /**
+   * Replace {customer_name}, {service_name}, {date}, {time}, {staff_name}, {staff_phone}, {business_name}
+   */
+  static interpolateTemplate(
+    template: string,
+    vars: {
+      customerName: string;
+      serviceName: string;
+      date: string;
+      time: string;
+      staffName: string;
+      staffPhone: string;
+      businessName: string;
+    }
+  ): string {
+    if (!template) return '';
+    return template
+      .replace(/\{customer_name\}/gi, vars.customerName || 'जी')
+      .replace(/\{service_name\}/gi, vars.serviceName || 'अपॉइंटमेंट')
+      .replace(/\{date\}/gi, vars.date || '')
+      .replace(/\{time\}/gi, vars.time || '')
+      .replace(/\{staff_name\}/gi, vars.staffName || 'हमारी टीम')
+      .replace(/\{staff_phone\}/gi, vars.staffPhone || '')
+      .replace(/\{business_name\}/gi, vars.businessName || 'हमारे ऑफिस');
+  }
+
+  /**
+   * Automatically pick the best BookingTypeTemplate for an appointment based on serviceName keywords or activeBookingPreset
+   */
+  static resolveBookingTemplate(
+    config: ReminderAutomationConfig,
+    serviceName?: string | null,
+    overridePresetId?: string
+  ): BookingTypeTemplate {
+    const templates = config.bookingTypeTemplates || this.getDefaultAutomationConfig().bookingTypeTemplates;
+    if (overridePresetId) {
+      const exact = templates.find((t) => t.id === overridePresetId);
+      if (exact) return exact;
+    }
+
+    // 1. Check keyword match against appointment's serviceName
+    const cleanService = (serviceName || '').toLowerCase().trim();
+    if (cleanService) {
+      for (const t of templates) {
+        if (t.id === 'default') continue;
+        const keywords = (t.serviceKeywords || '')
+          .split(',')
+          .map((k) => k.trim().toLowerCase())
+          .filter(Boolean);
+        if (keywords.some((kw) => cleanService.includes(kw))) {
+          return t;
+        }
+      }
+    }
+
+    // 2. Fallback to user's selected activeBookingPreset or default
+    const presetMatch = templates.find((t) => t.id === config.activeBookingPreset);
+    return presetMatch || templates[0];
+  }
 
   /**
    * Parse appointmentDate (YYYY-MM-DD) + appointmentTime (HH:mm or HH:mm AM/PM) into a JS Date
@@ -62,20 +291,31 @@ export class AppointmentRecoveryService {
   }
 
   /**
-   * 1. Send Pre-Appointment Reminder (WhatsApp + Email + optional AI Voice Call)
+   * 1. Send Pre-Appointment Reminder (Uses Dynamic Automation Config + Optional Overrides)
    */
   static async sendAppointmentReminder(params: {
     appointmentId: string;
     userId: string;
-    reminderType?: '24h' | '1h' | 'manual';
+    reminderType?: 'reminder1' | 'reminder2' | '24h' | '1h' | 'manual';
     triggerVoiceCall?: boolean;
+    triggerWhatsapp?: boolean;
+    triggerEmail?: boolean;
+    customVoiceScript?: string;
+    customWhatsappMessage?: string;
+    customAgentId?: string;
+    delaySeconds?: number;
   }): Promise<{
     success: boolean;
     whatsappSent: boolean;
     emailSent: boolean;
     voiceCallScheduled: boolean;
   }> {
-    const { appointmentId, userId, reminderType = 'manual', triggerVoiceCall = false } = params;
+    const {
+      appointmentId,
+      userId,
+      reminderType = 'manual',
+      delaySeconds = 10,
+    } = params;
 
     const [apt] = await db
       .select()
@@ -87,8 +327,10 @@ export class AppointmentRecoveryService {
       throw new Error('Appointment not found');
     }
 
+    const config = await this.getAutomationConfig(userId);
+
     let businessName = 'Our Office';
-    let appointmentTerm = apt.serviceName || 'Site Visit / Appointment';
+    let appointmentTerm = apt.serviceName || 'Appointment';
     try {
       const [wl] = await db
         .select()
@@ -99,6 +341,29 @@ export class AppointmentRecoveryService {
       if (!apt.serviceName && wl?.appointmentTerm) appointmentTerm = wl.appointmentTerm;
     } catch (_) {}
 
+    const matchedTemplate = this.resolveBookingTemplate(config, apt.serviceName);
+    const vars = {
+      customerName: apt.contactName || 'जी',
+      serviceName: appointmentTerm,
+      date: String(apt.appointmentDate || ''),
+      time: String(apt.appointmentTime || ''),
+      staffName: apt.assignedStaffName || 'हमारी टीम',
+      staffPhone: apt.assignedStaffPhone || '',
+      businessName,
+    };
+
+    const finalWhatsappMsg = params.customWhatsappMessage?.trim()
+      ? this.interpolateTemplate(params.customWhatsappMessage, vars)
+      : this.interpolateTemplate(matchedTemplate.whatsappMessage, vars);
+
+    const finalVoiceScript = params.customVoiceScript?.trim()
+      ? this.interpolateTemplate(params.customVoiceScript, vars)
+      : this.interpolateTemplate(matchedTemplate.voiceScript, vars);
+
+    const doWhatsapp = params.triggerWhatsapp !== undefined ? params.triggerWhatsapp : config.reminderWhatsappEnabled;
+    const doEmail = params.triggerEmail !== undefined ? params.triggerEmail : config.reminderEmailEnabled;
+    const doVoice = params.triggerVoiceCall !== undefined ? params.triggerVoiceCall : config.reminderVoiceCallEnabled;
+
     let cleanPhone = (apt.contactPhone || '').trim();
     if (cleanPhone && !cleanPhone.startsWith('+')) {
       cleanPhone = `+${cleanPhone}`;
@@ -106,25 +371,23 @@ export class AppointmentRecoveryService {
 
     // A. Send WhatsApp Reminder
     let whatsappSent = false;
-    try {
-      const { metaWhatsAppService } = await import('../../plugins/messaging/services/meta-whatsapp.service').catch(
-        () => ({ metaWhatsAppService: null as any })
-      );
-      if (metaWhatsAppService && typeof metaWhatsAppService.sendTextMessage === 'function' && cleanPhone) {
-        const staffLine = apt.assignedStaffName
-          ? `\n👤 एग्जीक्यूटिव: ${apt.assignedStaffName}${apt.assignedStaffPhone ? ` (${apt.assignedStaffPhone})` : ''}`
-          : '';
-        const msg = `नमस्ते ${apt.contactName || 'जी'}! 🔔\n\nयह ${businessName} की ओर से आपके आगामी *${appointmentTerm}* का रिमाइंडर है:\n📅 तारीख: ${apt.appointmentDate}\n⏰ समय: ${apt.appointmentTime}${staffLine}\n\nयदि आप समय बदलना (Reschedule) चाहते हैं, तो कृपया इसी मैसेज का रिप्लाई करें। धन्यवाद!`;
-        await metaWhatsAppService.sendTextMessage(userId, cleanPhone, msg);
-        whatsappSent = true;
+    if (doWhatsapp && cleanPhone) {
+      try {
+        const { metaWhatsAppService } = await import('../../plugins/messaging/services/meta-whatsapp.service').catch(
+          () => ({ metaWhatsAppService: null as any })
+        );
+        if (metaWhatsAppService && typeof metaWhatsAppService.sendTextMessage === 'function') {
+          await metaWhatsAppService.sendTextMessage(userId, cleanPhone, finalWhatsappMsg);
+          whatsappSent = true;
+        }
+      } catch (waErr: any) {
+        logger.warn(`[AppointmentRecovery] WhatsApp reminder notice: ${waErr?.message}`, undefined, 'AppointmentRecovery');
       }
-    } catch (waErr: any) {
-      logger.warn(`[AppointmentRecovery] WhatsApp reminder notice: ${waErr?.message}`, undefined, 'AppointmentRecovery');
     }
 
     // B. Send Email Reminder if contactEmail exists
     let emailSent = false;
-    if (apt.contactEmail) {
+    if (doEmail && apt.contactEmail) {
       try {
         emailSent = await sendClientConfirmationEmail({
           userId,
@@ -139,25 +402,33 @@ export class AppointmentRecoveryService {
       } catch (_) {}
     }
 
-    // C. Optional AI Voice Reminder Call
+    // C. AI Voice Reminder Call
     let voiceCallScheduled = false;
-    if (triggerVoiceCall && cleanPhone) {
+    if (doVoice && cleanPhone) {
       try {
-        const userAgents = await db
-          .select({ id: agents.id, elevenLabsAgentId: agents.elevenLabsAgentId })
-          .from(agents)
-          .where(eq(agents.userId, userId));
-        const preferredAgent = userAgents.find((a) => Boolean(a.elevenLabsAgentId)) || userAgents[0];
+        const chosenAgentConfigId = params.customAgentId || config.reminderAgentId;
+        let targetAgentId: string | null = null;
+
+        if (chosenAgentConfigId && chosenAgentConfigId !== 'default') {
+          targetAgentId = chosenAgentConfigId;
+        } else if (!apt.callId) {
+          const userAgents = await db
+            .select({ id: agents.id, elevenLabsAgentId: agents.elevenLabsAgentId })
+            .from(agents)
+            .where(eq(agents.userId, userId));
+          const preferredAgent = userAgents.find((a) => Boolean(a.elevenLabsAgentId)) || userAgents[0];
+          targetAgentId = preferredAgent?.id || null;
+        }
 
         await db.insert(scheduledFollowUps).values({
           userId,
-          agentId: apt.callId ? null : (preferredAgent?.id || null),
+          agentId: targetAgentId,
           callId: apt.callId || null,
           phoneNumber: cleanPhone,
           customerName: apt.contactName,
           preferredTimeText: `Appointment Reminder (${apt.appointmentDate} ${apt.appointmentTime})`,
-          contextNote: `Appointment Reminder Call for ${apt.contactName}. Scheduled ${appointmentTerm} with ${businessName} on ${apt.appointmentDate} at ${apt.appointmentTime}${apt.assignedStaffName ? ` (Assigned Staff: ${apt.assignedStaffName})` : ''}. Politely remind the customer, confirm their attendance, or offer to reschedule if needed.`,
-          scheduledAt: new Date(Date.now() + 10 * 1000),
+          contextNote: `[CUSTOM_GREETING]: ${finalVoiceScript} ||| Appointment Reminder Call for ${apt.contactName}. Scheduled ${appointmentTerm} with ${businessName} on ${apt.appointmentDate} at ${apt.appointmentTime}${apt.assignedStaffName ? ` (Assigned Staff: ${apt.assignedStaffName})` : ''}. Politely remind the customer, confirm their attendance, or offer to reschedule if needed.`,
+          scheduledAt: new Date(Date.now() + Math.max(5, delaySeconds) * 1000),
           status: 'pending',
         });
         voiceCallScheduled = true;
@@ -172,8 +443,8 @@ export class AppointmentRecoveryService {
       ...existingMeta,
       lastReminderSentAt: new Date().toISOString(),
       lastReminderType: reminderType,
-      reminder24hSent: reminderType === '24h' ? true : existingMeta.reminder24hSent,
-      reminder1hSent: reminderType === '1h' ? true : existingMeta.reminder1hSent,
+      autoReminder1Sent: reminderType === 'reminder1' || reminderType === '24h' ? true : existingMeta.autoReminder1Sent,
+      autoReminder2Sent: reminderType === 'reminder2' || reminderType === '1h' ? true : existingMeta.autoReminder2Sent,
       reminderCount: (Number(existingMeta.reminderCount) || 0) + 1,
     };
 
@@ -201,13 +472,16 @@ export class AppointmentRecoveryService {
     userId: string;
     delaySeconds?: number;
     notes?: string;
+    customVoiceScript?: string;
+    customWhatsappMessage?: string;
+    customAgentId?: string;
   }): Promise<{
     success: boolean;
     appointment: any;
     scheduledFollowUpId?: string;
     whatsappSent: boolean;
   }> {
-    const { appointmentId, userId, delaySeconds = 30, notes } = params;
+    const { appointmentId, userId, delaySeconds = 10, notes } = params;
 
     const [apt] = await db
       .select()
@@ -218,6 +492,8 @@ export class AppointmentRecoveryService {
     if (!apt) {
       throw new Error('Appointment not found');
     }
+
+    const config = await this.getAutomationConfig(userId);
 
     let businessName = 'Our Office';
     let appointmentTerm = apt.serviceName || 'Site Visit / Appointment';
@@ -231,6 +507,24 @@ export class AppointmentRecoveryService {
       if (!apt.serviceName && wl?.appointmentTerm) appointmentTerm = wl.appointmentTerm;
     } catch (_) {}
 
+    const vars = {
+      customerName: apt.contactName || 'जी',
+      serviceName: appointmentTerm,
+      date: String(apt.appointmentDate || ''),
+      time: String(apt.appointmentTime || ''),
+      staffName: apt.assignedStaffName || 'हमारी टीम',
+      staffPhone: apt.assignedStaffPhone || '',
+      businessName,
+    };
+
+    const finalVoiceScript = params.customVoiceScript?.trim()
+      ? this.interpolateTemplate(params.customVoiceScript, vars)
+      : this.interpolateTemplate(config.noShowVoiceScript, vars);
+
+    const finalWhatsappMsg = params.customWhatsappMessage?.trim()
+      ? this.interpolateTemplate(params.customWhatsappMessage, vars)
+      : this.interpolateTemplate(config.noShowWhatsappMessage, vars);
+
     const existingMeta = (apt.metadata && typeof apt.metadata === 'object') ? apt.metadata : {};
     const updatedMeta = {
       ...existingMeta,
@@ -243,14 +537,13 @@ export class AppointmentRecoveryService {
       .update(appointments)
       .set({
         status: 'no_show',
-        statusReason: notes?.trim() || 'Missed appointment (No-Show) — AI Recovery initiated',
+        statusReason: notes?.trim() || 'Missed appointment (No-Show) — Automated AI Recovery initiated',
         metadata: updatedMeta,
         updatedAt: new Date(),
       })
       .where(eq(appointments.id, apt.id))
       .returning();
 
-    // Sync to Google Calendar if linked
     if (updatedAppointment.googleCalendarEventId) {
       updateCalendarEvent(userId, updatedAppointment.googleCalendarEventId, {
         id: updatedAppointment.id,
@@ -276,25 +569,33 @@ export class AppointmentRecoveryService {
 
     // Schedule AI No-Show Recovery Call in scheduledFollowUps
     let scheduledFollowUpId: string | undefined;
-    if (cleanPhone) {
+    if (cleanPhone && config.noShowVoiceCallEnabled) {
       try {
-        const userAgents = await db
-          .select({ id: agents.id, elevenLabsAgentId: agents.elevenLabsAgentId })
-          .from(agents)
-          .where(eq(agents.userId, userId));
-        const preferredAgent = userAgents.find((a) => Boolean(a.elevenLabsAgentId)) || userAgents[0];
+        const chosenAgentConfigId = params.customAgentId || config.noShowAgentId;
+        let targetAgentId: string | null = null;
+
+        if (chosenAgentConfigId && chosenAgentConfigId !== 'default') {
+          targetAgentId = chosenAgentConfigId;
+        } else if (!apt.callId) {
+          const userAgents = await db
+            .select({ id: agents.id, elevenLabsAgentId: agents.elevenLabsAgentId })
+            .from(agents)
+            .where(eq(agents.userId, userId));
+          const preferredAgent = userAgents.find((a) => Boolean(a.elevenLabsAgentId)) || userAgents[0];
+          targetAgentId = preferredAgent?.id || null;
+        }
 
         const [newFollowUp] = await db
           .insert(scheduledFollowUps)
           .values({
             userId,
-            agentId: apt.callId ? null : (preferredAgent?.id || null),
+            agentId: targetAgentId,
             callId: apt.callId || null,
             phoneNumber: cleanPhone,
             customerName: apt.contactName,
             preferredTimeText: 'Appointment No-Show Recovery',
-            contextNote: `NO-SHOW RECOVERY CALL: Customer ${apt.contactName} had booked a ${appointmentTerm} with ${businessName} on ${apt.appointmentDate} at ${apt.appointmentTime}, but could not attend. Politely check in with them, ask if they were busy, and offer to reschedule their ${appointmentTerm} to a new convenient date and time.`,
-            scheduledAt: new Date(Date.now() + 10 * 1000),
+            contextNote: `[CUSTOM_GREETING]: ${finalVoiceScript} ||| NO-SHOW RECOVERY CALL: Customer ${apt.contactName} had booked a ${appointmentTerm} with ${businessName} on ${apt.appointmentDate} at ${apt.appointmentTime}, but could not attend. Politely check in with them, ask if they were busy, and offer to reschedule their ${appointmentTerm} to a new convenient date and time.`,
+            scheduledAt: new Date(Date.now() + Math.max(5, delaySeconds) * 1000),
             status: 'pending',
           })
           .returning();
@@ -307,18 +608,18 @@ export class AppointmentRecoveryService {
 
     // Send WhatsApp No-Show Recovery Message
     let whatsappSent = false;
-    try {
-      const { metaWhatsAppService } = await import('../../plugins/messaging/services/meta-whatsapp.service').catch(
-        () => ({ metaWhatsAppService: null as any })
-      );
-      if (metaWhatsAppService && typeof metaWhatsAppService.sendTextMessage === 'function' && cleanPhone) {
-        const msg = `नमस्ते ${apt.contactName || 'जी'}! 🙏\n\nआज ${apt.appointmentDate} को ${apt.appointmentTime} बजे ${businessName} के साथ आपका *${appointmentTerm}* शेड्यूल था, लेकिन शायद व्यस्तता के कारण आप नहीं आ पाए।\n\nहमारा AI असिस्टेंट आपका नया समय (Reschedule) बुक करने के लिए आपको कॉल कर रहा है, या आप सीधे यहीं अपना पसंदीदा दिन और समय रिप्लाई कर सकते हैं!`;
-        await metaWhatsAppService.sendTextMessage(userId, cleanPhone, msg);
-        whatsappSent = true;
-      }
-    } catch (_) {}
+    if (cleanPhone && config.noShowWhatsappEnabled) {
+      try {
+        const { metaWhatsAppService } = await import('../../plugins/messaging/services/meta-whatsapp.service').catch(
+          () => ({ metaWhatsAppService: null as any })
+        );
+        if (metaWhatsAppService && typeof metaWhatsAppService.sendTextMessage === 'function') {
+          await metaWhatsAppService.sendTextMessage(userId, cleanPhone, finalWhatsappMsg);
+          whatsappSent = true;
+        }
+      } catch (_) {}
+    }
 
-    // Push 2-way event to external CRM if configured
     this.pushEventToExternalCrm(userId, 'appointment.no_show', {
       appointmentId: updatedAppointment.id,
       contactName: updatedAppointment.contactName,
@@ -340,7 +641,7 @@ export class AppointmentRecoveryService {
   }
 
   /**
-   * 3. Smart Auto-Assignment (Project/City Match + Round-Robin Workload Balancing)
+   * 3. Smart Auto-Assignment (Kept for API compatibility if needed)
    */
   static async autoAssignAppointment(userId: string, appointmentId: string): Promise<any | null> {
     const [apt] = await db
@@ -356,13 +657,10 @@ export class AppointmentRecoveryService {
       .from(salesTeamMembers)
       .where(and(eq(salesTeamMembers.userId, userId), eq(salesTeamMembers.isActive, true)));
 
-    if (activeStaff.length === 0) {
-      return null;
-    }
+    if (activeStaff.length === 0) return null;
 
     const searchContext = `${apt.serviceName || ''} ${apt.notes || ''}`.toLowerCase();
 
-    // 1. Score staff by project/city match first, then lowest totalVisitsCount (Round-Robin)
     const scoredStaff = activeStaff.map((staff) => {
       let matchScore = 0;
       if (staff.city && searchContext.includes(staff.city.toLowerCase())) {
@@ -405,46 +703,9 @@ export class AppointmentRecoveryService {
       })
       .where(eq(salesTeamMembers.id, chosen.id));
 
-    if (chosen.email) {
-      sendStaffAssignmentEmail({
-        userId,
-        staffEmail: chosen.email,
-        staffName: chosen.name,
-        clientName: updated.contactName,
-        clientPhone: updated.contactPhone,
-        clientEmail: updated.contactEmail,
-        serviceName: updated.serviceName || 'Property Site Visit',
-        appointmentDate: String(updated.appointmentDate),
-        appointmentTime: String(updated.appointmentTime),
-        notes: updated.notes,
-        adminInstructions: 'Auto-assigned via Smart Round-Robin / Project Match',
-      }).catch(() => {});
-    }
-
-    if (updated.googleCalendarEventId) {
-      updateCalendarEvent(userId, updated.googleCalendarEventId, {
-        id: updated.id,
-        contactName: updated.contactName,
-        contactPhone: updated.contactPhone,
-        contactEmail: updated.contactEmail,
-        appointmentDate: String(updated.appointmentDate),
-        appointmentTime: String(updated.appointmentTime),
-        duration: updated.duration || 30,
-        serviceName: updated.serviceName,
-        notes: updated.notes,
-        status: updated.status,
-        statusReason: updated.statusReason,
-        assignedStaffName: updated.assignedStaffName,
-        assignedStaffPhone: updated.assignedStaffPhone,
-      }).catch(() => {});
-    }
-
     return updated;
   }
 
-  /**
-   * Bulk Auto-Assign all currently unassigned appointments for a user
-   */
   static async autoAssignAllUnassigned(userId: string): Promise<{ assignedCount: number; appointments: any[] }> {
     const allVisits = await db
       .select()
@@ -521,18 +782,19 @@ export class AppointmentRecoveryService {
   }
 
   /**
-   * 5. Background Scheduler: Checks every 5 minutes for upcoming 24h / 1h reminders
+   * 5. Background Scheduler: Runs every 60 seconds to automatically process
+   *    User-Configured Pre-Appointment Reminders AND Automatic No-Show Recovery
    */
   static startScheduler(): void {
     if (this.isSchedulerRunning) return;
     this.isSchedulerRunning = true;
 
-    console.log('🔔 [AppointmentRecovery] Pre-Appointment Reminder & No-Show Detection Service started (every 5m)');
+    console.log('🔔 [AppointmentRecovery] Dynamic Auto-Reminder & No-Show Recovery Engine started (every 60s)');
     this.schedulerTimer = setInterval(() => {
       this.processUpcomingReminders().catch((err) => {
         logger.warn(`[AppointmentRecovery] Scheduler cycle error: ${err?.message}`);
       });
-    }, 5 * 60 * 1000);
+    }, 60 * 1000);
   }
 
   static async processUpcomingReminders(): Promise<void> {
@@ -541,6 +803,7 @@ export class AppointmentRecoveryService {
       .from(appointments)
       .where(
         or(
+          eq(appointments.status, 'new'),
           eq(appointments.status, 'scheduled'),
           eq(appointments.status, 'confirmed'),
           eq(appointments.status, 'rescheduled')
@@ -549,30 +812,69 @@ export class AppointmentRecoveryService {
       .limit(200);
 
     const now = Date.now();
+    const configCache = new Map<string, ReminderAutomationConfig>();
+
     for (const apt of activeAppointments) {
       const dt = this.parseAppointmentDateTime(String(apt.appointmentDate), String(apt.appointmentTime));
       if (!dt) continue;
 
-      const diffHours = (dt.getTime() - now) / (1000 * 60 * 60);
+      let config = configCache.get(apt.userId);
+      if (!config) {
+        config = await this.getAutomationConfig(apt.userId);
+        configCache.set(apt.userId, config);
+      }
+
+      const diffMinutes = (dt.getTime() - now) / (1000 * 60);
       const meta = (apt.metadata && typeof apt.metadata === 'object') ? apt.metadata : {};
 
-      // 1-Hour Reminder window (between 0.5h and 1.25h before appointment)
-      if (diffHours > 0.4 && diffHours <= 1.25 && !meta.reminder1hSent) {
-        await this.sendAppointmentReminder({
-          appointmentId: apt.id,
-          userId: apt.userId,
-          reminderType: '1h',
-        }).catch(() => {});
+      // A. Future Appointment -> Check Auto-Reminder 1 & Auto-Reminder 2
+      if (diffMinutes > 0 && config.autoReminderEnabled) {
+        // Check Reminder 2 first if closer to appointment time
+        if (
+          config.reminder2Enabled &&
+          diffMinutes <= config.reminder2OffsetMinutes &&
+          diffMinutes >= Math.max(0, config.reminder2OffsetMinutes - 30) &&
+          !meta.autoReminder2Sent &&
+          !meta.reminder1hSent
+        ) {
+          await this.sendAppointmentReminder({
+            appointmentId: apt.id,
+            userId: apt.userId,
+            reminderType: 'reminder2',
+          }).catch(() => {});
+        }
+        // Check Reminder 1
+        else if (
+          diffMinutes <= config.reminder1OffsetMinutes &&
+          diffMinutes >= Math.max(0, config.reminder1OffsetMinutes - 45) &&
+          !meta.autoReminder1Sent &&
+          !meta.reminder24hSent
+        ) {
+          await this.sendAppointmentReminder({
+            appointmentId: apt.id,
+            userId: apt.userId,
+            reminderType: 'reminder1',
+          }).catch(() => {});
+        }
       }
-      // 24-Hour Reminder window (between 22h and 25h before appointment)
-      else if (diffHours > 22 && diffHours <= 25 && !meta.reminder24hSent) {
-        await this.sendAppointmentReminder({
-          appointmentId: apt.id,
-          userId: apt.userId,
-          reminderType: '24h',
-        }).catch(() => {});
+
+      // B. Past Appointment -> Check Automatic No-Show Detection & AI Recovery
+      if (diffMinutes < 0 && config.autoNoShowEnabled) {
+        const minutesPast = Math.abs(diffMinutes);
+        // Trigger if appointment time passed by >= noShowAfterMinutes (within last 24h so old history isn't mass dialed)
+        if (
+          minutesPast >= config.noShowAfterMinutes &&
+          minutesPast <= config.noShowAfterMinutes + 180 &&
+          !meta.noShowRecoveryTriggered
+        ) {
+          await this.triggerNoShowRecovery({
+            appointmentId: apt.id,
+            userId: apt.userId,
+            delaySeconds: 15,
+            notes: `Auto-detected No-Show (${ config.noShowAfterMinutes } mins after scheduled time) — AI Recovery triggered`,
+          }).catch(() => {});
+        }
       }
     }
   }
 }
-

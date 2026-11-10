@@ -737,7 +737,10 @@ export class FollowUpSchedulerService {
                       /namaste|kripya|baad|baje|karein|boliye|humne|baat/i.test(agentRecord.systemPrompt || '');
 
       let firstMessage = '';
-      if (isNoShowRecovery) {
+      const customGreetingMatch = contextNote.match(/^\[CUSTOM_GREETING\]:\s*([\s\S]*?)\s*\|\|\|/);
+      if (customGreetingMatch && customGreetingMatch[1]?.trim()) {
+        firstMessage = customGreetingMatch[1].trim();
+      } else if (isNoShowRecovery) {
         if (isHindi) {
           firstMessage = customerName
             ? `नमस्ते ${customerName} जी, मैं ${businessName} से बात कर रहा हूँ। आपकी अपॉइंटमेंट हमारे साथ शेड्यूल थी लेकिन शायद व्यस्तता के कारण आप नहीं आ पाए। क्या मैं आपकी अपॉइंटमेंट किसी नए समय के लिए री-शेड्यूल कर दूँ?`

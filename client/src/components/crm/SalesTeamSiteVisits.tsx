@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Users, UserCheck, CalendarDays, Phone, Mail, MapPin, Building, 
@@ -6,7 +6,7 @@ import {
   Trash2, Edit, AlertCircle, Sparkles, Send, Filter, Search, MoreHorizontal,
   Bell, UserPlus, FileText, CheckSquare, ShieldCheck, ArrowRight,
   XCircle, CalendarClock, CalendarCheck, HelpCircle, X, ExternalLink,
-  ChevronRight, Calendar as CalendarIcon, UserX
+  ChevronRight, Calendar as CalendarIcon, UserX, Settings2, Bot, Zap
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -76,13 +76,121 @@ interface SiteVisit {
   createdAt: string;
 }
 
+interface BookingTypeTemplate {
+  id: string;
+  label: string;
+  serviceKeywords: string;
+  voiceScript: string;
+  whatsappMessage: string;
+}
+
+interface ReminderAutomationConfig {
+  autoReminderEnabled: boolean;
+  reminder1OffsetMinutes: number;
+  reminder2Enabled: boolean;
+  reminder2OffsetMinutes: number;
+  reminderChannels: {
+    whatsapp: boolean;
+    email: boolean;
+    voiceCall: boolean;
+  };
+  reminderAgentId: string;
+  autoNoShowEnabled: boolean;
+  noShowAfterMinutes: number;
+  noShowChannels: {
+    whatsapp: boolean;
+    voiceCall: boolean;
+  };
+  noShowAgentId: string;
+  noShowVoiceScript: string;
+  noShowWhatsappMessage: string;
+  bookingTypeTemplates: BookingTypeTemplate[];
+}
+
 export function SalesTeamSiteVisits() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [activeSubTab, setActiveSubTab] = useState<"visits" | "team" | "email">("visits");
+  const [activeSubTab, setActiveSubTab] = useState<"visits" | "team" | "email" | "automation">("visits");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "new" | "confirmed" | "upcoming" | "past" | "cancelled" | "unassigned" | "overdue">("all");
+
+  // Automation Controller State
+  const [automationForm, setAutomationForm] = useState<ReminderAutomationConfig>({
+    autoReminderEnabled: true,
+    reminder1OffsetMinutes: 1440,
+    reminder2Enabled: true,
+    reminder2OffsetMinutes: 120,
+    reminderChannels: { whatsapp: true, email: true, voiceCall: true },
+    reminderAgentId: "default",
+    autoNoShowEnabled: true,
+    noShowAfterMinutes: 30,
+    noShowChannels: { whatsapp: true, voiceCall: true },
+    noShowAgentId: "default",
+    noShowVoiceScript:
+      "Namaste {customer_name} ji! Main {business_name} se call kar rahi hoon. Aaj {time} par aapki '{service_name}' ki appointment thi, lekin shayad aap kisi kaaran se nahi aa paaye. Kya main aapki appointment kisi naye date aur time ke liye reschedule kar doon?",
+    noShowWhatsappMessage:
+      "*Namaste {customer_name} ji!* 🙏\n\nHumne dekha ki aap aaj ({date}) *{time}* par apni *{service_name}* appointment mein shamil nahi ho paaye.\n\nAgar aap kisi naye din ya samay ke liye apni appointment *Reschedule* karna chahte hain, toh kripya is message ka reply karein!",
+    bookingTypeTemplates: [
+      {
+        id: "general",
+        label: "General Booking (Default)",
+        serviceKeywords: "general, appointment, consultation, meeting, booking",
+        voiceScript:
+          "Namaste {customer_name} ji! Main {business_name} se call kar rahi hoon. Yeh call aapki '{service_name}' appointment ke reminder ke liye hai, jo {date} ko {time} par scheduled hai. Hamare {staff_name} aapko attend karenge. Kya aap is samay par aane ke liye confirm karte hain?",
+        whatsappMessage:
+          "*🔔 Appointment Reminder — {business_name}*\n\nNamaste *{customer_name}* ji! 🙏\nYeh aapki upcoming appointment ka friendly reminder hai:\n\n📋 *Service:* {service_name}\n📅 *Date:* {date}\n⏰ *Time:* {time}\n👤 *Assigned Staff:* {staff_name}\n\nHum aapka intezaar karenge!",
+      },
+      {
+        id: "doctor_clinic",
+        label: "🏥 Doctor / Clinic Consultation",
+        serviceKeywords: "doctor, clinic, hospital, medical, neurology, dental, checkup, health, patient",
+        voiceScript:
+          "Namaste {customer_name} ji! Main {business_name} Clinic se bol rahi hoon. Aapki Doctor Consultation ('{service_name}') {date} ko {time} par Dr. {staff_name} ke saath book hai. Kripya samay se 10 minute pehle pahunchein. Kya aap apni visit confirm karte hain?",
+        whatsappMessage:
+          "*🏥 Clinic Appointment Reminder — {business_name}*\n\nNamaste *{customer_name}* ji! 🙏\nAapki Doctor Consultation ka reminder:\n\n🩺 *Consultation:* {service_name}\n📅 *Date:* {date}\n⏰ *Time:* {time}\n👨‍⚕️ *Doctor / Specialist:* {staff_name}\n\nKripya apni purani reports saath layein aur 10 min pehle pahunchein.",
+      },
+      {
+        id: "real_estate",
+        label: "🏢 Real Estate / Property Site Visit",
+        serviceKeywords: "site visit, property, flat, plot, villa, realty, home, project, residency, sector",
+        voiceScript:
+          "Namaste {customer_name} ji! Main {business_name} se call kar rahi hoon. Aapki '{service_name}' ki Property Site Visit {date} ko {time} par scheduled hai. Hamare Property Expert {staff_name} aapko site par milenge. Kya aapki site visit confirm hai?",
+        whatsappMessage:
+          "*🏢 Property Site Visit Reminder — {business_name}*\n\nNamaste *{customer_name}* ji! 🙏\nAapki Property Site Visit ka reminder:\n\n🏡 *Project / Property:* {service_name}\n📅 *Date:* {date}\n⏰ *Time:* {time}\n🤝 *Property Advisor:* {staff_name}\n\nSite location ya cab assistance ke liye reply karein!",
+      },
+      {
+        id: "custom_service",
+        label: "✏️ Custom Service / Special Booking",
+        serviceKeywords: "custom, special, demo, vip, interview, salon, spa",
+        voiceScript:
+          "Namaste {customer_name} ji! {business_name} ki taraf se aapki '{service_name}' booking ({date} at {time}) ka reminder call hai. Kya aap is samay par available rahenge?",
+        whatsappMessage:
+          "*✨ Special Booking Reminder — {business_name}*\n\nNamaste *{customer_name}* ji!\nAapki *{service_name}* booking *{date}* ko *{time}* par *{staff_name}* ke saath confirm hai.",
+      },
+    ],
+  });
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("general");
+  const [customReminder1Value, setCustomReminder1Value] = useState<number>(24);
+  const [customReminder1Unit, setCustomReminder1Unit] = useState<"minutes" | "hours" | "days">("hours");
+  const [customReminder2Value, setCustomReminder2Value] = useState<number>(2);
+  const [customReminder2Unit, setCustomReminder2Unit] = useState<"minutes" | "hours">("hours");
+  const [customNoShowValue, setCustomNoShowValue] = useState<number>(30);
+  const [customNoShowUnit, setCustomNoShowUnit] = useState<"minutes" | "hours">("minutes");
+
+  // Custom Per-Card Reminder Dialog State
+  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
+  const [selectedVisitForReminder, setSelectedVisitForReminder] = useState<SiteVisit | null>(null);
+  const [manualReminderForm, setManualReminderForm] = useState({
+    bookingTypeId: "general",
+    triggerVoiceCall: true,
+    triggerWhatsapp: true,
+    triggerEmail: true,
+    customAgentId: "default",
+    delaySeconds: 15,
+    customVoiceScript: "",
+    customWhatsappMessage: "",
+  });
 
   // Staff Dialog
   const [staffDialogOpen, setStaffDialogOpen] = useState(false);
@@ -184,6 +292,55 @@ export function SalesTeamSiteVisits() {
   }>({
     queryKey: ["/api/crm/smtp-settings"],
   });
+
+  // AI Voice Agents List (for Reminder & No-Show Agent selection)
+  const { data: agentsList = [] } = useQuery<Array<{ id: string; name: string }>>({
+    queryKey: ["/api/agents"],
+  });
+
+  // Dynamic Reminder & No-Show Automation Config
+  const { data: savedAutomationConfig } = useQuery<ReminderAutomationConfig>({
+    queryKey: ["/api/sales-team/reminder-automation-config"],
+  });
+
+  useEffect(() => {
+    if (savedAutomationConfig) {
+      setAutomationForm(savedAutomationConfig);
+      if (savedAutomationConfig.bookingTypeTemplates?.length > 0 && !selectedTemplateId) {
+        setSelectedTemplateId(savedAutomationConfig.bookingTypeTemplates[0].id);
+      }
+      // Sync custom time helper states
+      const r1 = savedAutomationConfig.reminder1OffsetMinutes || 1440;
+      if (r1 % 1440 === 0) {
+        setCustomReminder1Unit("days");
+        setCustomReminder1Value(r1 / 1440);
+      } else if (r1 % 60 === 0) {
+        setCustomReminder1Unit("hours");
+        setCustomReminder1Value(r1 / 60);
+      } else {
+        setCustomReminder1Unit("minutes");
+        setCustomReminder1Value(r1);
+      }
+
+      const r2 = savedAutomationConfig.reminder2OffsetMinutes || 120;
+      if (r2 % 60 === 0) {
+        setCustomReminder2Unit("hours");
+        setCustomReminder2Value(r2 / 60);
+      } else {
+        setCustomReminder2Unit("minutes");
+        setCustomReminder2Value(r2);
+      }
+
+      const ns = savedAutomationConfig.noShowAfterMinutes || 30;
+      if (ns >= 60 && ns % 60 === 0) {
+        setCustomNoShowUnit("hours");
+        setCustomNoShowValue(ns / 60);
+      } else {
+        setCustomNoShowUnit("minutes");
+        setCustomNoShowValue(ns);
+      }
+    }
+  }, [savedAutomationConfig]);
 
   // ── MUTATIONS ──
 
@@ -523,17 +680,43 @@ export function SalesTeamSiteVisits() {
     },
   });
 
-  // 10. Pre-Appointment Reminder Mutation (WhatsApp + Email + Optional AI Voice Call)
+  // 10. Pre-Appointment Reminder Mutation (WhatsApp + Email + Optional AI Voice Call + Custom Overrides)
   const sendReminderMutation = useMutation({
-    mutationFn: async ({ visitId, triggerVoiceCall }: { visitId: string; triggerVoiceCall?: boolean }) => {
+    mutationFn: async ({
+      visitId,
+      triggerVoiceCall,
+      triggerWhatsapp,
+      triggerEmail,
+      customVoiceScript,
+      customWhatsappMessage,
+      customAgentId,
+      delaySeconds,
+    }: {
+      visitId: string;
+      triggerVoiceCall?: boolean;
+      triggerWhatsapp?: boolean;
+      triggerEmail?: boolean;
+      customVoiceScript?: string;
+      customWhatsappMessage?: string;
+      customAgentId?: string;
+      delaySeconds?: number;
+    }) => {
       const res = await apiRequest("POST", `/api/sales-team/site-visits/${visitId}/send-reminder`, {
         reminderType: "manual",
-        triggerVoiceCall: Boolean(triggerVoiceCall),
+        triggerVoiceCall,
+        triggerWhatsapp,
+        triggerEmail,
+        customVoiceScript,
+        customWhatsappMessage,
+        customAgentId,
+        delaySeconds,
       });
       return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      setReminderDialogOpen(false);
+      setSelectedVisitForReminder(null);
       const channels = [
         data.whatsappSent ? "WhatsApp" : null,
         data.emailSent ? "Email" : null,
@@ -548,6 +731,24 @@ export function SalesTeamSiteVisits() {
     },
     onError: (err: any) => {
       toast({ title: "Reminder Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // 10B. Save Dynamic Reminder & No-Show Automation Config Mutation
+  const saveAutomationMutation = useMutation({
+    mutationFn: async (config: ReminderAutomationConfig) => {
+      const res = await apiRequest("PUT", "/api/sales-team/reminder-automation-config", config);
+      return res.json();
+    },
+    onSuccess: (saved: ReminderAutomationConfig) => {
+      queryClient.setQueryData(["/api/sales-team/reminder-automation-config"], saved);
+      toast({
+        title: "✅ Automation Rules Saved & Active!",
+        description: "System will now 100% automatically send reminders & no-show recovery based on your schedule and booking-type templates.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to Save Rules", description: err.message, variant: "destructive" });
     },
   });
 
@@ -679,6 +880,49 @@ export function SalesTeamSiteVisits() {
     setCompleteOutcome("completed_visited");
     setCompleteNotes(visit.statusReason || "");
     setCompleteDialogOpen(true);
+  };
+
+  const openReminderModal = (visit: SiteVisit) => {
+    setSelectedVisitForReminder(visit);
+    const templates = automationForm.bookingTypeTemplates || [];
+    const s = (visit.serviceName || "").toLowerCase();
+    let matched = templates[0];
+    for (const tpl of templates) {
+      if (tpl.id === "general") continue;
+      const keywords = (tpl.serviceKeywords || "")
+        .split(",")
+        .map((k) => k.trim().toLowerCase())
+        .filter(Boolean);
+      if (keywords.some((kw) => s.includes(kw))) {
+        matched = tpl;
+        break;
+      }
+    }
+    const chosen = matched || {
+      id: "general",
+      voiceScript: "",
+      whatsappMessage: "",
+    };
+    const interpolatePreview = (text: string) =>
+      text
+        .replace(/\{customer_name\}/gi, visit.contactName || "Customer")
+        .replace(/\{service_name\}/gi, visit.serviceName || "Scheduled Appointment")
+        .replace(/\{date\}/gi, visit.appointmentDate || "")
+        .replace(/\{time\}/gi, visit.appointmentTime || "")
+        .replace(/\{staff_name\}/gi, visit.assignedStaffName || "our specialist")
+        .replace(/\{business_name\}/gi, brandName);
+
+    setManualReminderForm({
+      bookingTypeId: chosen.id,
+      triggerVoiceCall: automationForm.reminderChannels?.voiceCall ?? true,
+      triggerWhatsapp: automationForm.reminderChannels?.whatsapp ?? true,
+      triggerEmail: automationForm.reminderChannels?.email ?? true,
+      customAgentId: automationForm.reminderAgentId || "default",
+      delaySeconds: 15,
+      customVoiceScript: interpolatePreview(chosen.voiceScript),
+      customWhatsappMessage: interpolatePreview(chosen.whatsappMessage),
+    });
+    setReminderDialogOpen(true);
   };
 
   // WhatsApp Helpers
@@ -1110,7 +1354,7 @@ export function SalesTeamSiteVisits() {
 
       {/* ── MAIN SUB-TABS NAVIGATION ── */}
       <div className="flex items-center justify-between border-b pb-1 gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant={activeSubTab === "visits" ? "default" : "ghost"}
             size="sm"
@@ -1129,6 +1373,25 @@ export function SalesTeamSiteVisits() {
           >
             <Users className="w-3.5 h-3.5" />
             Staff & Team Members ({staffList.length})
+          </Button>
+
+          <Button
+            variant={activeSubTab === "automation" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveSubTab("automation")}
+            className={`h-8 text-xs font-semibold gap-1.5 ${
+              activeSubTab === "automation"
+                ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-600"
+                : "border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/5 hover:bg-amber-500/15"
+            }`}
+          >
+            <Bell className="w-3.5 h-3.5 text-amber-500" />
+            ⏰ Auto-Reminder & Recovery Rules
+            {automationForm.autoReminderEnabled && (
+              <Badge className="ml-1 bg-emerald-500 text-white border-none text-[9px] px-1.5 py-0 font-bold">
+                Auto ON
+              </Badge>
+            )}
           </Button>
 
           <Button
@@ -1615,15 +1878,15 @@ export function SalesTeamSiteVisits() {
                             </Button>
                           )}
 
-                          {/* Send Reminder Button (AI Reminder Call + WhatsApp + Email) */}
+                          {/* Send Reminder Button (Opens Dynamic Reminder Preview/Override Modal) */}
                           {!completed && !cancelled && (
                             <Button
                               size="sm"
                               variant="outline"
                               disabled={sendReminderMutation.isPending}
-                              onClick={() => sendReminderMutation.mutate({ visitId: visit.id, triggerVoiceCall: true })}
+                              onClick={() => openReminderModal(visit)}
                               className="h-7 text-xs gap-1 border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40"
-                              title="Send automated AI Voice Reminder Call, WhatsApp & Email reminder to client"
+                              title="Send or test customized AI Voice Reminder Call, WhatsApp & Email reminder"
                             >
                               <Bell className="w-3.5 h-3.5 text-amber-600" />
                               Send Reminder
@@ -1849,6 +2112,933 @@ export function SalesTeamSiteVisits() {
       {activeSubTab === "email" && (
         <EmailNotificationManager />
       )}
+
+      {/* ── TAB 4: DYNAMIC AUTO-REMINDER & NO-SHOW RECOVERY CONTROLLER ── */}
+      {activeSubTab === "automation" && (
+        <div className="space-y-6">
+          {/* Top Controller Banner */}
+          <div className="p-4 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-transparent flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Bell className="w-5 h-5 text-amber-500" />
+                <h3 className="text-base font-bold text-foreground">
+                  Automatic Appointment Reminder & No-Show Recovery Controller
+                </h3>
+                <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px]">
+                  100% Automatic Background Engine
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground max-w-3xl">
+                Set your timing, channels, and booking-type templates <strong>just once</strong>. Whenever a customer books an appointment, the system automatically matches their booking type (e.g., Doctor Consultation, Real Estate Site Visit, General) and sends the exact Voice Call, WhatsApp & Email at your scheduled time — with zero manual clicking required!
+              </p>
+            </div>
+            <Button
+              onClick={() => saveAutomationMutation.mutate(automationForm)}
+              disabled={saveAutomationMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold gap-1.5 shadow-sm shrink-0"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {saveAutomationMutation.isPending ? "Saving Rules..." : "Save Automation Rules"}
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* LEFT COLUMN (7 cols): PRE-APPOINTMENT REMINDER CONTROLLER & BOOKING TYPE TEMPLATES */}
+            <div className="lg:col-span-7 space-y-6">
+              <Card className="border-amber-500/30">
+                <CardHeader className="pb-3 border-b bg-amber-500/[0.03]">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-sm font-bold flex items-center gap-2">
+                        <Bell className="w-4 h-4 text-amber-500" />
+                        1. Automatic Pre-Appointment Reminder Schedule
+                      </CardTitle>
+                      <CardDescription className="text-xs mt-0.5">
+                        Configure when reminders should automatically fire before an appointment starts.
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {automationForm.autoReminderEnabled ? "Auto-Reminders ON" : "Paused"}
+                      </span>
+                      <Switch
+                        checked={automationForm.autoReminderEnabled}
+                        onCheckedChange={(checked) =>
+                          setAutomationForm((prev) => ({ ...prev, autoReminderEnabled: checked }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="p-4 space-y-5 text-xs">
+                  {/* Primary Reminder 1 Timing */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-500" />
+                        Primary Reminder Timing (Before Appointment Time)
+                      </Label>
+                      <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-600 dark:text-amber-400">
+                        Currently: {automationForm.reminder1OffsetMinutes >= 1440 && automationForm.reminder1OffsetMinutes % 1440 === 0
+                          ? `${automationForm.reminder1OffsetMinutes / 1440} Day(s) before`
+                          : automationForm.reminder1OffsetMinutes >= 60 && automationForm.reminder1OffsetMinutes % 60 === 0
+                          ? `${automationForm.reminder1OffsetMinutes / 60} Hour(s) before`
+                          : `${automationForm.reminder1OffsetMinutes} Mins before`}
+                      </Badge>
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: "15 Mins", mins: 15 },
+                        { label: "30 Mins", mins: 30 },
+                        { label: "1 Hour", mins: 60 },
+                        { label: "2 Hours", mins: 120 },
+                        { label: "6 Hours", mins: 360 },
+                        { label: "12 Hours", mins: 720 },
+                        { label: "24 Hours (1 Day)", mins: 1440 },
+                        { label: "48 Hours (2 Days)", mins: 2880 },
+                      ].map((preset) => (
+                        <Button
+                          key={preset.mins}
+                          type="button"
+                          size="sm"
+                          variant={automationForm.reminder1OffsetMinutes === preset.mins ? "default" : "outline"}
+                          onClick={() => {
+                            setAutomationForm((prev) => ({ ...prev, reminder1OffsetMinutes: preset.mins }));
+                            if (preset.mins % 1440 === 0) {
+                              setCustomReminder1Unit("days");
+                              setCustomReminder1Value(preset.mins / 1440);
+                            } else if (preset.mins % 60 === 0) {
+                              setCustomReminder1Unit("hours");
+                              setCustomReminder1Value(preset.mins / 60);
+                            } else {
+                              setCustomReminder1Unit("minutes");
+                              setCustomReminder1Value(preset.mins);
+                            }
+                          }}
+                          className={`h-7 text-[11px] px-2.5 ${
+                            automationForm.reminder1OffsetMinutes === preset.mins
+                              ? "bg-amber-600 hover:bg-amber-700 text-white"
+                              : ""
+                          }`}
+                        >
+                          {preset.label}
+                        </Button>
+                      ))}
+                    </div>
+
+                    {/* Custom Time Input */}
+                    <div className="flex items-center gap-2 pt-1 bg-muted/30 p-2.5 rounded-lg border">
+                      <span className="text-[11px] font-medium text-muted-foreground shrink-0">
+                        ✏️ Or Set Custom Time:
+                      </span>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={10000}
+                        value={customReminder1Value}
+                        onChange={(e) => {
+                          const val = Math.max(1, Number(e.target.value) || 1);
+                          setCustomReminder1Value(val);
+                          const multiplier =
+                            customReminder1Unit === "days" ? 1440 : customReminder1Unit === "hours" ? 60 : 1;
+                          setAutomationForm((prev) => ({
+                            ...prev,
+                            reminder1OffsetMinutes: val * multiplier,
+                          }));
+                        }}
+                        className="h-7 w-20 text-xs"
+                      />
+                      <Select
+                        value={customReminder1Unit}
+                        onValueChange={(unit: "minutes" | "hours" | "days") => {
+                          setCustomReminder1Unit(unit);
+                          const multiplier = unit === "days" ? 1440 : unit === "hours" ? 60 : 1;
+                          setAutomationForm((prev) => ({
+                            ...prev,
+                            reminder1OffsetMinutes: customReminder1Value * multiplier,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger className="h-7 w-28 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="minutes">Minutes</SelectItem>
+                          <SelectItem value="hours">Hours</SelectItem>
+                          <SelectItem value="days">Days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <span className="text-[11px] text-muted-foreground">before appointment</span>
+                    </div>
+                  </div>
+
+                  {/* Second Optional Reminder */}
+                  <div className="space-y-2.5 pt-3 border-t">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-xs font-bold flex items-center gap-1.5">
+                          <CalendarClock className="w-3.5 h-3.5 text-blue-500" />
+                          Second Follow-Up Reminder (Optional)
+                        </Label>
+                        <p className="text-[11px] text-muted-foreground">
+                          Send a second closer reminder (e.g., 1st reminder 24 hours before, 2nd reminder 1 hour before).
+                        </p>
+                      </div>
+                      <Switch
+                        checked={automationForm.reminder2Enabled}
+                        onCheckedChange={(checked) =>
+                          setAutomationForm((prev) => ({ ...prev, reminder2Enabled: checked }))
+                        }
+                      />
+                    </div>
+
+                    {automationForm.reminder2Enabled && (
+                      <div className="space-y-2 pl-2 border-l-2 border-blue-500/40">
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { label: "15 Mins before", mins: 15 },
+                            { label: "30 Mins before", mins: 30 },
+                            { label: "1 Hour before", mins: 60 },
+                            { label: "2 Hours before", mins: 120 },
+                            { label: "4 Hours before", mins: 240 },
+                          ].map((preset) => (
+                            <Button
+                              key={preset.mins}
+                              type="button"
+                              size="sm"
+                              variant={automationForm.reminder2OffsetMinutes === preset.mins ? "default" : "outline"}
+                              onClick={() => {
+                                setAutomationForm((prev) => ({ ...prev, reminder2OffsetMinutes: preset.mins }));
+                                if (preset.mins % 60 === 0) {
+                                  setCustomReminder2Unit("hours");
+                                  setCustomReminder2Value(preset.mins / 60);
+                                } else {
+                                  setCustomReminder2Unit("minutes");
+                                  setCustomReminder2Value(preset.mins);
+                                }
+                              }}
+                              className={`h-7 text-[11px] px-2.5 ${
+                                automationForm.reminder2OffsetMinutes === preset.mins
+                                  ? "bg-blue-600 hover:bg-blue-700 text-white"
+                                  : ""
+                              }`}
+                            >
+                              {preset.label}
+                            </Button>
+                          ))}
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-muted/30 p-2 rounded-lg border">
+                          <span className="text-[11px] font-medium text-muted-foreground">✏️ Custom 2nd Reminder:</span>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={1440}
+                            value={customReminder2Value}
+                            onChange={(e) => {
+                              const val = Math.max(1, Number(e.target.value) || 1);
+                              setCustomReminder2Value(val);
+                              const mult = customReminder2Unit === "hours" ? 60 : 1;
+                              setAutomationForm((prev) => ({ ...prev, reminder2OffsetMinutes: val * mult }));
+                            }}
+                            className="h-7 w-20 text-xs"
+                          />
+                          <Select
+                            value={customReminder2Unit}
+                            onValueChange={(u: "minutes" | "hours") => {
+                              setCustomReminder2Unit(u);
+                              const mult = u === "hours" ? 60 : 1;
+                              setAutomationForm((prev) => ({
+                                ...prev,
+                                reminder2OffsetMinutes: customReminder2Value * mult,
+                              }));
+                            }}
+                          >
+                            <SelectTrigger className="h-7 w-28 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="minutes">Minutes</SelectItem>
+                              <SelectItem value="hours">Hours</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <span className="text-[11px] text-muted-foreground">before appointment</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Delivery Channels & AI Agent Selection */}
+                  <div className="space-y-3 pt-3 border-t">
+                    <Label className="text-xs font-bold">
+                      2. Automatic Reminder Channels & AI Voice Agent
+                    </Label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <div className="p-2.5 rounded-lg border bg-card flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-3.5 h-3.5 text-amber-500" />
+                          <span className="font-medium">AI Voice Call</span>
+                        </div>
+                        <Switch
+                          checked={automationForm.reminderChannels.voiceCall}
+                          onCheckedChange={(checked) =>
+                            setAutomationForm((prev) => ({
+                              ...prev,
+                              reminderChannels: { ...prev.reminderChannels, voiceCall: checked },
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="p-2.5 rounded-lg border bg-card flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
+                          <span className="font-medium">WhatsApp Msg</span>
+                        </div>
+                        <Switch
+                          checked={automationForm.reminderChannels.whatsapp}
+                          onCheckedChange={(checked) =>
+                            setAutomationForm((prev) => ({
+                              ...prev,
+                              reminderChannels: { ...prev.reminderChannels, whatsapp: checked },
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="p-2.5 rounded-lg border bg-card flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-3.5 h-3.5 text-purple-500" />
+                          <span className="font-medium">Email Alert</span>
+                        </div>
+                        <Switch
+                          checked={automationForm.reminderChannels.email}
+                          onCheckedChange={(checked) =>
+                            setAutomationForm((prev) => ({
+                              ...prev,
+                              reminderChannels: { ...prev.reminderChannels, email: checked },
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {automationForm.reminderChannels.voiceCall && (
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                        <div className="flex items-center gap-2">
+                          <Bot className="w-4 h-4 text-amber-600" />
+                          <div>
+                            <span className="font-semibold block">Select AI Voice Agent for Reminder Calls</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              Which AI agent should call the customer to confirm their booking?
+                            </span>
+                          </div>
+                        </div>
+                        <Select
+                          value={automationForm.reminderAgentId || "default"}
+                          onValueChange={(val) =>
+                            setAutomationForm((prev) => ({ ...prev, reminderAgentId: val }))
+                          }
+                        >
+                          <SelectTrigger className="h-8 w-full sm:w-56 text-xs bg-background">
+                            <SelectValue placeholder="Auto-select Default Agent" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default">✨ Auto-Select Primary Agent</SelectItem>
+                            {agentsList.map((ag) => (
+                              <SelectItem key={ag.id} value={ag.id}>
+                                🤖 {ag.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* BOOKING TYPE DYNAMIC MESSAGE & VOICE SCRIPT CONTROLLER */}
+              <Card className="border-blue-500/30">
+                <CardHeader className="pb-3 border-b bg-blue-500/[0.03]">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <CardTitle className="text-sm font-bold flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-500" />
+                        3. Booking-Type Specific Messages & Voice Call Scripts
+                      </CardTitle>
+                      <CardDescription className="text-xs mt-0.5">
+                        Customize what message & AI voice script is sent for each type of booking (Doctor, Real Estate, General, or Custom).
+                      </CardDescription>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const newId = `custom_${Date.now()}`;
+                        const newTpl: BookingTypeTemplate = {
+                          id: newId,
+                          label: "✨ New Booking Type",
+                          serviceKeywords: "salon, spa, interview, demo",
+                          voiceScript:
+                            "Namaste {customer_name} ji! {business_name} se aapki '{service_name}' booking ({date} at {time}) ke reminder ke liye call hai. Kya aap confirm karte hain?",
+                          whatsappMessage:
+                            "*🔔 Booking Reminder — {business_name}*\n\nNamaste *{customer_name}* ji!\nAapki *{service_name}* booking *{date}* ko *{time}* par *{staff_name}* ke saath scheduled hai.",
+                        };
+                        setAutomationForm((prev) => ({
+                          ...prev,
+                          bookingTypeTemplates: [...(prev.bookingTypeTemplates || []), newTpl],
+                        }));
+                        setSelectedTemplateId(newId);
+                      }}
+                      className="h-7 text-xs gap-1 border-blue-500/40 text-blue-600"
+                    >
+                      <Plus className="w-3 h-3" /> + Add Booking Type
+                    </Button>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="p-4 space-y-4 text-xs">
+                  {/* Booking Type Selector Tabs */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {(automationForm.bookingTypeTemplates || []).map((tpl) => (
+                      <Button
+                        key={tpl.id}
+                        type="button"
+                        size="sm"
+                        variant={selectedTemplateId === tpl.id ? "default" : "outline"}
+                        onClick={() => setSelectedTemplateId(tpl.id)}
+                        className={`h-8 text-xs font-medium ${
+                          selectedTemplateId === tpl.id
+                            ? "bg-blue-600 hover:bg-blue-700 text-white"
+                            : ""
+                        }`}
+                      >
+                        {tpl.label}
+                      </Button>
+                    ))}
+                  </div>
+
+                  {/* Active Template Editor */}
+                  {(() => {
+                    const activeTpl =
+                      (automationForm.bookingTypeTemplates || []).find((t) => t.id === selectedTemplateId) ||
+                      automationForm.bookingTypeTemplates?.[0];
+                    if (!activeTpl) return null;
+
+                    const updateActiveTpl = (patch: Partial<BookingTypeTemplate>) => {
+                      setAutomationForm((prev) => ({
+                        ...prev,
+                        bookingTypeTemplates: prev.bookingTypeTemplates.map((t) =>
+                          t.id === activeTpl.id ? { ...t, ...patch } : t
+                        ),
+                      }));
+                    };
+
+                    return (
+                      <div className="space-y-3 p-3 rounded-xl border bg-muted/20">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-semibold">Booking Category Name</Label>
+                            <Input
+                              value={activeTpl.label}
+                              onChange={(e) => updateActiveTpl({ label: e.target.value })}
+                              className="h-8 text-xs"
+                              placeholder="e.g. 🏥 Doctor Consultation"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-semibold">
+                              Auto-Match Keywords (comma separated)
+                            </Label>
+                            <Input
+                              value={activeTpl.serviceKeywords}
+                              onChange={(e) => updateActiveTpl({ serviceKeywords: e.target.value })}
+                              disabled={activeTpl.id === "general"}
+                              className="h-8 text-xs"
+                              placeholder="e.g. doctor, clinic, dental, neurology"
+                            />
+                            <p className="text-[10px] text-muted-foreground">
+                              {activeTpl.id === "general"
+                                ? "Default fallback template when no specific keyword matches."
+                                : "If appointment Service/Purpose contains any of these words, this template is used automatically."}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Dynamic Variable Pills */}
+                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                          <span className="text-[10px] font-semibold text-muted-foreground">
+                            Dynamic Variables (auto-replaced per customer):
+                          </span>
+                          {[
+                            "{customer_name}",
+                            "{service_name}",
+                            "{date}",
+                            "{time}",
+                            "{staff_name}",
+                            "{business_name}",
+                          ].map((v) => (
+                            <Badge
+                              key={v}
+                              variant="secondary"
+                              className="text-[10px] font-mono px-1.5 py-0 cursor-pointer hover:bg-blue-500/20"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(v);
+                                toast({ title: `Copied ${v}`, description: "Paste anywhere in the script or message below." });
+                              }}
+                            >
+                              {v}
+                            </Badge>
+                          ))}
+                        </div>
+
+                        {/* AI Voice Call Script for this Booking Type */}
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                            <Phone className="w-3.5 h-3.5" />
+                            AI Voice Call Opening Script (What AI Speaks on Reminder Call)
+                          </Label>
+                          <Textarea
+                            rows={3}
+                            value={activeTpl.voiceScript}
+                            onChange={(e) => updateActiveTpl({ voiceScript: e.target.value })}
+                            className="text-xs"
+                            placeholder="Namaste {customer_name} ji! ..."
+                          />
+                        </div>
+
+                        {/* WhatsApp & Email Message for this Booking Type */}
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            WhatsApp & Email Reminder Message Template
+                          </Label>
+                          <Textarea
+                            rows={5}
+                            value={activeTpl.whatsappMessage}
+                            onChange={(e) => updateActiveTpl({ whatsappMessage: e.target.value })}
+                            className="text-xs font-mono"
+                            placeholder="*🔔 Appointment Reminder*..."
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* RIGHT COLUMN (5 cols): AUTOMATIC NO-SHOW DETECTION & AI RECOVERY CONTROLLER */}
+            <div className="lg:col-span-5 space-y-6">
+              <Card className="border-orange-500/30">
+                <CardHeader className="pb-3 border-b bg-orange-500/[0.04]">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <CardTitle className="text-sm font-bold flex items-center gap-2">
+                        <UserX className="w-4 h-4 text-orange-500" />
+                        4. Automatic No-Show Detection & AI Recovery
+                      </CardTitle>
+                      <CardDescription className="text-xs mt-0.5">
+                        If a customer doesn't attend on time, automatically mark as No-Show & trigger an AI Reschedule Call + WhatsApp.
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {automationForm.autoNoShowEnabled ? "Auto ON" : "Paused"}
+                      </span>
+                      <Switch
+                        checked={automationForm.autoNoShowEnabled}
+                        onCheckedChange={(checked) =>
+                          setAutomationForm((prev) => ({ ...prev, autoNoShowEnabled: checked }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="p-4 space-y-4 text-xs">
+                  {/* When to detect No-Show */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold">
+                        Trigger No-Show Recovery After Appointment Time Passes By:
+                      </Label>
+                      <Badge variant="outline" className="text-[10px] border-orange-500/40 text-orange-600 dark:text-orange-400">
+                        {automationForm.noShowAfterMinutes >= 60 && automationForm.noShowAfterMinutes % 60 === 0
+                          ? `${automationForm.noShowAfterMinutes / 60} Hour(s) after`
+                          : `${automationForm.noShowAfterMinutes} Mins after`}
+                      </Badge>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: "15 Mins after", mins: 15 },
+                        { label: "30 Mins after", mins: 30 },
+                        { label: "1 Hour after", mins: 60 },
+                        { label: "2 Hours after", mins: 120 },
+                        { label: "4 Hours after", mins: 240 },
+                        { label: "24 Hours after", mins: 1440 },
+                      ].map((preset) => (
+                        <Button
+                          key={preset.mins}
+                          type="button"
+                          size="sm"
+                          variant={automationForm.noShowAfterMinutes === preset.mins ? "default" : "outline"}
+                          onClick={() => {
+                            setAutomationForm((prev) => ({ ...prev, noShowAfterMinutes: preset.mins }));
+                            if (preset.mins >= 60 && preset.mins % 60 === 0) {
+                              setCustomNoShowUnit("hours");
+                              setCustomNoShowValue(preset.mins / 60);
+                            } else {
+                              setCustomNoShowUnit("minutes");
+                              setCustomNoShowValue(preset.mins);
+                            }
+                          }}
+                          className={`h-7 text-[11px] px-2.5 ${
+                            automationForm.noShowAfterMinutes === preset.mins
+                              ? "bg-orange-600 hover:bg-orange-700 text-white"
+                              : ""
+                          }`}
+                        >
+                          {preset.label}
+                        </Button>
+                      ))}
+                    </div>
+
+                    {/* Custom No-Show Wait Time */}
+                    <div className="flex items-center gap-2 bg-muted/30 p-2.5 rounded-lg border">
+                      <span className="text-[11px] font-medium text-muted-foreground">✏️ Custom Wait:</span>
+                      <Input
+                        type="number"
+                        min={5}
+                        max={2880}
+                        value={customNoShowValue}
+                        onChange={(e) => {
+                          const val = Math.max(1, Number(e.target.value) || 1);
+                          setCustomNoShowValue(val);
+                          const mult = customNoShowUnit === "hours" ? 60 : 1;
+                          setAutomationForm((prev) => ({ ...prev, noShowAfterMinutes: val * mult }));
+                        }}
+                        className="h-7 w-20 text-xs"
+                      />
+                      <Select
+                        value={customNoShowUnit}
+                        onValueChange={(u: "minutes" | "hours") => {
+                          setCustomNoShowUnit(u);
+                          const mult = u === "hours" ? 60 : 1;
+                          setAutomationForm((prev) => ({
+                            ...prev,
+                            noShowAfterMinutes: customNoShowValue * mult,
+                          }));
+                        }}
+                      >
+                        <SelectTrigger className="h-7 w-28 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="minutes">Minutes</SelectItem>
+                          <SelectItem value="hours">Hours</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <span className="text-[11px] text-muted-foreground">after appointment</span>
+                    </div>
+                  </div>
+
+                  {/* No-Show Channels */}
+                  <div className="space-y-2.5 pt-3 border-t">
+                    <Label className="text-xs font-bold">No-Show Recovery Channels & AI Agent</Label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className="p-2.5 rounded-lg border bg-card flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-3.5 h-3.5 text-orange-500" />
+                          <span className="font-medium">AI Recovery Call</span>
+                        </div>
+                        <Switch
+                          checked={automationForm.noShowChannels.voiceCall}
+                          onCheckedChange={(checked) =>
+                            setAutomationForm((prev) => ({
+                              ...prev,
+                              noShowChannels: { ...prev.noShowChannels, voiceCall: checked },
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="p-2.5 rounded-lg border bg-card flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
+                          <span className="font-medium">WhatsApp Msg</span>
+                        </div>
+                        <Switch
+                          checked={automationForm.noShowChannels.whatsapp}
+                          onCheckedChange={(checked) =>
+                            setAutomationForm((prev) => ({
+                              ...prev,
+                              noShowChannels: { ...prev.noShowChannels, whatsapp: checked },
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {automationForm.noShowChannels.voiceCall && (
+                      <div className="space-y-1.5 pt-1">
+                        <Label className="text-[11px] font-semibold">Select AI Agent for No-Show Reschedule Calls</Label>
+                        <Select
+                          value={automationForm.noShowAgentId || "default"}
+                          onValueChange={(val) =>
+                            setAutomationForm((prev) => ({ ...prev, noShowAgentId: val }))
+                          }
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Auto-select Default Agent" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default">✨ Auto-Select Primary Agent</SelectItem>
+                            {agentsList.map((ag) => (
+                              <SelectItem key={ag.id} value={ag.id}>
+                                🤖 {ag.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* No-Show Scripts */}
+                  <div className="space-y-3 pt-3 border-t">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-orange-600 dark:text-orange-400 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5" />
+                        No-Show AI Voice Recovery Script
+                      </Label>
+                      <Textarea
+                        rows={3}
+                        value={automationForm.noShowVoiceScript}
+                        onChange={(e) =>
+                          setAutomationForm((prev) => ({ ...prev, noShowVoiceScript: e.target.value }))
+                        }
+                        className="text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        No-Show WhatsApp Reschedule Message
+                      </Label>
+                      <Textarea
+                        rows={4}
+                        value={automationForm.noShowWhatsappMessage}
+                        onChange={(e) =>
+                          setAutomationForm((prev) => ({ ...prev, noShowWhatsappMessage: e.target.value }))
+                        }
+                        className="text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={() => saveAutomationMutation.mutate(automationForm)}
+                    disabled={saveAutomationMutation.isPending}
+                    className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold gap-1.5 shadow-sm mt-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {saveAutomationMutation.isPending ? "Saving..." : "Save All Automation Rules"}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════
+          DIALOG 0: SEND / TEST CUSTOM APPOINTMENT REMINDER MODAL
+      ════════════════════════════════════════════════════════════ */}
+      <Dialog open={reminderDialogOpen} onOpenChange={setReminderDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold flex items-center gap-2">
+              <Bell className="w-4 h-4 text-amber-500" />
+              Send / Test Appointment Reminder
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Automatically matched booking template for{" "}
+              <strong className="text-foreground">{selectedVisitForReminder?.contactName}</strong> (
+              {selectedVisitForReminder?.serviceName || "General Booking"}). You can send immediately or customize the script below.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedVisitForReminder && (
+            <div className="space-y-3.5 py-1 text-xs">
+              {/* Booking Type Template Switcher */}
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Booking Type / Template</Label>
+                <Select
+                  value={manualReminderForm.bookingTypeId}
+                  onValueChange={(tplId) => {
+                    const found = (automationForm.bookingTypeTemplates || []).find((t) => t.id === tplId);
+                    if (found && selectedVisitForReminder) {
+                      const replaceVars = (str: string) =>
+                        str
+                          .replace(/\{customer_name\}/gi, selectedVisitForReminder.contactName || "Customer")
+                          .replace(/\{service_name\}/gi, selectedVisitForReminder.serviceName || "Scheduled Appointment")
+                          .replace(/\{date\}/gi, selectedVisitForReminder.appointmentDate || "")
+                          .replace(/\{time\}/gi, selectedVisitForReminder.appointmentTime || "")
+                          .replace(/\{staff_name\}/gi, selectedVisitForReminder.assignedStaffName || "our specialist")
+                          .replace(/\{business_name\}/gi, brandName);
+                      setManualReminderForm((prev) => ({
+                        ...prev,
+                        bookingTypeId: tplId,
+                        customVoiceScript: replaceVars(found.voiceScript),
+                        customWhatsappMessage: replaceVars(found.whatsappMessage),
+                      }));
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(automationForm.bookingTypeTemplates || []).map((tpl) => (
+                      <SelectItem key={tpl.id} value={tpl.id}>
+                        {tpl.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Channels */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="p-2 rounded-lg border flex items-center justify-between">
+                  <span className="font-medium">📞 AI Call</span>
+                  <Switch
+                    checked={manualReminderForm.triggerVoiceCall}
+                    onCheckedChange={(c) => setManualReminderForm((p) => ({ ...p, triggerVoiceCall: c }))}
+                  />
+                </div>
+                <div className="p-2 rounded-lg border flex items-center justify-between">
+                  <span className="font-medium">💬 WhatsApp</span>
+                  <Switch
+                    checked={manualReminderForm.triggerWhatsapp}
+                    onCheckedChange={(c) => setManualReminderForm((p) => ({ ...p, triggerWhatsapp: c }))}
+                  />
+                </div>
+                <div className="p-2 rounded-lg border flex items-center justify-between">
+                  <span className="font-medium">📧 Email</span>
+                  <Switch
+                    checked={manualReminderForm.triggerEmail}
+                    onCheckedChange={(c) => setManualReminderForm((p) => ({ ...p, triggerEmail: c }))}
+                  />
+                </div>
+              </div>
+
+              {manualReminderForm.triggerVoiceCall && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold">AI Voice Agent</Label>
+                    <Select
+                      value={manualReminderForm.customAgentId}
+                      onValueChange={(v) => setManualReminderForm((p) => ({ ...p, customAgentId: v }))}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">✨ Primary Agent</SelectItem>
+                        {agentsList.map((ag) => (
+                          <SelectItem key={ag.id} value={ag.id}>
+                            🤖 {ag.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold">Call Timing</Label>
+                    <Select
+                      value={String(manualReminderForm.delaySeconds)}
+                      onValueChange={(v) => setManualReminderForm((p) => ({ ...p, delaySeconds: Number(v) }))}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="15">⚡ Call Now (in 15 sec)</SelectItem>
+                        <SelectItem value="60">In 1 Minute</SelectItem>
+                        <SelectItem value="300">In 5 Minutes</SelectItem>
+                        <SelectItem value="900">In 15 Minutes</SelectItem>
+                        <SelectItem value="1800">In 30 Minutes</SelectItem>
+                        <SelectItem value="3600">In 1 Hour</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              {manualReminderForm.triggerVoiceCall && (
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-amber-600">AI Voice Call Script</Label>
+                  <Textarea
+                    rows={3}
+                    value={manualReminderForm.customVoiceScript}
+                    onChange={(e) => setManualReminderForm((p) => ({ ...p, customVoiceScript: e.target.value }))}
+                    className="text-xs"
+                  />
+                </div>
+              )}
+
+              {(manualReminderForm.triggerWhatsapp || manualReminderForm.triggerEmail) && (
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-emerald-600">WhatsApp / Email Message</Label>
+                  <Textarea
+                    rows={4}
+                    value={manualReminderForm.customWhatsappMessage}
+                    onChange={(e) => setManualReminderForm((p) => ({ ...p, customWhatsappMessage: e.target.value }))}
+                    className="text-xs font-mono"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setReminderDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={sendReminderMutation.isPending || !selectedVisitForReminder}
+              onClick={() => {
+                if (!selectedVisitForReminder) return;
+                sendReminderMutation.mutate({
+                  visitId: selectedVisitForReminder.id,
+                  triggerVoiceCall: manualReminderForm.triggerVoiceCall,
+                  triggerWhatsapp: manualReminderForm.triggerWhatsapp,
+                  triggerEmail: manualReminderForm.triggerEmail,
+                  customAgentId: manualReminderForm.customAgentId,
+                  delaySeconds: manualReminderForm.delaySeconds,
+                  customVoiceScript: manualReminderForm.customVoiceScript,
+                  customWhatsappMessage: manualReminderForm.customWhatsappMessage,
+                });
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold gap-1.5"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              {sendReminderMutation.isPending ? "Sending..." : "Dispatch Reminder Now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ════════════════════════════════════════════════════════════
           DIALOG 1: APPOINT / REASSIGN STAFF MEMBER

@@ -883,13 +883,19 @@ salesTeamRouter.post('/site-visits/:id/send-reminder', async (req: Request, res:
 
   try {
     const { id } = req.params;
-    const { triggerVoiceCall } = req.body || {};
+    const { triggerVoiceCall, triggerWhatsapp, triggerEmail, customVoiceScript, customWhatsappMessage, customAgentId, delaySeconds } = req.body || {};
     const { AppointmentRecoveryService } = await import('../services/appointment-recovery.service');
     const result = await AppointmentRecoveryService.sendAppointmentReminder({
       appointmentId: id,
       userId,
       reminderType: 'manual',
-      triggerVoiceCall: Boolean(triggerVoiceCall),
+      triggerVoiceCall: triggerVoiceCall !== undefined ? Boolean(triggerVoiceCall) : undefined,
+      triggerWhatsapp: triggerWhatsapp !== undefined ? Boolean(triggerWhatsapp) : undefined,
+      triggerEmail: triggerEmail !== undefined ? Boolean(triggerEmail) : undefined,
+      customVoiceScript,
+      customWhatsappMessage,
+      customAgentId,
+      delaySeconds: delaySeconds !== undefined ? Number(delaySeconds) : undefined,
     });
     res.json(result);
   } catch (error: any) {
@@ -905,17 +911,49 @@ salesTeamRouter.post('/site-visits/:id/no-show-recovery', async (req: Request, r
 
   try {
     const { id } = req.params;
-    const { delaySeconds, notes } = req.body || {};
+    const { delaySeconds, notes, customVoiceScript, customWhatsappMessage, customAgentId } = req.body || {};
     const { AppointmentRecoveryService } = await import('../services/appointment-recovery.service');
     const result = await AppointmentRecoveryService.triggerNoShowRecovery({
       appointmentId: id,
       userId,
       delaySeconds: delaySeconds ? Number(delaySeconds) : 30,
       notes,
+      customVoiceScript,
+      customWhatsappMessage,
+      customAgentId,
     });
     res.json(result);
   } catch (error: any) {
     logger.error(`[SalesTeam] Error triggering no-show recovery: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 13B. GET & PUT /api/sales-team/reminder-automation-config ──
+salesTeamRouter.get('/reminder-automation-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { AppointmentRecoveryService } = await import('../services/appointment-recovery.service');
+    const config = await AppointmentRecoveryService.getAutomationConfig(userId);
+    res.json(config);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error fetching reminder automation config: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.put('/reminder-automation-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { AppointmentRecoveryService } = await import('../services/appointment-recovery.service');
+    const saved = await AppointmentRecoveryService.saveAutomationConfig(userId, req.body || {});
+    res.json(saved);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error saving reminder automation config: ${error.message}`, error, 'SalesTeam');
     res.status(500).json({ error: error.message });
   }
 });
