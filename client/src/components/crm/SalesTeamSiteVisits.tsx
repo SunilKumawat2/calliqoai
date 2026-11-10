@@ -305,8 +305,28 @@ export function SalesTeamSiteVisits() {
 
   useEffect(() => {
     if (savedAutomationConfig) {
-      setAutomationForm(savedAutomationConfig);
-      if (savedAutomationConfig.bookingTypeTemplates?.length > 0 && !selectedTemplateId) {
+      const raw = savedAutomationConfig as any;
+      const safeReminderChannels = {
+        whatsapp: raw.reminderChannels?.whatsapp ?? raw.reminderWhatsappEnabled ?? true,
+        email: raw.reminderChannels?.email ?? raw.reminderEmailEnabled ?? true,
+        voiceCall: raw.reminderChannels?.voiceCall ?? raw.reminderVoiceCallEnabled ?? true,
+      };
+      const safeNoShowChannels = {
+        whatsapp: raw.noShowChannels?.whatsapp ?? raw.noShowWhatsappEnabled ?? true,
+        voiceCall: raw.noShowChannels?.voiceCall ?? raw.noShowVoiceCallEnabled ?? true,
+      };
+      setAutomationForm((prev) => ({
+        ...prev,
+        ...savedAutomationConfig,
+        reminderChannels: safeReminderChannels,
+        noShowChannels: safeNoShowChannels,
+        bookingTypeTemplates:
+          Array.isArray(savedAutomationConfig.bookingTypeTemplates) &&
+          savedAutomationConfig.bookingTypeTemplates.length > 0
+            ? savedAutomationConfig.bookingTypeTemplates
+            : prev.bookingTypeTemplates,
+      }));
+      if (savedAutomationConfig.bookingTypeTemplates?.length > 0) {
         setSelectedTemplateId(savedAutomationConfig.bookingTypeTemplates[0].id);
       }
       // Sync custom time helper states
@@ -2384,11 +2404,11 @@ export function SalesTeamSiteVisits() {
                           <span className="font-medium">AI Voice Call</span>
                         </div>
                         <Switch
-                          checked={automationForm.reminderChannels.voiceCall}
+                          checked={automationForm.reminderChannels?.voiceCall ?? true}
                           onCheckedChange={(checked) =>
                             setAutomationForm((prev) => ({
                               ...prev,
-                              reminderChannels: { ...prev.reminderChannels, voiceCall: checked },
+                              reminderChannels: { ...(prev.reminderChannels || { whatsapp: true, email: true, voiceCall: true }), voiceCall: checked },
                             }))
                           }
                         />
@@ -2400,11 +2420,11 @@ export function SalesTeamSiteVisits() {
                           <span className="font-medium">WhatsApp Msg</span>
                         </div>
                         <Switch
-                          checked={automationForm.reminderChannels.whatsapp}
+                          checked={automationForm.reminderChannels?.whatsapp ?? true}
                           onCheckedChange={(checked) =>
                             setAutomationForm((prev) => ({
                               ...prev,
-                              reminderChannels: { ...prev.reminderChannels, whatsapp: checked },
+                              reminderChannels: { ...(prev.reminderChannels || { whatsapp: true, email: true, voiceCall: true }), whatsapp: checked },
                             }))
                           }
                         />
@@ -2416,18 +2436,18 @@ export function SalesTeamSiteVisits() {
                           <span className="font-medium">Email Alert</span>
                         </div>
                         <Switch
-                          checked={automationForm.reminderChannels.email}
+                          checked={automationForm.reminderChannels?.email ?? true}
                           onCheckedChange={(checked) =>
                             setAutomationForm((prev) => ({
                               ...prev,
-                              reminderChannels: { ...prev.reminderChannels, email: checked },
+                              reminderChannels: { ...(prev.reminderChannels || { whatsapp: true, email: true, voiceCall: true }), email: checked },
                             }))
                           }
                         />
                       </div>
                     </div>
 
-                    {automationForm.reminderChannels.voiceCall && (
+                    {(automationForm.reminderChannels?.voiceCall ?? true) && (
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20">
                         <div className="flex items-center gap-2">
                           <Bot className="w-4 h-4 text-amber-600" />
@@ -2760,11 +2780,11 @@ export function SalesTeamSiteVisits() {
                           <span className="font-medium">AI Recovery Call</span>
                         </div>
                         <Switch
-                          checked={automationForm.noShowChannels.voiceCall}
+                          checked={automationForm.noShowChannels?.voiceCall ?? true}
                           onCheckedChange={(checked) =>
                             setAutomationForm((prev) => ({
                               ...prev,
-                              noShowChannels: { ...prev.noShowChannels, voiceCall: checked },
+                              noShowChannels: { ...(prev.noShowChannels || { whatsapp: true, voiceCall: true }), voiceCall: checked },
                             }))
                           }
                         />
@@ -2776,18 +2796,18 @@ export function SalesTeamSiteVisits() {
                           <span className="font-medium">WhatsApp Msg</span>
                         </div>
                         <Switch
-                          checked={automationForm.noShowChannels.whatsapp}
+                          checked={automationForm.noShowChannels?.whatsapp ?? true}
                           onCheckedChange={(checked) =>
                             setAutomationForm((prev) => ({
                               ...prev,
-                              noShowChannels: { ...prev.noShowChannels, whatsapp: checked },
+                              noShowChannels: { ...(prev.noShowChannels || { whatsapp: true, voiceCall: true }), whatsapp: checked },
                             }))
                           }
                         />
                       </div>
                     </div>
 
-                    {automationForm.noShowChannels.voiceCall && (
+                    {(automationForm.noShowChannels?.voiceCall ?? true) && (
                       <div className="space-y-1.5 pt-1">
                         <Label className="text-[11px] font-semibold">Select AI Agent for No-Show Reschedule Calls</Label>
                         <Select

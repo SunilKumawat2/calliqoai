@@ -40,6 +40,11 @@ export interface ReminderAutomationConfig {
   reminderAgentId: string;        // 'default' or specific agent UUID
   reminderWhatsappEnabled: boolean;
   reminderEmailEnabled: boolean;
+  reminderChannels: {
+    whatsapp: boolean;
+    email: boolean;
+    voiceCall: boolean;
+  };
   activeBookingPreset: string;    // 'default' | 'doctor_clinic' | 'real_estate' | 'custom'
   bookingTypeTemplates: BookingTypeTemplate[];
 
@@ -49,6 +54,10 @@ export interface ReminderAutomationConfig {
   noShowVoiceCallEnabled: boolean;
   noShowAgentId: string;          // 'default' or specific agent UUID
   noShowWhatsappEnabled: boolean;
+  noShowChannels: {
+    whatsapp: boolean;
+    voiceCall: boolean;
+  };
   noShowVoiceScript: string;
   noShowWhatsappMessage: string;
 }
@@ -69,6 +78,11 @@ export class AppointmentRecoveryService {
       reminderAgentId: 'default',
       reminderWhatsappEnabled: true,
       reminderEmailEnabled: true,
+      reminderChannels: {
+        whatsapp: true,
+        email: true,
+        voiceCall: true,
+      },
       activeBookingPreset: 'default',
       bookingTypeTemplates: [
         {
@@ -113,6 +127,10 @@ export class AppointmentRecoveryService {
       noShowVoiceCallEnabled: true,
       noShowAgentId: 'default',
       noShowWhatsappEnabled: true,
+      noShowChannels: {
+        whatsapp: true,
+        voiceCall: true,
+      },
       noShowVoiceScript:
         'नमस्ते {customer_name} जी, मैं {business_name} से बात कर रहा हूँ। आज {date} को {time} बजे आपकी {service_name} अपॉइंटमेंट शेड्यूल थी, लेकिन शायद व्यस्तता के कारण आप नहीं आ पाए। क्या मैं आपकी अपॉइंटमेंट किसी नए समय या कल के लिए री-शेड्यूल कर दूँ?',
       noShowWhatsappMessage:
@@ -134,9 +152,25 @@ export class AppointmentRecoveryService {
 
       if (row && row.designJson && typeof row.designJson === 'object') {
         const saved = row.designJson as Partial<ReminderAutomationConfig>;
+        const reminderChannels = {
+          whatsapp: saved.reminderChannels?.whatsapp ?? saved.reminderWhatsappEnabled ?? defaults.reminderWhatsappEnabled,
+          email: saved.reminderChannels?.email ?? saved.reminderEmailEnabled ?? defaults.reminderEmailEnabled,
+          voiceCall: saved.reminderChannels?.voiceCall ?? saved.reminderVoiceCallEnabled ?? defaults.reminderVoiceCallEnabled,
+        };
+        const noShowChannels = {
+          whatsapp: saved.noShowChannels?.whatsapp ?? saved.noShowWhatsappEnabled ?? defaults.noShowWhatsappEnabled,
+          voiceCall: saved.noShowChannels?.voiceCall ?? saved.noShowVoiceCallEnabled ?? defaults.noShowVoiceCallEnabled,
+        };
         return {
           ...defaults,
           ...saved,
+          reminderChannels,
+          reminderWhatsappEnabled: reminderChannels.whatsapp,
+          reminderEmailEnabled: reminderChannels.email,
+          reminderVoiceCallEnabled: reminderChannels.voiceCall,
+          noShowChannels,
+          noShowWhatsappEnabled: noShowChannels.whatsapp,
+          noShowVoiceCallEnabled: noShowChannels.voiceCall,
           bookingTypeTemplates:
             Array.isArray(saved.bookingTypeTemplates) && saved.bookingTypeTemplates.length > 0
               ? saved.bookingTypeTemplates
@@ -157,9 +191,40 @@ export class AppointmentRecoveryService {
     partialConfig: Partial<ReminderAutomationConfig>
   ): Promise<ReminderAutomationConfig> {
     const current = await this.getAutomationConfig(userId);
+    const reminderChannels = {
+      whatsapp:
+        partialConfig.reminderChannels?.whatsapp ??
+        partialConfig.reminderWhatsappEnabled ??
+        current.reminderChannels.whatsapp,
+      email:
+        partialConfig.reminderChannels?.email ??
+        partialConfig.reminderEmailEnabled ??
+        current.reminderChannels.email,
+      voiceCall:
+        partialConfig.reminderChannels?.voiceCall ??
+        partialConfig.reminderVoiceCallEnabled ??
+        current.reminderChannels.voiceCall,
+    };
+    const noShowChannels = {
+      whatsapp:
+        partialConfig.noShowChannels?.whatsapp ??
+        partialConfig.noShowWhatsappEnabled ??
+        current.noShowChannels.whatsapp,
+      voiceCall:
+        partialConfig.noShowChannels?.voiceCall ??
+        partialConfig.noShowVoiceCallEnabled ??
+        current.noShowChannels.voiceCall,
+    };
     const merged: ReminderAutomationConfig = {
       ...current,
       ...partialConfig,
+      reminderChannels,
+      reminderWhatsappEnabled: reminderChannels.whatsapp,
+      reminderEmailEnabled: reminderChannels.email,
+      reminderVoiceCallEnabled: reminderChannels.voiceCall,
+      noShowChannels,
+      noShowWhatsappEnabled: noShowChannels.whatsapp,
+      noShowVoiceCallEnabled: noShowChannels.voiceCall,
       bookingTypeTemplates:
         Array.isArray(partialConfig.bookingTypeTemplates) && partialConfig.bookingTypeTemplates.length > 0
           ? partialConfig.bookingTypeTemplates
