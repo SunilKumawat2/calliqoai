@@ -1432,108 +1432,30 @@ export function SalesTeamSiteVisits() {
       {/* ── TAB 1: APPOINTMENTS & BOOKINGS ── */}
       {activeSubTab === "visits" && (
         <div className="space-y-4">
-          {/* Search Bar + Lifecycle Stage Filters */}
-          <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+          {/* Clean Search Bar + Secondary Quick Filters (No duplicate stat buttons) */}
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between bg-muted/25 p-2.5 rounded-lg border">
             {/* Search Input */}
-            <div className="relative w-full lg:w-72">
+            <div className="relative flex-1 max-w-md">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search client, phone, staff, service..."
+                placeholder="Search patient/client name, phone, doctor/staff, or service..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 h-8 text-xs"
+                className="pl-9 h-8 text-xs bg-background"
               />
             </div>
 
-            {/* Lifecycle Filter Buttons */}
+            {/* Compact Secondary Filters (Needs Staff, Cancelled, Active Filter Reset) */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              {/* New & Incoming */}
-              <Button
-                variant={statusFilter === "new" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("new")}
-                className={`h-7 text-xs px-2.5 gap-1.5 ${
-                  statusFilter === "new"
-                    ? "bg-sky-600 hover:bg-sky-700 text-white"
-                    : newVisits.length > 0
-                    ? "border-sky-500/40 text-sky-700 dark:text-sky-300 font-semibold"
-                    : ""
-                }`}
-              >
-                <Clock className="w-3 h-3 text-sky-500" />
-                New & Incoming
-                <Badge className="ml-1 bg-sky-500/20 text-sky-800 dark:text-sky-200 border-none text-[10px] px-1 py-0 font-bold">
-                  {newVisits.length}
-                </Badge>
-              </Button>
-
-              {/* Confirmed */}
-              <Button
-                variant={statusFilter === "confirmed" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("confirmed")}
-                className={`h-7 text-xs px-2.5 gap-1.5 ${
-                  statusFilter === "confirmed"
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                    : "border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
-                }`}
-              >
-                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                Confirmed ({confirmedVisits.length})
-              </Button>
-
-              {/* Upcoming */}
-              <Button
-                variant={statusFilter === "upcoming" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("upcoming")}
-                className={`h-7 text-xs px-2.5 gap-1.5 ${
-                  statusFilter === "upcoming"
-                    ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                    : "border-indigo-500/30 text-indigo-700 dark:text-indigo-300"
-                }`}
-              >
-                <CalendarClock className="w-3 h-3 text-indigo-500" />
-                Upcoming ({upcomingVisits.length})
-              </Button>
-
-              {/* Past Appointments */}
-              <Button
-                variant={statusFilter === "past" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("past")}
-                className={`h-7 text-xs px-2.5 gap-1.5 ${
-                  statusFilter === "past"
-                    ? "bg-purple-600 hover:bg-purple-700 text-white"
-                    : "border-purple-500/30 text-purple-700 dark:text-purple-300"
-                }`}
-              >
-                <CalendarCheck className="w-3 h-3 text-purple-500" />
-                Past Appointments ({pastVisits.length})
-              </Button>
-
-              {/* Cancelled */}
-              <Button
-                variant={statusFilter === "cancelled" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter("cancelled")}
-                className={`h-7 text-xs px-2.5 gap-1.5 ${
-                  statusFilter === "cancelled"
-                    ? "bg-red-600 hover:bg-red-700 text-white"
-                    : cancelledVisits.length > 0
-                    ? "border-red-500/30 text-red-700 dark:text-red-300"
-                    : ""
-                }`}
-              >
-                <XCircle className="w-3 h-3 text-red-500" />
-                Cancelled ({cancelledVisits.length})
-              </Button>
+              <span className="text-[11px] text-muted-foreground mr-1 hidden md:inline">
+                Click any top card to filter, or:
+              </span>
 
               {/* Needs Staff Filter */}
               <Button
                 variant={statusFilter === "unassigned" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setStatusFilter("unassigned")}
+                onClick={() => setStatusFilter(statusFilter === "unassigned" ? "all" : "unassigned")}
                 className={`h-7 text-xs px-2.5 gap-1.5 ${
                   statusFilter === "unassigned"
                     ? "bg-amber-600 hover:bg-amber-700 text-white"
@@ -1546,32 +1468,35 @@ export function SalesTeamSiteVisits() {
                 Needs Staff ({unassignedVisits.length})
               </Button>
 
-              {/* Overdue & No-Show Filter (Manager View) */}
+              {/* Cancelled */}
               <Button
-                variant={statusFilter === "overdue" ? "default" : "outline"}
+                variant={statusFilter === "cancelled" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setStatusFilter("overdue")}
+                onClick={() => setStatusFilter(statusFilter === "cancelled" ? "all" : "cancelled")}
                 className={`h-7 text-xs px-2.5 gap-1.5 ${
-                  statusFilter === "overdue"
-                    ? "bg-orange-600 hover:bg-orange-700 text-white"
-                    : overdueVisits.length > 0
-                    ? "border-orange-500/40 text-orange-700 dark:text-orange-400 font-semibold"
+                  statusFilter === "cancelled"
+                    ? "bg-red-600 hover:bg-red-700 text-white"
+                    : cancelledVisits.length > 0
+                    ? "border-red-500/30 text-red-700 dark:text-red-300"
                     : ""
                 }`}
               >
-                <UserX className="w-3 h-3 text-orange-500" />
-                Overdue & No-Show ({overdueVisits.length})
+                <XCircle className="w-3 h-3 text-red-500" />
+                Cancelled ({cancelledVisits.length})
               </Button>
 
-              {/* All */}
-              <Button
-                variant={statusFilter === "all" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setStatusFilter("all")}
-                className="h-7 text-xs px-2"
-              >
-                All ({visitsList.length})
-              </Button>
+              {/* Reset to All when filtered */}
+              {statusFilter !== "all" && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setStatusFilter("all")}
+                  className="h-7 text-xs px-2.5 gap-1 font-medium"
+                >
+                  <X className="w-3 h-3" />
+                  Show All ({visitsList.length})
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1844,71 +1769,44 @@ export function SalesTeamSiteVisits() {
                         </div>
                       )}
 
-                      {/* Bottom Action Controls Toolbar */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t">
-                        {/* Left Actions: Lifecycle status updates */}
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {/* Confirm Button (for New/Scheduled) */}
+                      {/* Bottom Action Controls Toolbar (Clean 3-4 Primary Buttons + More Actions Menu) */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t">
+                        {/* Left Actions: Core Primary Actions Only */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* 1. Confirm Button (for New/Scheduled) */}
                           {!confirmed && !completed && !cancelled && (
                             <Button
                               size="sm"
                               onClick={() => confirmAppointmentMutation.mutate(visit.id)}
                               disabled={confirmAppointmentMutation.isPending}
-                              className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
+                              className="h-7 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               Confirm Appointment
                             </Button>
                           )}
 
-                          {/* Direct Google Calendar Button */}
-                          {visit.googleCalendarEventId ? (
-                            <a
-                              href={getGoogleCalendarUrl(visit)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="h-7 inline-flex items-center gap-1.5 px-2.5 rounded-md text-xs font-semibold border border-indigo-500/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-500/60 transition-all cursor-pointer shadow-2xs group"
-                              title="Click to open and view this exact booking in Google Calendar"
-                            >
-                              <CalendarDays className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
-                              <span>View in Google Calendar</span>
-                              <ExternalLink className="w-3 h-3 text-indigo-500" />
-                            </a>
-                          ) : gcalStatus?.connected ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => pushToCalendarMutation.mutate(visit.id)}
-                              disabled={pushToCalendarMutation.isPending}
-                              className="h-7 text-xs gap-1 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-                              title="Push this booking to Google Calendar"
-                            >
-                              <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
-                              {pushToCalendarMutation.isPending ? "Syncing..." : "Sync to Google Calendar"}
-                            </Button>
-                          ) : null}
-
-                          {/* Mark Completed Button */}
+                          {/* 2. Mark Attended / Completed Button */}
                           {!completed && !cancelled && (
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => openCompleteModal(visit)}
-                              className="h-7 text-xs gap-1 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40"
+                              className="h-7 text-xs gap-1.5 border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40"
                             >
                               <CalendarCheck className="w-3.5 h-3.5 text-purple-600" />
-                              Mark Attended / Completed
+                              Mark Attended
                             </Button>
                           )}
 
-                          {/* Send Reminder Button (Opens Dynamic Reminder Preview/Override Modal) */}
+                          {/* 3. Send Reminder Button */}
                           {!completed && !cancelled && (
                             <Button
                               size="sm"
                               variant="outline"
                               disabled={sendReminderMutation.isPending}
                               onClick={() => openReminderModal(visit)}
-                              className="h-7 text-xs gap-1 border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                              className="h-7 text-xs gap-1.5 border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40"
                               title="Send or test customized AI Voice Reminder Call, WhatsApp & Email reminder"
                             >
                               <Bell className="w-3.5 h-3.5 text-amber-600" />
@@ -1916,48 +1814,16 @@ export function SalesTeamSiteVisits() {
                             </Button>
                           )}
 
-                          {/* No-Show Recovery Button (AI Recovery Call + WhatsApp Reschedule) */}
-                          {!completed && !cancelled && visit.status !== "no_show" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={noShowRecoveryMutation.isPending}
-                              onClick={() => {
-                                if (confirm(`Mark ${visit.contactName} as No-Show and trigger AI Recovery Call + WhatsApp reschedule message?`)) {
-                                  noShowRecoveryMutation.mutate({ visitId: visit.id });
-                                }
-                              }}
-                              className="h-7 text-xs gap-1 border-orange-500/40 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/40"
-                              title="Mark as No-Show and automatically schedule an AI Voice Call & WhatsApp to reschedule"
-                            >
-                              <UserX className="w-3.5 h-3.5 text-orange-600" />
-                              No-Show (AI Recovery)
-                            </Button>
-                          )}
-
-                          {/* Reschedule Button */}
-                          {!completed && (
+                          {/* 4. Reschedule Button */}
+                          {!completed && !cancelled && (
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => openRescheduleModal(visit)}
-                              className="h-7 text-xs gap-1 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                              className="h-7 text-xs gap-1.5 border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
                             >
                               <CalendarClock className="w-3.5 h-3.5 text-indigo-600" />
                               Reschedule
-                            </Button>
-                          )}
-
-                          {/* Cancel Button */}
-                          {!cancelled && !completed && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openCancelModal(visit)}
-                              className="h-7 text-xs gap-1 border-red-500/30 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
-                            >
-                              <XCircle className="w-3.5 h-3.5 text-red-500" />
-                              Cancel
                             </Button>
                           )}
 
@@ -1967,7 +1833,7 @@ export function SalesTeamSiteVisits() {
                               size="sm"
                               variant="outline"
                               onClick={() => openRescheduleModal(visit)}
-                              className="h-7 text-xs gap-1 border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50"
+                              className="h-7 text-xs gap-1.5 border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50"
                             >
                               <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
                               Reopen & Reschedule
@@ -1975,30 +1841,89 @@ export function SalesTeamSiteVisits() {
                           )}
                         </div>
 
-                        {/* Right Actions: 1-Click WhatsApp Dispatches */}
+                        {/* Right Actions: Clean Dropdown Menu for All Secondary Actions */}
                         <div className="flex items-center gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => sendStaffWhatsApp(visit)}
-                            disabled={unassigned}
-                            title={unassigned ? "Assign staff first to notify" : "Send WhatsApp briefing to assigned staff"}
-                            className="h-7 text-xs gap-1.5 border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 disabled:opacity-40"
-                          >
-                            <MessageSquare className="w-3 h-3 text-emerald-600" />
-                            Notify Staff
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1.5 px-2.5 font-medium"
+                              >
+                                <MoreHorizontal className="w-3.5 h-3.5" />
+                                More Actions
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              {/* Notify Client via WhatsApp */}
+                              <DropdownMenuItem
+                                onClick={() => sendClientWhatsApp(visit)}
+                                className="text-xs gap-2 cursor-pointer"
+                              >
+                                <Send className="w-3.5 h-3.5 text-blue-500" />
+                                <span>Notify Client (WhatsApp)</span>
+                              </DropdownMenuItem>
 
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => sendClientWhatsApp(visit)}
-                            title="Send WhatsApp confirmation & staff details to client"
-                            className="h-7 text-xs gap-1.5 border-blue-500/30 text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                          >
-                            <Send className="w-3 h-3 text-blue-600" />
-                            Notify Client
-                          </Button>
+                              {/* Notify Staff via WhatsApp */}
+                              <DropdownMenuItem
+                                onClick={() => sendStaffWhatsApp(visit)}
+                                disabled={unassigned}
+                                className="text-xs gap-2 cursor-pointer"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
+                                <span>Notify Staff (WhatsApp)</span>
+                              </DropdownMenuItem>
+
+                              {/* Google Calendar Sync or Open */}
+                              {visit.googleCalendarEventId ? (
+                                <DropdownMenuItem
+                                  onClick={() => window.open(getGoogleCalendarUrl(visit), "_blank", "noopener,noreferrer")}
+                                  className="text-xs gap-2 cursor-pointer"
+                                >
+                                  <CalendarDays className="w-3.5 h-3.5 text-indigo-500" />
+                                  <span>View in Google Calendar</span>
+                                </DropdownMenuItem>
+                              ) : gcalStatus?.connected ? (
+                                <DropdownMenuItem
+                                  onClick={() => pushToCalendarMutation.mutate(visit.id)}
+                                  disabled={pushToCalendarMutation.isPending}
+                                  className="text-xs gap-2 cursor-pointer"
+                                >
+                                  <CalendarDays className="w-3.5 h-3.5 text-indigo-500" />
+                                  <span>Sync to Google Calendar</span>
+                                </DropdownMenuItem>
+                              ) : null}
+
+                              <div className="h-px bg-border my-1" />
+
+                              {/* Mark No-Show (AI Recovery) */}
+                              {!completed && !cancelled && visit.status !== "no_show" && (
+                                <DropdownMenuItem
+                                  disabled={noShowRecoveryMutation.isPending}
+                                  onClick={() => {
+                                    if (confirm(`Mark ${visit.contactName} as No-Show and trigger AI Recovery Call + WhatsApp reschedule message?`)) {
+                                      noShowRecoveryMutation.mutate({ visitId: visit.id });
+                                    }
+                                  }}
+                                  className="text-xs gap-2 cursor-pointer text-orange-600 dark:text-orange-400"
+                                >
+                                  <UserX className="w-3.5 h-3.5 text-orange-500" />
+                                  <span>No-Show (AI Recovery Call)</span>
+                                </DropdownMenuItem>
+                              )}
+
+                              {/* Cancel Appointment */}
+                              {!cancelled && !completed && (
+                                <DropdownMenuItem
+                                  onClick={() => openCancelModal(visit)}
+                                  className="text-xs gap-2 cursor-pointer text-red-600 dark:text-red-400"
+                                >
+                                  <XCircle className="w-3.5 h-3.5 text-red-500" />
+                                  <span>Cancel Appointment</span>
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
                     </CardContent>

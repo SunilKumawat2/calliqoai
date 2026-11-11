@@ -2518,7 +2518,8 @@ export default function CRMPage() {
             </div>
           </div>
 
-          {/* Stats Cards Row - Lead Counts by Category */}
+          {/* Stats Cards Row - Lead Counts by Category (Hidden on Staff & Appointments tab to avoid double stat rows) */}
+          {viewMode !== "sales_team" && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
             {/* All Leads Card */}
             <Card 
@@ -2565,10 +2566,13 @@ export default function CRMPage() {
               );
             })}
           </div>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 px-6 py-3 border-b bg-muted/30">
+      <div className="flex flex-wrap items-center gap-4 px-6 py-2.5 border-b bg-muted/30">
+        {viewMode !== "sales_team" && (
+          <>
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -2718,6 +2722,8 @@ export default function CRMPage() {
               ))}
             </SelectContent>
           </Select>
+        )}
+          </>
         )}
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
