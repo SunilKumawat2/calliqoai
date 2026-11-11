@@ -2496,6 +2496,43 @@ export default function CRMPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={backfillCategoriesMutation.isPending}
+                    data-testid="refresh-leads"
+                    title="Refresh Options"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-1.5 ${backfillCategoriesMutation.isPending ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem 
+                    onClick={() => {
+                      queryClientRef.invalidateQueries({ predicate: (query) => {
+                        const key = query.queryKey[0];
+                        if (typeof key !== 'string') return false;
+                        return key.startsWith('/api/crm/leads/');
+                      }});
+                    }}
+                    data-testid="quick-refresh"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    {t("crmPage.quickRefresh")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => backfillCategoriesMutation.mutate()}
+                    data-testid="recategorize-leads"
+                  >
+                    <Zap className="w-4 h-4 mr-2" />
+                    {t("crmPage.recategorizeAll")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -2518,8 +2555,111 @@ export default function CRMPage() {
             </div>
           </div>
 
-          {/* Stats Cards Row - Lead Counts by Category (Hidden on Staff & Appointments tab to avoid double stat rows) */}
-          {viewMode !== "sales_team" && (
+          {/* Main CRM Navigation Tabs Bar (Full Width, Cleanly Aligned) */}
+          <div className="pt-2 border-t border-border/50">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <button
+                type="button"
+                onClick={() => setViewMode("kanban")}
+                data-testid="view-kanban"
+                title={t("crmPage.kanbanView")}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  viewMode === "kanban"
+                    ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                    : "bg-card/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+                <span>Kanban Board</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                data-testid="view-list"
+                title={t("crmPage.listView")}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  viewMode === "list"
+                    ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                    : "bg-card/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <List className="w-3.5 h-3.5 shrink-0" />
+                <span>Leads List</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode("analytics")}
+                data-testid="view-analytics"
+                title={t("crmPage.analyticsView")}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  viewMode === "analytics"
+                    ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                    : "bg-card/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5 shrink-0" />
+                <span>Analytics</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode("integrations")}
+                data-testid="view-integrations"
+                title="Google Sheets & Calendar Sync"
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  viewMode === "integrations"
+                    ? "bg-emerald-600 text-white border-emerald-500 shadow-xs"
+                    : "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15"
+                }`}
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Integrations & Sync</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("sales_team");
+                  setSalesBannerDismissed(true);
+                }}
+                data-testid="view-sales-team"
+                title="Staff & Appointments"
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  viewMode === "sales_team"
+                    ? "bg-blue-600 text-white border-blue-500 shadow-xs"
+                    : "bg-blue-500/5 border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/15"
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Staff & Appointments</span>
+                {unassignedVisitsCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-bold shrink-0">
+                    {unassignedVisitsCount} New
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode("whitelabel")}
+                data-testid="view-whitelabel"
+                title={AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry Setup" : "Clinic & Brand Customization"}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  viewMode === "whitelabel"
+                    ? "bg-purple-600 text-white border-purple-500 shadow-xs"
+                    : "bg-purple-500/5 border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/15"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry" : "Brand Customization"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Stats Cards Row - Lead Counts by Category (Shown only on Lead Views) */}
+          {(viewMode === "kanban" || viewMode === "list" || viewMode === "analytics") && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
             {/* All Leads Card */}
             <Card 
@@ -2570,9 +2710,9 @@ export default function CRMPage() {
         </div>
       </div>
 
+      {/* Lead Search & Filter Bar (Only shown on Kanban / List views) */}
+      {(viewMode === "kanban" || viewMode === "list") && (
       <div className="flex flex-wrap items-center gap-4 px-6 py-2.5 border-b bg-muted/30">
-        {viewMode !== "sales_team" && (
-          <>
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -2723,140 +2863,8 @@ export default function CRMPage() {
             </SelectContent>
           </Select>
         )}
-          </>
-        )}
-
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                disabled={backfillCategoriesMutation.isPending}
-                data-testid="refresh-leads"
-                title="Refresh Options"
-              >
-                <RefreshCw className={`w-4 h-4 ${backfillCategoriesMutation.isPending ? 'animate-spin' : ''}`} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem 
-                onClick={() => {
-                  queryClientRef.invalidateQueries({ predicate: (query) => {
-                    const key = query.queryKey[0];
-                    if (typeof key !== 'string') return false;
-                    return key.startsWith('/api/crm/leads/');
-                  }});
-                }}
-                data-testid="quick-refresh"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                {t("crmPage.quickRefresh")}
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => backfillCategoriesMutation.mutate()}
-                data-testid="recategorize-leads"
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                {t("crmPage.recategorizeAll")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          
-          <div className="h-6 w-px bg-border mx-1" />
-          
-          <div className="flex items-center rounded-lg border bg-background p-1 gap-1">
-            <Button
-              variant={viewMode === "kanban" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("kanban")}
-              data-testid="view-kanban"
-              title={t("crmPage.kanbanView")}
-              className="h-8 text-xs gap-1.5 px-2.5 font-medium"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Kanban</span>
-            </Button>
-            <Button
-              variant={viewMode === "list" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("list")}
-              data-testid="view-list"
-              title={t("crmPage.listView")}
-              className="h-8 text-xs gap-1.5 px-2.5 font-medium"
-            >
-              <List className="w-3.5 h-3.5" />
-              <span>List</span>
-            </Button>
-            <Button
-              variant={viewMode === "analytics" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("analytics")}
-              data-testid="view-analytics"
-              title={t("crmPage.analyticsView")}
-              className="h-8 text-xs gap-1.5 px-2.5 font-medium"
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>Analytics</span>
-            </Button>
-            <Button
-              variant={viewMode === "integrations" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("integrations")}
-              data-testid="view-integrations"
-              title="Google Sheets & Calendar Sync"
-              className={`h-8 text-xs gap-1.5 px-3 font-medium transition-colors ${
-                viewMode === "integrations" 
-                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-500/30" 
-                  : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-              }`}
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Integrations & Sync</span>
-            </Button>
-            <Button
-              variant={viewMode === "sales_team" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => {
-                setViewMode("sales_team");
-                setSalesBannerDismissed(true);
-              }}
-              data-testid="view-sales-team"
-              title="Staff & Appointments"
-              className={`h-8 text-xs gap-1.5 px-3 font-medium transition-colors ${
-                viewMode === "sales_team" 
-                  ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 font-semibold border border-blue-500/30" 
-                  : "text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30"
-              }`}
-            >
-              <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Staff & Appointments</span>
-              {unassignedVisitsCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-bold animate-pulse">
-                  {unassignedVisitsCount} New
-                </span>
-              )}
-            </Button>
-            <Button
-              variant={viewMode === "whitelabel" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => {
-                setViewMode("whitelabel");
-              }}
-              data-testid="view-whitelabel"
-              title={AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry Setup" : "Clinic & Brand Customization"}
-              className={`h-8 text-xs gap-1.5 px-3 font-medium transition-colors ${
-                viewMode === "whitelabel" 
-                  ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 font-semibold border border-purple-500/30" 
-                  : "text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30"
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-              <span>{AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry" : "Brand Customization"}</span>
-            </Button>
-          </div>
-        </div>
       </div>
+      )}
 
       {/* ── TOP NOTIFICATION ALERT BANNER FOR UNASSIGNED SITE VISITS ── */}
       {unassignedVisitsCount > 0 && viewMode !== "sales_team" && !salesBannerDismissed && (
