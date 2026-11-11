@@ -1139,131 +1139,135 @@ export function SalesTeamSiteVisits() {
         </div>
       )}
 
-      {/* ── TOP HEADER & CONTROLS ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b">
+      {/* ── TOP HEADER & CONTROLS (Stacked: Title on Top, Action Toolbar Below) ── */}
+      <div className="flex flex-col gap-3 pb-3 border-b">
         <div>
           <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <Users className="w-5 h-5 text-blue-600" />
-            Staff & Appointments Management
+            <Users className="w-5 h-5 text-blue-600 shrink-0" />
+            <span>Staff & Appointments Management</span>
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             Real-time appointment alerts, staff assignment, Google Calendar sync, and instant WhatsApp briefings.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          {/* Refresh Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              refetchVisits();
-              queryClient.invalidateQueries({ queryKey: ["/api/sales-team"] });
-              refetchGCalStatus();
-              toast({ title: "Refreshed", description: "Checked for new appointments and staff updates." });
-            }}
-            className="h-8 gap-1.5 text-xs"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Refresh
-          </Button>
-
-          {/* Google Calendar Status & 1-Click Sync */}
-          {gcalStatus?.connected ? (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Refresh Button */}
             <Button
               variant="outline"
               size="sm"
-              onClick={() => syncCalendarMutation.mutate()}
-              disabled={syncCalendarMutation.isPending}
-              title={`Connected as ${gcalStatus.email || 'Google User'}. Click to force sync now.`}
-              className="h-8 gap-1.5 text-xs border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 font-medium shadow-xs"
-            >
-              <span className="relative flex h-2 w-2 mr-0.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <CalendarDays className={`w-3.5 h-3.5 text-emerald-600 ${syncCalendarMutation.isPending ? "animate-spin" : ""}`} />
-              {syncCalendarMutation.isPending ? "Syncing..." : `Google Calendar (${gcalStatus.email?.split('@')[0] || 'Synced'})`}
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                try {
-                  const res = await apiRequest("GET", "/api/google-calendar/auth");
-                  const data = await res.json();
-                  if (data.url) window.location.href = data.url;
-                } catch (err: any) {
-                  toast({ title: "Connection Error", description: err.message, variant: "destructive" });
-                }
+              onClick={() => {
+                refetchVisits();
+                queryClient.invalidateQueries({ queryKey: ["/api/sales-team"] });
+                refetchGCalStatus();
+                toast({ title: "Refreshed", description: "Checked for new appointments and staff updates." });
               }}
-              className="h-8 gap-1.5 text-xs border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium"
+              className="h-8 gap-1.5 text-xs"
             >
-              <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
-              Connect Google Calendar
+              <RefreshCw className="w-3.5 h-3.5" />
+              Refresh
             </Button>
-          )}
 
-          {/* Company Email Setup */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setActiveSubTab("email")}
-            title={smtpData?.configured ? `Connected: ${smtpData.settings?.fromEmail}` : "Setup company email gateway for briefings"}
-            className={`h-8 gap-1.5 text-xs font-medium shadow-xs ${
-              smtpData?.configured
-                ? "border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40"
-                : "border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-            }`}
-          >
-            <Mail className={`w-3.5 h-3.5 ${smtpData?.configured ? "text-purple-600" : "text-blue-600"}`} />
-            {smtpData?.configured ? (
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                Company Email ({smtpData.settings?.fromEmail?.split("@")[0] || "Custom"})
-              </span>
+            {/* Google Calendar Status & 1-Click Sync */}
+            {gcalStatus?.connected ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => syncCalendarMutation.mutate()}
+                disabled={syncCalendarMutation.isPending}
+                title={`Connected as ${gcalStatus.email || 'Google User'}. Click to force sync now.`}
+                className="h-8 gap-1.5 text-xs border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 font-medium shadow-xs"
+              >
+                <span className="relative flex h-2 w-2 mr-0.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <CalendarDays className={`w-3.5 h-3.5 text-emerald-600 ${syncCalendarMutation.isPending ? "animate-spin" : ""}`} />
+                {syncCalendarMutation.isPending ? "Syncing..." : `Google Calendar (${gcalStatus.email?.split('@')[0] || 'Synced'})`}
+              </Button>
             ) : (
-              "Setup Company Email"
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const res = await apiRequest("GET", "/api/google-calendar/auth");
+                    const data = await res.json();
+                    if (data.url) window.location.href = data.url;
+                  } catch (err: any) {
+                    toast({ title: "Connection Error", description: err.message, variant: "destructive" });
+                  }
+                }}
+                className="h-8 gap-1.5 text-xs border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium"
+              >
+                <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+                Connect Google Calendar
+              </Button>
             )}
-          </Button>
 
-          {/* Book New Appointment Button */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setCreateVisitForm({
-                contactName: "",
-                contactPhone: "",
-                contactEmail: "",
-                serviceName: "",
-                appointmentDate: new Date().toISOString().split("T")[0],
-                appointmentTime: "",
-                staffId: "",
-                notes: "",
-                notifyWhatsApp: true,
-              });
-              setCreateVisitDialogOpen(true);
-            }}
-            className="h-8 gap-1.5 text-xs border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50 font-medium"
-          >
-            <Plus className="w-3.5 h-3.5 text-blue-600" />
-            + Book New Appointment
-          </Button>
+            {/* Company Email Setup */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveSubTab("email")}
+              title={smtpData?.configured ? `Connected: ${smtpData.settings?.fromEmail}` : "Setup company email gateway for briefings"}
+              className={`h-8 gap-1.5 text-xs font-medium shadow-xs ${
+                smtpData?.configured
+                  ? "border-purple-500/40 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-950/40"
+                  : "border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+              }`}
+            >
+              <Mail className={`w-3.5 h-3.5 ${smtpData?.configured ? "text-purple-600" : "text-blue-600"}`} />
+              {smtpData?.configured ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  Company Email ({smtpData.settings?.fromEmail?.split("@")[0] || "Custom"})
+                </span>
+              ) : (
+                "Setup Company Email"
+              )}
+            </Button>
+          </div>
 
-          {/* Add Staff Button */}
-          <Button
-            size="sm"
-            onClick={() => {
-              resetStaffForm();
-              setStaffDialogOpen(true);
-            }}
-            className="h-8 gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-xs"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            Add Staff Member
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Book New Appointment Button */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setCreateVisitForm({
+                  contactName: "",
+                  contactPhone: "",
+                  contactEmail: "",
+                  serviceName: "",
+                  appointmentDate: new Date().toISOString().split("T")[0],
+                  appointmentTime: "",
+                  staffId: "",
+                  notes: "",
+                  notifyWhatsApp: true,
+                });
+                setCreateVisitDialogOpen(true);
+              }}
+              className="h-8 gap-1.5 text-xs border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-50 font-medium"
+            >
+              <Plus className="w-3.5 h-3.5 text-blue-600" />
+              Book New Appointment
+            </Button>
+
+            {/* Add Staff Button */}
+            <Button
+              size="sm"
+              onClick={() => {
+                resetStaffForm();
+                setStaffDialogOpen(true);
+              }}
+              className="h-8 gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-xs"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              Add Staff Member
+            </Button>
+          </div>
         </div>
       </div>
 
