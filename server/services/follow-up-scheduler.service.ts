@@ -792,6 +792,32 @@ export class FollowUpSchedulerService {
         }
       }
 
+      const cleanContextDetails = contextNote.replace(/^\[CUSTOM_GREETING\]:\s*[\s\S]*?\s*\|\|\|\s*/, '').trim();
+      const appointmentSystemPrompt = isNoShowRecovery
+        ? `You are a polite, warm, and professional appointment coordinator calling from ${businessName}.
+You are calling ${customerName || 'the customer'} regarding their missed appointment today.
+Appointment Context: ${cleanContextDetails}
+Your opening message already spoken to the customer is: "${firstMessage}"
+
+CRITICAL RULES FOR THIS CALL:
+1. You ONLY represent ${businessName} to help reschedule their missed appointment. NEVER mention any political survey, MLA, election, party, or unrelated topic.
+2. Speak naturally and politely in the same language as your opening message (${isHindi ? 'Hindi / Hinglish' : 'English'}).
+3. Ask politely if they would like to reschedule their appointment for a new date and time.
+4. If they share a preferred new date or time, confirm it warmly, assure them our team has noted their new slot, and thank them politely.
+5. Keep every response concise (1-2 sentences), warm, and helpful.`
+        : `You are a polite, warm, and professional appointment coordinator calling from ${businessName}.
+You are calling ${customerName || 'the customer'} to remind them about their upcoming scheduled appointment.
+Appointment Context: ${cleanContextDetails}
+Your opening message already spoken to the customer is: "${firstMessage}"
+
+CRITICAL RULES FOR THIS CALL:
+1. You ONLY represent ${businessName} for this appointment reminder call. NEVER mention any political survey, MLA, election, party, or unrelated topic.
+2. Speak naturally and politely in the same language as your opening message (${isHindi ? 'Hindi / Hinglish' : 'English'}).
+3. Confirm whether the customer will attend their scheduled appointment on time.
+4. If the customer confirms ("Haan", "Yes", "I will come"), thank them warmly and wish them a great day.
+5. If the customer asks to reschedule or has a question about timing/staff, note their preferred new time politely, assure them our team will update their booking, and thank them.
+6. Keep every response concise (1-2 sentences), warm, and conversational.`;
+
       const baseSystemPrompt = agentRecord.systemPrompt || 'You are a professional AI assistant.';
       const followUpContext = isOutboundMissed ? `\n\n[OUTBOUND UNANSWERED AUTO-RETRY & QUALIFICATION MODE]:
 You are now calling back ${customerName || 'the customer'} at ${destinationNumber}.
@@ -828,6 +854,11 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
 4. If the customer is STILL busy or driving:
    - Politely ask when would be a better time to call them back and confirm politely before ending the call.
 5. Maintain a natural, warm, conversational, and helpful tone throughout.`;
+
+      const finalSystemPromptForCall =
+        isAppointmentReminder || isNoShowRecovery
+          ? appointmentSystemPrompt
+          : `${baseSystemPrompt}${followUpContext}`;
 
       // Determine if this agent uses Plivo + ElevenLabs
       let isElevenLabs = Boolean(
@@ -876,7 +907,9 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
           agentConfig: {
             agentId: elAgentId,
             firstMessage,
-            language: agentRecord.language || undefined,
+            systemPrompt: (isAppointmentReminder || isNoShowRecovery) ? appointmentSystemPrompt : undefined,
+            allowOverrides: (isAppointmentReminder || isNoShowRecovery) ? true : undefined,
+            language: isHindi ? 'hi' : (agentRecord.language || undefined),
             voiceId: agentRecord.elevenLabsVoiceId || undefined,
             backgroundSound: agentRecord.backgroundSound || undefined,
           },
@@ -896,7 +929,7 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
         followUpCallId = result.callRecordId || null;
         triggeredCallUuid = result.callUuid || result.internalId || null;
       } else {
-        // Standard Plivo + OpenAI call (100% existing logic untouched)
+        // Standard Plivo + OpenAI call
         const voice = OpenAIAgentFactory.validateVoice(agentRecord.openaiVoice || PlivoEngineConfig.defaults.voice);
         const model = OpenAIAgentFactory.validateModel((agentRecord.config as any)?.openaiModel || agentRecord.llmModel || PlivoEngineConfig.defaults.model, 'pro');
 
@@ -911,7 +944,7 @@ CRITICAL INSTRUCTIONS FOR THIS FOLLOW-UP CALL:
           agentConfig: {
             voice,
             model,
-            systemPrompt: `${baseSystemPrompt}${followUpContext}`,
+            systemPrompt: finalSystemPromptForCall,
             firstMessage,
           },
         });

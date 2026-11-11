@@ -23,8 +23,11 @@ export interface OutboundCallParams {
   agentConfig?: {
     agentId: string;
     firstMessage?: string;
+    systemPrompt?: string;
+    allowOverrides?: boolean;
     language?: string;
     voiceId?: string;
+    backgroundSound?: string | null;
     dynamicData?: Record<string, string>;
   };
   plivoAuthId: string;

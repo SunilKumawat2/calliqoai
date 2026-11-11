@@ -82,6 +82,7 @@ interface BookingTypeTemplate {
   serviceKeywords: string;
   voiceScript: string;
   whatsappMessage: string;
+  agentId?: string;
 }
 
 interface ReminderAutomationConfig {
@@ -908,7 +909,7 @@ export function SalesTeamSiteVisits() {
     const s = (visit.serviceName || "").toLowerCase();
     let matched = templates[0];
     for (const tpl of templates) {
-      if (tpl.id === "general") continue;
+      if (tpl.id === "general" || tpl.id === "default") continue;
       const keywords = (tpl.serviceKeywords || "")
         .split(",")
         .map((k) => k.trim().toLowerCase())
@@ -937,7 +938,9 @@ export function SalesTeamSiteVisits() {
       triggerVoiceCall: automationForm.reminderChannels?.voiceCall ?? true,
       triggerWhatsapp: automationForm.reminderChannels?.whatsapp ?? true,
       triggerEmail: automationForm.reminderChannels?.email ?? true,
-      customAgentId: automationForm.reminderAgentId || "default",
+      customAgentId: (chosen as any).agentId && (chosen as any).agentId !== "default"
+        ? (chosen as any).agentId
+        : (automationForm.reminderAgentId || "default"),
       delaySeconds: 15,
       customVoiceScript: interpolatePreview(chosen.voiceScript),
       customWhatsappMessage: interpolatePreview(chosen.whatsappMessage),
@@ -2562,7 +2565,7 @@ export function SalesTeamSiteVisits() {
 
                     return (
                       <div className="space-y-3 p-3 rounded-xl border bg-muted/20">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div className="space-y-1">
                             <Label className="text-[11px] font-semibold">Booking Category Name</Label>
                             <Input
@@ -2579,14 +2582,39 @@ export function SalesTeamSiteVisits() {
                             <Input
                               value={activeTpl.serviceKeywords}
                               onChange={(e) => updateActiveTpl({ serviceKeywords: e.target.value })}
-                              disabled={activeTpl.id === "general"}
+                              disabled={activeTpl.id === "general" || activeTpl.id === "default"}
                               className="h-8 text-xs"
                               placeholder="e.g. doctor, clinic, dental, neurology"
                             />
                             <p className="text-[10px] text-muted-foreground">
-                              {activeTpl.id === "general"
+                              {activeTpl.id === "general" || activeTpl.id === "default"
                                 ? "Default fallback template when no specific keyword matches."
-                                : "If appointment Service/Purpose contains any of these words, this template is used automatically."}
+                                : "Matches when Service/Purpose contains any of these words."}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] font-semibold flex items-center gap-1">
+                              <Bot className="w-3 h-3 text-blue-500" />
+                              AI Voice Agent for this Category
+                            </Label>
+                            <Select
+                              value={activeTpl.agentId || "default"}
+                              onValueChange={(val) => updateActiveTpl({ agentId: val })}
+                            >
+                              <SelectTrigger className="h-8 text-xs bg-background">
+                                <SelectValue placeholder="Smart Auto-Match Agent" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="default">✨ Smart Auto-Match by Booking Type</SelectItem>
+                                {agentsList.map((ag) => (
+                                  <SelectItem key={ag.id} value={ag.id}>
+                                    🤖 {ag.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <p className="text-[10px] text-muted-foreground">
+                              Automatically speaks the script below using this agent's voice.
                             </p>
                           </div>
                         </div>

@@ -181,21 +181,40 @@ export class ElevenLabsBridgeService {
       try {
         await syncAgentBackgroundSoundInElevenLabs(session.agentId, elevenLabsApiKey, bgSoundKey, noiseCancellation);
         // Ensure turn_timeout is 30s, natural speed, and eager turn responsiveness on ElevenLabs
-        fetch(`https://api.elevenlabs.io/v1/convai/agents/${session.agentId}`, {
+        const patchBody: any = {
+          conversation_config: {
+            tts: { speed: 1.2 },
+            agent: { disable_first_message_interruptions: false },
+            turn: { mode: "turn", turn_eagerness: "eager", turn_timeout: 30 },
+            // vad: { background_voice_detection: true } // Commented out as requested - Plivo telecom noise cancellation handles line cleanly without dropping user speech
+          },
+          ...(agentConfig?.allowOverrides
+            ? {
+                platform_settings: {
+                  overrides: {
+                    conversation_config_override: {
+                      agent: {
+                        prompt: { prompt: true },
+                        first_message: true,
+                        language: true,
+                      },
+                    },
+                  },
+                },
+              }
+            : {}),
+        };
+        const patchPromise = fetch(`https://api.elevenlabs.io/v1/convai/agents/${session.agentId}`, {
           method: 'PATCH',
           headers: {
             'xi-api-key': elevenLabsApiKey,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            conversation_config: {
-              tts: { speed: 1.2 },
-              agent: { disable_first_message_interruptions: false },
-              turn: { mode: "turn", turn_eagerness: "eager", turn_timeout: 30 },
-              // vad: { background_voice_detection: true } // Commented out as requested - Plivo telecom noise cancellation handles line cleanly without dropping user speech
-            }
-          })
+          body: JSON.stringify(patchBody)
         }).catch(() => {});
+        if (agentConfig?.allowOverrides) {
+          await patchPromise;
+        }
       } catch (syncErr: any) {
         logger.warn(`Failed background sound / noise filter REST sync: ${syncErr.message}`, undefined, 'PlivoElevenLabsBridge');
       }

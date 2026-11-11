@@ -28,6 +28,7 @@ export interface BookingTypeTemplate {
   serviceKeywords: string;
   voiceScript: string;
   whatsappMessage: string;
+  agentId?: string;
 }
 
 export interface ReminderAutomationConfig {
@@ -321,6 +322,80 @@ export class AppointmentRecoveryService {
   }
 
   /**
+   * Smartly resolve the best AI Agent for an Appointment Reminder / No-Show call.
+   * Never auto-selects political/election/MLA survey agents when 'default' is chosen,
+   * and matches hospital/clinic vs real-estate vs receptionist agents based on serviceName.
+   */
+  static async resolveBestAgentForAppointment(params: {
+    userId: string;
+    explicitAgentId?: string | null;
+    templateAgentId?: string | null;
+    globalAgentId?: string | null;
+    serviceName?: string | null;
+  }): Promise<string | null> {
+    const { userId, explicitAgentId, templateAgentId, globalAgentId, serviceName } = params;
+
+    if (explicitAgentId && explicitAgentId !== 'default') return explicitAgentId;
+    if (templateAgentId && templateAgentId !== 'default') return templateAgentId;
+    if (globalAgentId && globalAgentId !== 'default') return globalAgentId;
+
+    const userAgents = await db
+      .select({
+        id: agents.id,
+        name: agents.name,
+        systemPrompt: agents.systemPrompt,
+        telephonyProvider: agents.telephonyProvider,
+        elevenLabsAgentId: agents.elevenLabsAgentId,
+      })
+      .from(agents)
+      .where(eq(agents.userId, userId));
+
+    if (userAgents.length === 0) return null;
+
+    // Exclude political / MLA / election / feedback survey agents from auto-selection
+    const isSurveyOrMla = (a: typeof userAgents[0]) =>
+      /mla|election|survey|feedback|feedvack|muktsar|mukstar|party|voter|jagdeep|ajit/i.test(
+        `${a.name || ''} ${(a.systemPrompt || '').slice(0, 300)}`
+      );
+
+    const businessAgents = userAgents.filter((a) => !isSurveyOrMla(a));
+    const pool = businessAgents.length > 0 ? businessAgents : userAgents;
+
+    // Prefer Plivo+OpenAI ('plivo') agents over locked external templates when auto-matching,
+    // because Plivo+OpenAI executes custom per-call reminder scripts & prompts 100% natively
+    const sortedPool = [...pool].sort((a, b) => {
+      const aIsPlivoOpenAI = a.telephonyProvider === 'plivo' && !a.elevenLabsAgentId ? 0 : 1;
+      const bIsPlivoOpenAI = b.telephonyProvider === 'plivo' && !b.elevenLabsAgentId ? 0 : 1;
+      return aIsPlivoOpenAI - bIsPlivoOpenAI;
+    });
+
+    const s = (serviceName || '').toLowerCase();
+    const isMedical = /doctor|clinic|hospital|medical|dental|neurology|cardiology|checkup|opd|patient|health/i.test(s);
+    const isRealEstate = /site visit|property|flat|plot|villa|realty|real estate|home|project|residency|sector|tricity/i.test(s);
+
+    if (isMedical) {
+      const medAgent = sortedPool.find((a) =>
+        /hospital|clinic|doctor|medical|appointment/i.test(`${a.name || ''} ${(a.systemPrompt || '').slice(0, 200)}`)
+      );
+      if (medAgent) return medAgent.id;
+    }
+
+    if (isRealEstate) {
+      const reAgent = sortedPool.find((a) =>
+        /real estate|realty|property|tricity|home|site/i.test(`${a.name || ''} ${(a.systemPrompt || '').slice(0, 200)}`)
+      );
+      if (reAgent) return reAgent.id;
+    }
+
+    const receptionistOrBookingAgent = sortedPool.find((a) =>
+      /receptionist|appointment|booking|ivr|assistant/i.test(`${a.name || ''} ${(a.systemPrompt || '').slice(0, 200)}`)
+    );
+    if (receptionistOrBookingAgent) return receptionistOrBookingAgent.id;
+
+    return sortedPool[0]?.id || userAgents[0]?.id || null;
+  }
+
+  /**
    * Parse appointmentDate (YYYY-MM-DD) + appointmentTime (HH:mm or HH:mm AM/PM) into a JS Date
    */
   static parseAppointmentDateTime(dateStr: string, timeStr: string): Date | null {
@@ -471,19 +546,13 @@ export class AppointmentRecoveryService {
     let voiceCallScheduled = false;
     if (doVoice && cleanPhone) {
       try {
-        const chosenAgentConfigId = params.customAgentId || config.reminderAgentId;
-        let targetAgentId: string | null = null;
-
-        if (chosenAgentConfigId && chosenAgentConfigId !== 'default') {
-          targetAgentId = chosenAgentConfigId;
-        } else if (!apt.callId) {
-          const userAgents = await db
-            .select({ id: agents.id, elevenLabsAgentId: agents.elevenLabsAgentId })
-            .from(agents)
-            .where(eq(agents.userId, userId));
-          const preferredAgent = userAgents.find((a) => Boolean(a.elevenLabsAgentId)) || userAgents[0];
-          targetAgentId = preferredAgent?.id || null;
-        }
+        const targetAgentId = await this.resolveBestAgentForAppointment({
+          userId,
+          explicitAgentId: params.customAgentId,
+          templateAgentId: matchedTemplate?.agentId,
+          globalAgentId: config.reminderAgentId,
+          serviceName: apt.serviceName,
+        });
 
         await db.insert(scheduledFollowUps).values({
           userId,
@@ -636,19 +705,14 @@ export class AppointmentRecoveryService {
     let scheduledFollowUpId: string | undefined;
     if (cleanPhone && config.noShowVoiceCallEnabled) {
       try {
-        const chosenAgentConfigId = params.customAgentId || config.noShowAgentId;
-        let targetAgentId: string | null = null;
-
-        if (chosenAgentConfigId && chosenAgentConfigId !== 'default') {
-          targetAgentId = chosenAgentConfigId;
-        } else if (!apt.callId) {
-          const userAgents = await db
-            .select({ id: agents.id, elevenLabsAgentId: agents.elevenLabsAgentId })
-            .from(agents)
-            .where(eq(agents.userId, userId));
-          const preferredAgent = userAgents.find((a) => Boolean(a.elevenLabsAgentId)) || userAgents[0];
-          targetAgentId = preferredAgent?.id || null;
-        }
+        const matchedTemplate = this.resolveBookingTemplate(config, apt.serviceName);
+        const targetAgentId = await this.resolveBestAgentForAppointment({
+          userId,
+          explicitAgentId: params.customAgentId,
+          templateAgentId: matchedTemplate?.agentId,
+          globalAgentId: config.noShowAgentId,
+          serviceName: apt.serviceName,
+        });
 
         const [newFollowUp] = await db
           .insert(scheduledFollowUps)

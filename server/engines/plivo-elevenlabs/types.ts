@@ -20,6 +20,7 @@ export interface ElevenLabsAgentConfig {
   agentId: string;
   firstMessage?: string;
   systemPrompt?: string;
+  allowOverrides?: boolean;
   voiceId?: string;
   temperature?: number;
   maxDuration?: number;
