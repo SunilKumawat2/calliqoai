@@ -1139,26 +1139,42 @@ export function SalesTeamSiteVisits() {
         </div>
       )}
 
-      {/* ── TOP HEADER BANNER & SEGMENTED MODULE TABS ── */}
-      <div className="rounded-xl border border-border/80 bg-gradient-to-r from-blue-500/[0.07] via-indigo-500/[0.04] to-transparent p-4 shadow-xs space-y-4">
-        {/* Row 1: Title & Primary Action Buttons */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-500 shrink-0 mt-0.5">
-              <Users className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
-                Staff & Appointments Management
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Real-time appointment alerts, staff assignment, Google Calendar sync, and automated AI reminders.
-              </p>
-            </div>
+      {/* ── TOP HEADER BANNER & SEGMENTED MODULE TABS (3 Clean Stacked Rows) ── */}
+      <div className="rounded-xl border border-border/80 bg-gradient-to-r from-blue-500/[0.07] via-indigo-500/[0.04] to-transparent p-4 shadow-xs space-y-3.5">
+        {/* Row 1 (Full Width): Title & Description Only */}
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-500 shrink-0">
+            <Users className="w-5 h-5" />
           </div>
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold tracking-tight text-foreground">
+              Staff & Appointments Management
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Real-time appointment alerts, staff assignment, Google Calendar sync, and automated AI reminders.
+            </p>
+          </div>
+        </div>
 
-          {/* Primary Action Buttons + Status Pills */}
+        {/* Row 2 (Separate Row Below Title): Status Badges on Left + Action Buttons on Right */}
+        <div className="flex items-center justify-between gap-2 flex-wrap pt-2.5 border-t border-border/50">
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Refresh Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                refetchVisits();
+                queryClient.invalidateQueries({ queryKey: ["/api/sales-team"] });
+                refetchGCalStatus();
+                toast({ title: "Refreshed", description: "Checked for new appointments and staff updates." });
+              }}
+              className="h-8 gap-1.5 text-xs rounded-lg bg-background/60"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Refresh
+            </Button>
+
             {/* Google Calendar Status Pill */}
             {gcalStatus?.connected ? (
               <Button
@@ -1174,7 +1190,7 @@ export function SalesTeamSiteVisits() {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
                 <CalendarDays className={`w-3.5 h-3.5 text-emerald-500 ${syncCalendarMutation.isPending ? "animate-spin" : ""}`} />
-                {syncCalendarMutation.isPending ? "Syncing..." : `GCal: ${gcalStatus.email?.split('@')[0] || 'Synced'}`}
+                {syncCalendarMutation.isPending ? "Syncing..." : `Google Calendar (${gcalStatus.email?.split('@')[0] || 'Synced'})`}
               </Button>
             ) : (
               <Button
@@ -1192,26 +1208,35 @@ export function SalesTeamSiteVisits() {
                 className="h-8 gap-1.5 text-xs rounded-lg border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/15 font-medium"
               >
                 <CalendarDays className="w-3.5 h-3.5 text-indigo-500" />
-                Connect Calendar
+                Connect Google Calendar
               </Button>
             )}
 
-            {/* Refresh Button */}
+            {/* Company Email Status Pill */}
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                refetchVisits();
-                queryClient.invalidateQueries({ queryKey: ["/api/sales-team"] });
-                refetchGCalStatus();
-                toast({ title: "Refreshed", description: "Checked for new appointments and staff updates." });
-              }}
-              className="h-8 gap-1.5 text-xs rounded-lg bg-background/60"
+              onClick={() => setActiveSubTab("email")}
+              title={smtpData?.configured ? `Connected: ${smtpData.settings?.fromEmail}` : "Setup company email gateway"}
+              className={`h-8 gap-1.5 text-xs rounded-lg font-medium ${
+                smtpData?.configured
+                  ? "border-purple-500/40 bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20"
+                  : "border-blue-500/30 text-blue-700 dark:text-blue-300 hover:bg-blue-500/15"
+              }`}
             >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Refresh
+              <Mail className="w-3.5 h-3.5 text-purple-500" />
+              {smtpData?.configured ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  Company Email ({smtpData.settings?.fromEmail?.split("@")[0] || "Active"})
+                </span>
+              ) : (
+                "Setup Company Email"
+              )}
             </Button>
+          </div>
 
+          <div className="flex items-center gap-2 flex-wrap">
             {/* Book New Appointment Button */}
             <Button
               size="sm"
@@ -1232,7 +1257,7 @@ export function SalesTeamSiteVisits() {
               className="h-8 gap-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
-              Book Appointment
+              Book New Appointment
             </Button>
 
             {/* Add Staff Button */}
@@ -1250,100 +1275,103 @@ export function SalesTeamSiteVisits() {
           </div>
         </div>
 
-        {/* Row 2: Attractive Segmented Navigation Tabs Bar */}
-        <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-2 flex-wrap">
-          <div className="inline-flex items-center gap-1.5 p-1.5 rounded-xl bg-muted/70 border border-border/80 flex-wrap">
-            {/* Tab 1: Appointments & Bookings */}
-            <button
-              type="button"
-              onClick={() => setActiveSubTab("visits")}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+        {/* Row 3 (Separate Full-Width 4-Column Tab Bar): Never Wraps Awkwardly */}
+        <div className="pt-2.5 border-t border-border/50 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          {/* Tab 1: Appointments & Bookings */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("visits")}
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+              activeSubTab === "visits"
+                ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                : "bg-background/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+            }`}
+          >
+            <span className="flex items-center gap-2 truncate">
+              <CalendarDays className="w-4 h-4 shrink-0" />
+              <span className="truncate">Appointments & Bookings</span>
+            </span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
                 activeSubTab === "visits"
-                  ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/50"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/70"
+                  ? "bg-white/20 text-white"
+                  : "bg-muted text-foreground"
               }`}
             >
-              <CalendarDays className="w-3.5 h-3.5" />
-              <span>Appointments & Bookings</span>
-              <span
-                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                  activeSubTab === "visits"
-                    ? "bg-white/20 text-white"
-                    : "bg-muted-foreground/15 text-foreground"
-                }`}
-              >
-                {visitsList.length}
-              </span>
-            </button>
+              {visitsList.length}
+            </span>
+          </button>
 
-            {/* Tab 2: Staff & Team Members */}
-            <button
-              type="button"
-              onClick={() => setActiveSubTab("team")}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+          {/* Tab 2: Staff & Team Members */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("team")}
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+              activeSubTab === "team"
+                ? "bg-blue-600 text-white border-blue-500 shadow-sm"
+                : "bg-background/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+            }`}
+          >
+            <span className="flex items-center gap-2 truncate">
+              <Users className="w-4 h-4 shrink-0" />
+              <span className="truncate">Staff & Team Members</span>
+            </span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
                 activeSubTab === "team"
-                  ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/50"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/70"
+                  ? "bg-white/20 text-white"
+                  : "bg-muted text-foreground"
               }`}
             >
-              <Users className="w-3.5 h-3.5" />
-              <span>Staff & Team Members</span>
-              <span
-                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                  activeSubTab === "team"
-                    ? "bg-white/20 text-white"
-                    : "bg-muted-foreground/15 text-foreground"
-                }`}
-              >
-                {staffList.length}
+              {staffList.length}
+            </span>
+          </button>
+
+          {/* Tab 3: Auto-Reminder & Recovery Rules */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("automation")}
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+              activeSubTab === "automation"
+                ? "bg-amber-600 text-white border-amber-500 shadow-sm"
+                : "bg-amber-500/5 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15"
+            }`}
+          >
+            <span className="flex items-center gap-2 truncate">
+              <Bell className="w-4 h-4 shrink-0" />
+              <span className="truncate">Auto-Reminder Rules</span>
+            </span>
+            {automationForm.autoReminderEnabled && (
+              <span className="px-1.5 py-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wider shrink-0">
+                Auto ON
               </span>
-            </button>
+            )}
+          </button>
 
-            {/* Tab 3: Auto-Reminder & Recovery Rules */}
-            <button
-              type="button"
-              onClick={() => setActiveSubTab("automation")}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                activeSubTab === "automation"
-                  ? "bg-amber-600 text-white shadow-sm ring-1 ring-amber-500/50"
-                  : "text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
-              }`}
-            >
-              <Bell className="w-3.5 h-3.5" />
-              <span>Auto-Reminder & Recovery Rules</span>
-              {automationForm.autoReminderEnabled && (
-                <span className="px-1.5 py-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wider shadow-2xs">
-                  Auto ON
-                </span>
-              )}
-            </button>
-
-            {/* Tab 4: Email Setup & Templates */}
-            <button
-              type="button"
-              onClick={() => setActiveSubTab("email")}
-              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+          {/* Tab 4: Email Setup & Templates */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("email")}
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+              activeSubTab === "email"
+                ? "bg-purple-600 text-white border-purple-500 shadow-sm"
+                : "bg-background/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+            }`}
+          >
+            <span className="flex items-center gap-2 truncate">
+              <Mail className="w-4 h-4 shrink-0" />
+              <span className="truncate">Email Setup & Templates</span>
+            </span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${
                 activeSubTab === "email"
-                  ? "bg-purple-600 text-white shadow-sm ring-1 ring-purple-500/50"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/70"
+                  ? "bg-white/20 text-white"
+                  : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
               }`}
             >
-              <Mail className="w-3.5 h-3.5" />
-              <span>Email Setup & Templates</span>
-              {smtpData?.configured && (
-                <span
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                    activeSubTab === "email"
-                      ? "bg-white/20 text-white"
-                      : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                  }`}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  {smtpData.settings?.fromEmail?.split("@")[0] || "Active"}
-                </span>
-              )}
-            </button>
-          </div>
+              {smtpData?.configured ? "Active" : "Setup"}
+            </span>
+          </button>
         </div>
       </div>
 
