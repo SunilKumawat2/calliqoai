@@ -31,6 +31,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CRMIntegrationsDashboard } from "@/components/crm/CRMIntegrationsDashboard";
 import { SalesTeamSiteVisits } from "@/components/crm/SalesTeamSiteVisits";
+import { SourceToSaleFunnel } from "@/components/crm/SourceToSaleFunnel";
+import { WeeklyOwnerBriefPanel } from "@/components/crm/WeeklyOwnerBriefPanel";
 import { CRMWhiteLabelSettings } from "@/components/crm/CRMWhiteLabelSettings";
 import { AuthStorage } from "@/lib/auth-storage";
 import { motion, AnimatePresence } from "framer-motion";
@@ -3060,6 +3062,10 @@ export default function CRMPage() {
         ) : viewMode === "analytics" ? (
           <ScrollArea className="h-full">
             <div className="p-6 space-y-6" data-testid="analytics-view">
+              {/* Source-to-Sale ROI Funnel (independent, read-only) */}
+              <SourceToSaleFunnel />
+              {/* Weekly Owner Brief Controller (WhatsApp + Email) */}
+              <WeeklyOwnerBriefPanel />
               {analyticsLoading ? (
                 <div className="flex items-center justify-center py-20">
                   <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />

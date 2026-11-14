@@ -526,6 +526,11 @@ export class CRMLeadProcessor {
    */
   static async processCall(callData: CallData): Promise<{ leadId: string | null; qualification: LeadQualification }> {
     console.log(`${this.LOG_PREFIX} Processing call ${callData.id} from engine: ${callData.engine}`);
+
+    // Negative Call / Complaint Alert (fire-and-forget, never blocks or breaks CRM processing)
+    import('../../services/review-complaint-automation.service')
+      .then(({ ReviewComplaintAutomationService }) => ReviewComplaintAutomationService.handleCompletedCall(callData))
+      .catch(() => {});
     
     // Check minimum quality threshold first
     const qualityCheck = this.meetsQualityThreshold(callData);

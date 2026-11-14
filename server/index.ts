@@ -660,6 +660,16 @@ app.use((req, res, next) => {
         .then(({ AppointmentRecoveryService }) => AppointmentRecoveryService.startScheduler())
         .catch(() => {});
 
+      // Start Automated Google Review Request scheduler (Complaint Alerts are event-driven)
+      import('./services/review-complaint-automation.service')
+        .then(({ ReviewComplaintAutomationService }) => ReviewComplaintAutomationService.startScheduler())
+        .catch(() => {});
+
+      // Start Automated Weekly Owner Brief scheduler (WhatsApp + Email)
+      import('./services/weekly-owner-brief.service')
+        .then(({ WeeklyOwnerBriefService }) => WeeklyOwnerBriefService.startScheduler())
+        .catch(() => {});
+
       // Start worker that retries failed provider phone-number releases
       startPhoneReleaseRetryWorker();
       

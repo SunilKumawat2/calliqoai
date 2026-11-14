@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CompanyEmailSettingsDialog } from "./CompanyEmailSettingsDialog";
 import { EmailNotificationManager } from "./EmailNotificationManager";
+import { ReviewComplaintAutomationPanel } from "./ReviewComplaintAutomationPanel";
 
 interface SalesStaff {
   id: string;
@@ -112,7 +113,7 @@ export function SalesTeamSiteVisits() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [activeSubTab, setActiveSubTab] = useState<"visits" | "team" | "email" | "automation">("visits");
+  const [activeSubTab, setActiveSubTab] = useState<"visits" | "team" | "email" | "automation" | "reviews">("visits");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "new" | "confirmed" | "upcoming" | "past" | "cancelled" | "unassigned" | "overdue">("all");
 
@@ -838,6 +839,25 @@ export function SalesTeamSiteVisits() {
     },
   });
 
+  // 14. Manual 1-Click Send Google Review Request Mutation
+  const sendReviewRequestMutation = useMutation({
+    mutationFn: async (visitId: string) => {
+      const res = await apiRequest("POST", `/api/sales-team/site-visits/${visitId}/send-review-request`, {});
+      return res.json();
+    },
+    onSuccess: (r: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/site-visits/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales-team/review-complaint-logs"] });
+      toast({
+        title: "⭐ Google Review Request Sent",
+        description: `WhatsApp: ${r?.whatsappSent ? "✅ Sent" : "❌ Skipped"} • Email: ${r?.emailSent ? "✅ Sent" : "❌ Skipped"}`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Review Request Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   // Helpers
   const resetStaffForm = () => {
     setEditingStaff(null);
@@ -1275,8 +1295,8 @@ export function SalesTeamSiteVisits() {
           </div>
         </div>
 
-        {/* Row 3 (Separate Full-Width 4-Column Tab Bar): Never Wraps Awkwardly */}
-        <div className="pt-2.5 border-t border-border/50 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        {/* Row 3 (Separate Full-Width 5-Column Tab Bar): Never Wraps Awkwardly */}
+        <div className="pt-2.5 border-t border-border/50 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
           {/* Tab 1: Appointments & Bookings */}
           <button
             type="button"
@@ -1346,6 +1366,25 @@ export function SalesTeamSiteVisits() {
                 Auto ON
               </span>
             )}
+          </button>
+
+          {/* Tab 3B: Google Review & Complaint Alerts */}
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("reviews")}
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+              activeSubTab === "reviews"
+                ? "bg-yellow-600 text-white border-yellow-500 shadow-sm"
+                : "bg-yellow-500/5 border-yellow-500/30 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/15"
+            }`}
+          >
+            <span className="flex items-center gap-2 truncate">
+              <Sparkles className="w-4 h-4 shrink-0" />
+              <span className="truncate">Review & Complaint Alerts</span>
+            </span>
+            <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-600 dark:text-yellow-300 text-[9px] font-bold uppercase tracking-wider shrink-0">
+              ⭐ + 🚨
+            </span>
           </button>
 
           {/* Tab 4: Email Setup & Templates */}
@@ -1853,6 +1892,21 @@ export function SalesTeamSiteVisits() {
                             </Button>
                           )}
 
+                          {/* 2B. Send Google Review Request Button (for Attended / Completed Visits) */}
+                          {completed && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={sendReviewRequestMutation.isPending}
+                              onClick={() => sendReviewRequestMutation.mutate(visit.id)}
+                              className="h-7 text-xs gap-1.5 border-yellow-500/40 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-50 dark:hover:bg-yellow-950/40"
+                              title="Send Thank-You + Google Review Link via WhatsApp & Email"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-yellow-500" />
+                              Send Google Review
+                            </Button>
+                          )}
+
                           {/* 3. Send Reminder Button */}
                           {!completed && !cancelled && (
                             <Button
@@ -2113,6 +2167,11 @@ export function SalesTeamSiteVisits() {
       {/* ── TAB 3: EMAIL SETUP & TEMPLATES ── */}
       {activeSubTab === "email" && (
         <EmailNotificationManager />
+      )}
+
+      {/* ── TAB 3B: GOOGLE REVIEW REQUEST & NEGATIVE CALL / COMPLAINT ALERT ── */}
+      {activeSubTab === "reviews" && (
+        <ReviewComplaintAutomationPanel />
       )}
 
       {/* ── TAB 4: DYNAMIC AUTO-REMINDER & NO-SHOW RECOVERY CONTROLLER ── */}
@@ -2884,6 +2943,9 @@ export function SalesTeamSiteVisits() {
               </Card>
             </div>
           </div>
+
+          {/* ── Google Review Request & Negative Call / Complaint Alert (independent config) ── */}
+          <ReviewComplaintAutomationPanel />
         </div>
       )}
 

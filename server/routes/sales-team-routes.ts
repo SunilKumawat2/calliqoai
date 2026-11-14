@@ -97,6 +97,146 @@ salesTeamRouter.put('/reminder-automation-config', async (req: Request, res: Res
   }
 });
 
+// ── 2C. Google Review Request & Complaint Alert Automation ────
+// Must be registered BEFORE PUT /:id so it is not captured as a staff ID.
+salesTeamRouter.get('/review-complaint-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { ReviewComplaintAutomationService } = await import('../services/review-complaint-automation.service');
+    res.json(await ReviewComplaintAutomationService.getConfig(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.put('/review-complaint-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { ReviewComplaintAutomationService } = await import('../services/review-complaint-automation.service');
+    res.json(await ReviewComplaintAutomationService.saveConfig(userId, req.body || {}));
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error saving review/complaint config: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.get('/review-complaint-logs', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { ReviewComplaintAutomationService } = await import('../services/review-complaint-automation.service');
+    res.json(await ReviewComplaintAutomationService.getLogs(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/review-complaint/test-alert', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { ReviewComplaintAutomationService } = await import('../services/review-complaint-automation.service');
+    const result = await ReviewComplaintAutomationService.handleCompletedCall({
+      id: `test_${Date.now()}`,
+      userId,
+      engine: 'test',
+      phoneNumber: '+910000000000',
+      callDirection: 'incoming',
+      duration: 60,
+      sentiment: 'negative',
+      firstName: 'Test',
+      lastName: 'Customer',
+      aiSummary: 'TEST ALERT: The customer was unhappy with the service and wanted to register a complaint.',
+      transcript: 'Customer: Mujhe complaint karni hai, service bahut bekar thi.',
+      test: true,
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 2D. Source-to-Sale ROI Funnel (read-only analytics + its own settings) ──
+// Must be registered BEFORE PUT /:id so it is not captured as a staff ID.
+salesTeamRouter.get('/roi-funnel', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { RoiFunnelService } = await import('../services/roi-funnel.service');
+    const { range, from, to } = req.query as Record<string, string | undefined>;
+    res.json(await RoiFunnelService.getFunnel(userId, { range, from, to }));
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error building ROI funnel: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.put('/roi-funnel-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { RoiFunnelService } = await import('../services/roi-funnel.service');
+    res.json(await RoiFunnelService.saveConfig(userId, req.body || {}));
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error saving ROI funnel config: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 2E. Weekly Owner Brief (WhatsApp + Email) ─────────────────
+// Must be registered BEFORE PUT /:id so it is not captured as a staff ID.
+salesTeamRouter.get('/weekly-owner-brief-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { WeeklyOwnerBriefService } = await import('../services/weekly-owner-brief.service');
+    res.json(await WeeklyOwnerBriefService.getConfig(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.put('/weekly-owner-brief-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { WeeklyOwnerBriefService } = await import('../services/weekly-owner-brief.service');
+    res.json(await WeeklyOwnerBriefService.saveConfig(userId, req.body || {}));
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error saving weekly brief config: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.get('/weekly-owner-brief-logs', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { WeeklyOwnerBriefService } = await import('../services/weekly-owner-brief.service');
+    res.json(await WeeklyOwnerBriefService.getLogs(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/weekly-owner-brief/send-now', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { WeeklyOwnerBriefService } = await import('../services/weekly-owner-brief.service');
+    const result = await WeeklyOwnerBriefService.sendBrief(userId, {
+      trigger: 'manual',
+      test: Boolean(req.body?.test),
+    });
+    res.json(result);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error sending weekly owner brief: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── 3. PUT /api/sales-team/:id (Update Sales Staff) ───────────
 salesTeamRouter.put('/:id', async (req: Request, res: Response) => {
   const userId = getUserId(req);
@@ -399,6 +539,13 @@ salesTeamRouter.put('/site-visits/:id/status', async (req: Request, res: Respons
           statusReason: updatedAppointment.statusReason,
           assignedStaffName: updatedAppointment.assignedStaffName,
         })
+      )
+      .catch(() => {});
+
+    // ── Automated Google Review Request (fire-and-forget, admin-controlled) ──
+    import('../services/review-complaint-automation.service')
+      .then(({ ReviewComplaintAutomationService }) =>
+        ReviewComplaintAutomationService.onAppointmentStatusChanged(userId, updatedAppointment.id, updatedAppointment.status)
       )
       .catch(() => {});
 
@@ -941,6 +1088,25 @@ salesTeamRouter.post('/site-visits/:id/no-show-recovery', async (req: Request, r
     res.json(result);
   } catch (error: any) {
     logger.error(`[SalesTeam] Error triggering no-show recovery: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 13A. POST /api/sales-team/site-visits/:id/send-review-request (Manual 1-click) ──
+salesTeamRouter.post('/site-visits/:id/send-review-request', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { ReviewComplaintAutomationService } = await import('../services/review-complaint-automation.service');
+    const result = await ReviewComplaintAutomationService.sendReviewRequest({
+      userId,
+      appointmentId: req.params.id,
+      trigger: 'manual',
+    });
+    if (!result.success) return res.status(400).json(result);
+    res.json(result);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error sending review request: ${error.message}`, error, 'SalesTeam');
     res.status(500).json({ error: error.message });
   }
 });
