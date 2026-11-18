@@ -702,8 +702,22 @@ export class FollowUpSchedulerService {
       const rawName = followUp.customerName?.trim() || '';
       const isGenericName = !rawName || ['customer', 'unknown', 'not mentioned', 'caller', 'user'].includes(rawName.toLowerCase());
       const customerName = isGenericName ? '' : rawName;
-      const contextNote = followUp.contextNote || 'Customer requested a callback.';
+      let contextNote = followUp.contextNote || 'Customer requested a callback.';
       const preferredTime = followUp.preferredTimeText || 'इस समय';
+
+      // Inject Unified Cross-Channel WhatsApp Memory into Voice Call context (if available)
+      try {
+        if ((global as any).WhatsAppAiBotService && destinationNumber) {
+          const waMem = await (global as any).WhatsAppAiBotService.getCrossChannelMemory(followUp.userId, destinationNumber);
+          if (waMem?.recentWhatsAppMessages?.length > 0) {
+            const recentWaSnippet = waMem.recentWhatsAppMessages
+              .slice(-4)
+              .map((m: any) => `${m.direction === 'inbound' ? 'Customer (WhatsApp)' : 'AI (WhatsApp)'}: ${m.content}`)
+              .join(' | ');
+            contextNote = `${contextNote} [Recent WhatsApp Chat Context: ${recentWaSnippet}]`;
+          }
+        }
+      } catch (_) {}
 
       // Resolve Business / Clinic Name from White-Label settings if available
       let businessName = agentRecord.name || 'AI Assistant';

@@ -55,10 +55,12 @@ import { deductCallCredits } from "./services/credit-service";
 import { PlivoPhoneService } from "./engines/plivo/services/plivo-phone.service";
 import { FollowUpSchedulerService } from "./services/follow-up-scheduler.service";
 import { CallInsightsService } from "./services/call-insights.service";
-export { FollowUpSchedulerService, CallInsightsService };
+import { WhatsAppAiBotService } from "./services/whatsapp-ai-bot.service";
+export { FollowUpSchedulerService, CallInsightsService, WhatsAppAiBotService };
 
-// Register CRMLeadProcessor globally so that dynamically loaded plugins can access it
+// Register CRMLeadProcessor and WhatsAppAiBotService globally so that dynamically loaded plugins can access them
 (global as any).CRMLeadProcessor = CRMLeadProcessor;
+(global as any).WhatsAppAiBotService = WhatsAppAiBotService;
 (global as any).deductCallCredits = deductCallCredits;
 
 // Setup global error handlers and shutdown signals FIRST
@@ -668,6 +670,11 @@ app.use((req, res, next) => {
       // Start Automated Weekly Owner Brief scheduler (WhatsApp + Email)
       import('./services/weekly-owner-brief.service')
         .then(({ WeeklyOwnerBriefService }) => WeeklyOwnerBriefService.startScheduler())
+        .catch(() => {});
+
+      // Start Automated AI Email Follow-up Sequence scheduler (opt-in per tenant)
+      import('./services/email-sequence-scheduler.service')
+        .then(({ EmailSequenceSchedulerService }) => EmailSequenceSchedulerService.startScheduler())
         .catch(() => {});
 
       // Start worker that retries failed provider phone-number releases

@@ -225,6 +225,19 @@ async function processInboundMessages(value) {
       meta.markMessageRead(userId, message.id).catch(() => {
       });
       console.log(`[Meta Webhook] Inbound message from ${message.from} stored (${message.id})`);
+      if (global.WhatsAppAiBotService && content) {
+        global.WhatsAppAiBotService.handleInboundWhatsAppMessage({
+          userId,
+          conversationId: conversation.id,
+          contactPhone: message.from,
+          contactName,
+          messageText: content,
+          messageType,
+          metaMessageId: message.id
+        }).catch((botErr) => {
+          console.warn(`[Meta Webhook] WhatsAppAiBot non-fatal error:`, botErr?.message);
+        });
+      }
     } catch (error) {
       console.error(`[Meta Webhook] Error processing message ${message.id}:`, error.message);
     }

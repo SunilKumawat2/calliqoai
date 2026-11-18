@@ -228,6 +228,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const notificationRoutes = createNotificationRoutes(routeContext);
   app.use(notificationRoutes);
 
+  // Live Instagram / Facebook DM & Comment Lead Capture webhook (must be before userWebhookRoutes' /api/webhooks/:id)
+  const { metaSocialWebhookRouter } = await import("./routes/meta-social-webhook.routes");
+  app.use("/api/webhooks/meta-social", metaSocialWebhookRouter);
+
   // Register user webhook routes (subscription management)
   const userWebhookRoutes = createUserWebhookRoutes(routeContext);
   app.use(userWebhookRoutes);

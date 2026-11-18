@@ -33,6 +33,7 @@ import { CRMIntegrationsDashboard } from "@/components/crm/CRMIntegrationsDashbo
 import { SalesTeamSiteVisits } from "@/components/crm/SalesTeamSiteVisits";
 import { SourceToSaleFunnel } from "@/components/crm/SourceToSaleFunnel";
 import { WeeklyOwnerBriefPanel } from "@/components/crm/WeeklyOwnerBriefPanel";
+import { WhatsAppAiBotPanel } from "@/components/crm/WhatsAppAiBotPanel";
 import { CRMWhiteLabelSettings } from "@/components/crm/CRMWhiteLabelSettings";
 import { AuthStorage } from "@/lib/auth-storage";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1685,7 +1686,7 @@ export default function CRMPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const queryClientRef = useQueryClient();
-  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team" | "whitelabel">("kanban");
+  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team" | "whatsapp_ai" | "whitelabel">("kanban");
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedSourceId, setSelectedSourceId] = useState<string>("all");
@@ -2559,7 +2560,7 @@ export default function CRMPage() {
 
           {/* Main CRM Navigation Tabs Bar (Full Width, Cleanly Aligned) */}
           <div className="pt-2 border-t border-border/50">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
               <button
                 type="button"
                 onClick={() => setViewMode("kanban")}
@@ -2641,6 +2642,21 @@ export default function CRMPage() {
                     {unassignedVisitsCount} New
                   </span>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode("whatsapp_ai")}
+                data-testid="view-whatsapp-ai"
+                title="2-Way WhatsApp AI Bot, Instagram/Facebook Lead Capture & AI Email Assistant"
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  viewMode === "whatsapp_ai"
+                    ? "bg-teal-600 text-white border-teal-500 shadow-xs"
+                    : "bg-teal-500/5 border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/15"
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">WhatsApp, Social & Email AI</span>
               </button>
 
               <button
@@ -3041,6 +3057,12 @@ export default function CRMPage() {
           <ScrollArea className="h-full">
             <div className="p-6">
               <CRMWhiteLabelSettings />
+            </div>
+          </ScrollArea>
+        ) : viewMode === "whatsapp_ai" ? (
+          <ScrollArea className="h-full">
+            <div className="p-6">
+              <WhatsAppAiBotPanel />
             </div>
           </ScrollArea>
         ) : viewMode === "sales_team" ? (

@@ -237,6 +237,320 @@ salesTeamRouter.post('/weekly-owner-brief/send-now', async (req: Request, res: R
   }
 });
 
+// ── 2F. 2-Way Conversational WhatsApp AI Bot & Cross-Channel Memory ──
+salesTeamRouter.get('/whatsapp-ai-bot-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { WhatsAppAiBotService } = await import('../services/whatsapp-ai-bot.service');
+    res.json(await WhatsAppAiBotService.getConfig(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.put('/whatsapp-ai-bot-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { WhatsAppAiBotService } = await import('../services/whatsapp-ai-bot.service');
+    res.json(await WhatsAppAiBotService.saveConfig(userId, req.body || {}));
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error saving WhatsApp AI Bot config: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.get('/whatsapp-ai-bot-logs', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { WhatsAppAiBotService } = await import('../services/whatsapp-ai-bot.service');
+    res.json(await WhatsAppAiBotService.getLogs(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.get('/whatsapp-ai-bot-conversations', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { WhatsAppAiBotService } = await import('../services/whatsapp-ai-bot.service');
+    res.json(await WhatsAppAiBotService.getConversationsWithBotStatus(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.get('/whatsapp-ai-bot-memory', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const phone = String(req.query.phone || '').trim();
+    if (!phone) return res.status(400).json({ error: 'Phone number is required' });
+    const { WhatsAppAiBotService } = await import('../services/whatsapp-ai-bot.service');
+    res.json(await WhatsAppAiBotService.getCrossChannelMemory(userId, phone));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/whatsapp-ai-bot/conversation-mode', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { conversationId, autoReplyEnabled, reason } = req.body || {};
+    if (!conversationId) return res.status(400).json({ error: 'conversationId is required' });
+    const { WhatsAppAiBotService } = await import('../services/whatsapp-ai-bot.service');
+    res.json(await WhatsAppAiBotService.setConversationMode(userId, conversationId, Boolean(autoReplyEnabled), reason));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/whatsapp-ai-bot/simulate', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { contactPhone, contactName, messageText, sendRealWhatsApp } = req.body || {};
+    if (!contactPhone || !messageText) {
+      return res.status(400).json({ error: 'contactPhone and messageText are required' });
+    }
+    const { WhatsAppAiBotService } = await import('../services/whatsapp-ai-bot.service');
+    const result = await WhatsAppAiBotService.handleInboundWhatsAppMessage({
+      userId,
+      contactPhone: String(contactPhone).trim(),
+      contactName: contactName ? String(contactName).trim() : undefined,
+      messageText: String(messageText).trim(),
+      isSimulation: true,
+      sendRealWhatsApp: Boolean(sendRealWhatsApp),
+    });
+    res.json(result);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error simulating WhatsApp AI Bot: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 2G. Instagram/Facebook DM & Comment Lead Capture + AI Email Assistant ──
+salesTeamRouter.get('/social-lead-capture-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { SocialEmailAssistantService } = await import('../services/social-email-assistant.service');
+    res.json(await SocialEmailAssistantService.getSocialConfig(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.put('/social-lead-capture-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { SocialEmailAssistantService } = await import('../services/social-email-assistant.service');
+    res.json(await SocialEmailAssistantService.saveSocialConfig(userId, req.body || {}));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.get('/social-lead-capture-logs', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { SocialEmailAssistantService } = await import('../services/social-email-assistant.service');
+    res.json(await SocialEmailAssistantService.getSocialLogs(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/social-lead-capture/simulate', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { platform, senderHandle, senderName, incomingText, postOrReelTitle, extractedPhone, extractedEmail } = req.body || {};
+    if (!senderHandle || !incomingText) {
+      return res.status(400).json({ error: 'senderHandle and incomingText are required' });
+    }
+    const { SocialEmailAssistantService } = await import('../services/social-email-assistant.service');
+    const result = await SocialEmailAssistantService.processSocialLeadEvent({
+      userId,
+      platform: platform || 'instagram_comment',
+      senderHandle: String(senderHandle).trim(),
+      senderName: senderName ? String(senderName).trim() : undefined,
+      incomingText: String(incomingText).trim(),
+      postOrReelTitle: postOrReelTitle ? String(postOrReelTitle).trim() : undefined,
+      extractedPhone: extractedPhone ? String(extractedPhone).trim() : undefined,
+      extractedEmail: extractedEmail ? String(extractedEmail).trim() : undefined,
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.get('/email-assistant-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { SocialEmailAssistantService } = await import('../services/social-email-assistant.service');
+    res.json(await SocialEmailAssistantService.getEmailConfig(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.put('/email-assistant-config', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { SocialEmailAssistantService } = await import('../services/social-email-assistant.service');
+    res.json(await SocialEmailAssistantService.saveEmailConfig(userId, req.body || {}));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.get('/email-assistant-drafts', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { SocialEmailAssistantService } = await import('../services/social-email-assistant.service');
+    res.json(await SocialEmailAssistantService.getEmailDrafts(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/email-assistant/generate-draft', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { leadId, recipientName, recipientEmail, recipientPhone, purpose, customNotes } = req.body || {};
+    if (!recipientEmail) {
+      return res.status(400).json({ error: 'recipientEmail is required' });
+    }
+    const { SocialEmailAssistantService } = await import('../services/social-email-assistant.service');
+    const draft = await SocialEmailAssistantService.generateAiEmailDraft({
+      userId,
+      leadId,
+      recipientName: recipientName || 'Customer',
+      recipientEmail: String(recipientEmail).trim(),
+      recipientPhone: recipientPhone ? String(recipientPhone).trim() : undefined,
+      purpose: purpose || 'Step 1: Instant Call/Chat Recap & Brochure Email',
+      customNotes: customNotes ? String(customNotes).trim() : undefined,
+    });
+    res.json(draft);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/email-assistant/send-email', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { draftId, recipientName, recipientEmail, subject, body, purpose } = req.body || {};
+    if (!recipientEmail || !subject || !body) {
+      return res.status(400).json({ error: 'recipientEmail, subject, and body are required' });
+    }
+    const { SocialEmailAssistantService } = await import('../services/social-email-assistant.service');
+    const result = await SocialEmailAssistantService.sendEmailDraft({
+      userId,
+      draftId,
+      recipientName: recipientName || 'Customer',
+      recipientEmail: String(recipientEmail).trim(),
+      subject: String(subject).trim(),
+      body: String(body),
+      purpose,
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 2H. Live Meta Social Webhook Status + Automated Email Sequences ──
+salesTeamRouter.get('/social-lead-capture/webhook-status', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { SocialMetaWebhookService } = await import('../services/social-meta-webhook.service');
+    const { SocialEmailAssistantService } = await import('../services/social-email-assistant.service');
+    const config = await SocialEmailAssistantService.getSocialConfig(userId);
+    const host = req.get('x-forwarded-host') || req.get('host') || '';
+    const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0];
+    res.json({
+      webhookUrl: `${proto}://${host}/api/webhooks/meta-social`,
+      verifyToken: config.webhookVerifyToken,
+      tokenConfigured: Boolean((config.metaPageAccessToken || '').trim()),
+      appSecretConfigured: Boolean((config.metaAppSecret || '').trim()),
+      facebookPageId: config.facebookPageId || null,
+      instagramAccountId: config.instagramAccountId || null,
+      ...SocialMetaWebhookService.getStatus(userId),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.get('/email-assistant/sequence-enrollments', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { EmailSequenceSchedulerService } = await import('../services/email-sequence-scheduler.service');
+    res.json(await EmailSequenceSchedulerService.getEnrollments(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/email-assistant/sequence-enroll', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { leadId, recipientName, recipientEmail, recipientPhone } = req.body || {};
+    if (!recipientEmail) return res.status(400).json({ error: 'recipientEmail is required' });
+    const { EmailSequenceSchedulerService } = await import('../services/email-sequence-scheduler.service');
+    const enrollment = await EmailSequenceSchedulerService.enrollManually(userId, {
+      leadId,
+      recipientName: recipientName || 'Customer',
+      recipientEmail: String(recipientEmail).trim(),
+      recipientPhone: recipientPhone ? String(recipientPhone).trim() : undefined,
+    });
+    res.json(enrollment);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/email-assistant/sequence-stop/:enrollmentId', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { EmailSequenceSchedulerService } = await import('../services/email-sequence-scheduler.service');
+    const result = await EmailSequenceSchedulerService.stopEnrollment(userId, req.params.enrollmentId);
+    if (!result) return res.status(404).json({ error: 'Enrollment not found' });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/email-assistant/sequence-run-now', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { EmailSequenceSchedulerService } = await import('../services/email-sequence-scheduler.service');
+    res.json(await EmailSequenceSchedulerService.processUser(userId));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── 3. PUT /api/sales-team/:id (Update Sales Staff) ───────────
 salesTeamRouter.put('/:id', async (req: Request, res: Response) => {
   const userId = getUserId(req);
