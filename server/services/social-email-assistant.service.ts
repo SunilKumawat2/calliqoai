@@ -411,13 +411,31 @@ export class SocialEmailAssistantService {
     } = params;
 
     const config = await this.getSocialConfig(userId);
+    const currentLogs = await this.getSocialLogs(userId);
     const isComment = platform === 'instagram_comment' || platform === 'facebook_comment';
 
-    // Extract phone number or email from message text if present
+    // Load recent conversation history for this same sender (last 24h, up to 6 turns)
+    const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+    const senderHistory = currentLogs
+      .filter((l) => l.senderHandle === senderHandle && new Date(l.timestamp).getTime() > cutoffMs)
+      .slice(0, 6)
+      .reverse();
+
+    const recentChatHistory = senderHistory
+      .map((l) => `Customer: "${l.incomingText}"\nAI: "${l.aiDmReply}"`)
+      .join('\n---\n');
+
+    // Extract phone number or email from message text, or reuse from recent conversation
     const phoneMatch = incomingText.match(/(?:\+?91[\s-]?)?[6-9]\d{9}/);
     const emailMatch = incomingText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    const detectedPhone = params.extractedPhone?.trim() || (phoneMatch ? phoneMatch[0].replace(/\s+/g, '') : null);
-    const detectedEmail = params.extractedEmail?.trim() || (emailMatch ? emailMatch[0] : null);
+    const rawNewPhone = params.extractedPhone?.trim() || (phoneMatch ? phoneMatch[0].replace(/\s+/g, '') : null);
+    const stickyPhone = [...senderHistory].reverse().find((l) => l.extractedPhone)?.extractedPhone || null;
+    const detectedPhone = rawNewPhone || stickyPhone;
+    const detectedEmail =
+      params.extractedEmail?.trim() ||
+      (emailMatch ? emailMatch[0] : null) ||
+      [...senderHistory].reverse().find((l) => l.extractedEmail)?.extractedEmail ||
+      null;
 
     // Resolve Business Name
     let businessName = 'Our Business';
@@ -430,14 +448,22 @@ export class SocialEmailAssistantService {
       if (wl?.businessName) businessName = wl.businessName;
     } catch (_) {}
 
-    // Resolve Dynamic Post / DM Agent Rule + Agent Prompt + Knowledge Base
-    const matchedRule = this.resolveMatchingRule(config, platform, incomingText, postOrReelTitle);
+    // Resolve Dynamic Post / DM Agent Rule (or sticky rule from recent chat) + Agent Prompt + Knowledge Base
+    let matchedRule = this.resolveMatchingRule(config, platform, incomingText, postOrReelTitle);
+    if (!matchedRule) {
+      const lastRuleName = [...senderHistory].reverse().find((l) => l.matchedRuleName)?.matchedRuleName;
+      if (lastRuleName && Array.isArray(config.agentRules)) {
+        matchedRule = config.agentRules.find((r) => r.enabled && r.name === lastRuleName) || null;
+      }
+    }
     const effectiveBrochureUrl = (matchedRule?.brochureUrl || '').trim() || config.brochureUrl;
     const effectiveInstructions = (matchedRule?.customInstructions || '').trim() || config.customQualificationPrompt;
     const { agentName, agentPrompt, knowledgeContext } = await this.buildAgentAndKnowledgeContext(
       userId,
       matchedRule?.agentId
     );
+
+    const todayIst = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
     let aiParsed: {
       publicCommentReply: string | null;
@@ -448,6 +474,9 @@ export class SocialEmailAssistantService {
       leadScore: number;
       sentiment: 'positive' | 'neutral' | 'negative';
       summary: string;
+      appointmentDate?: string | null;
+      appointmentTime?: string | null;
+      serviceName?: string | null;
     } | null = null;
 
     try {
@@ -461,28 +490,40 @@ export class SocialEmailAssistantService {
         const { default: OpenAI } = await import('openai');
         const openai = new OpenAI({ apiKey });
 
-        const prompt = `You are a Social Media Lead Capture & Qualification AI for "${businessName}".
+        const prompt = `You are a conversational Social Media AI Assistant${agentName ? ` acting as "${agentName}"` : ` for "${businessName}"`}.
+Today's Date (IST): ${todayIst}
 Channel: ${platform.toUpperCase()}
 Post / Reel Context: ${postOrReelTitle || 'Direct Message / General Page Inquiry'}
 Sender Handle: ${senderHandle} (${senderName || senderHandle})
-Incoming Message/Comment: "${incomingText}"
-Detected Phone: ${detectedPhone || 'Not provided yet'}
-Detected Email: ${detectedEmail || 'Not provided yet'}
+${recentChatHistory ? `\n=== RECENT CHAT HISTORY WITH THIS USER ===\n${recentChatHistory}\n` : ''}
+Latest Incoming Message/Comment: "${incomingText}"
+Known Phone Number: ${detectedPhone || 'NOT PROVIDED YET'}
+Known Email: ${detectedEmail || 'Not provided yet'}
 Brochure Link: ${effectiveBrochureUrl || 'Available on request'}
 Qualification Instructions: ${effectiveInstructions}
 ${matchedRule ? `Matched Rule: ${matchedRule.name}${agentName ? ` (Agent: ${agentName})` : ''}` : ''}
-${agentPrompt ? `\n=== ASSIGNED AGENT PERSONA & INSTRUCTIONS ===\n${agentPrompt}\n` : ''}${knowledgeContext ? `\n=== BUSINESS KNOWLEDGE BASE (USE EXACT PRICES, TIMINGS & FACTS FROM HERE) ===\n${knowledgeContext}\n` : ''}
+${agentPrompt ? `\n=== ASSIGNED AGENT PERSONA & INSTRUCTIONS (STAY STRICTLY IN THIS PERSONA) ===\n${agentPrompt}\n` : ''}${knowledgeContext ? `\n=== BUSINESS KNOWLEDGE BASE (USE EXACT PRICES, TIMINGS & FACTS FROM HERE) ===\n${knowledgeContext}\n` : ''}
+
+CRITICAL CONVERSATION RULES:
+1. Read the RECENT CHAT HISTORY carefully. Do NOT repeat questions the user already answered!
+2. If "Known Phone Number" is already present (${detectedPhone || 'none'}), NEVER ask for their phone/WhatsApp number again!
+3. If the user gives a date and time (e.g. "kal sham 4 bje", "19 nov 4 pm") AND "Known Phone Number" is present, extract "appointmentDate" (YYYY-MM-DD) and "appointmentTime" (HH:MM 24h) and CONFIRM the appointment clearly in "aiDmReply"!
+4. Match the user's language (if they write in Hindi/Hinglish or ask for Hindi/Hinglish, reply ONLY in natural Hinglish/Hindi).
+5. Stay strictly in the Assigned Agent's persona if present (do not mention another unrelated business).
 
 Respond ONLY with a valid JSON object matching this exact schema:
 {
   "publicCommentReply": ${isComment ? '"Short polite public reply telling them to check their DM for details"' : 'null'},
-  "aiDmReply": "Warm, concise DM response (in English or Hinglish matching the user) that answers their query, shares the brochure if applicable, and politely asks for their mobile/WhatsApp number (if not provided) or confirms next steps",
+  "aiDmReply": "Natural, non-repetitive DM response following the conversation rules above",
   "customerName": "Inferred customer name from senderName or message",
-  "requirement": "Extracted product/service/property interest",
+  "requirement": "Extracted product/service/appointment interest",
   "category": "hot" | "warm" | "cold",
   "leadScore": 80,
   "sentiment": "positive" | "neutral" | "negative",
-  "summary": "1-2 sentence CRM summary of this social media lead"
+  "summary": "1-2 sentence CRM summary of this social media lead",
+  "appointmentDate": "YYYY-MM-DD if user requested/confirmed a date in this message or chat history, else null",
+  "appointmentTime": "HH:MM (24-hour, e.g. 16:00) if time was given, else null",
+  "serviceName": "Appointment service name (e.g. Dental Consultation / Site Visit) or null"
 }`;
 
         const completion = await openai.chat.completions.create({
@@ -510,6 +551,9 @@ Respond ONLY with a valid JSON object matching this exact schema:
             summary:
               parsed.summary ||
               `Captured via ${platform.replace('_', ' ')} (${senderHandle}): "${incomingText.slice(0, 120)}"`,
+            appointmentDate: parsed.appointmentDate || null,
+            appointmentTime: parsed.appointmentTime || null,
+            serviceName: parsed.serviceName || null,
           };
         }
       }
@@ -624,11 +668,51 @@ Respond ONLY with a valid JSON object matching this exact schema:
       }
     }
 
-    // Per-rule Auto-Call (ONLY if matched rule has autoCallEnabled = true AND phone detected)
+    // Create Appointment in `appointments` table if date + time + phone are known
+    if (aiParsed.appointmentDate && aiParsed.appointmentTime && detectedPhone) {
+      try {
+        const apptDate = String(aiParsed.appointmentDate).trim();
+        const apptTime = /^\d{2}:\d{2}$/.test(String(aiParsed.appointmentTime).trim())
+          ? `${String(aiParsed.appointmentTime).trim()}:00`
+          : '11:00:00';
+        const existingAppt = await db
+          .select({ id: appointments.id })
+          .from(appointments)
+          .where(
+            and(
+              eq(appointments.userId, userId),
+              eq(appointments.contactPhone, detectedPhone),
+              eq(appointments.appointmentDate, apptDate as any)
+            )
+          )
+          .limit(1);
+        if (existingAppt.length === 0) {
+          await db.insert(appointments).values({
+            id: `apt_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+            userId,
+            contactName: aiParsed.customerName || senderName || 'Social Media Lead',
+            contactPhone: detectedPhone,
+            contactEmail: detectedEmail || null,
+            appointmentDate: apptDate as any,
+            appointmentTime: apptTime as any,
+            duration: 30,
+            serviceName: aiParsed.serviceName || matchedRule?.name || 'Social Media Appointment',
+            status: 'scheduled',
+            notes: `Booked automatically via ${platform.replace('_', ' ')}. Summary: ${aiParsed.summary}`,
+            metadata: { source: 'social_ai_bot', platform, senderHandle },
+          } as any);
+          console.log(`[SocialEmailAssistant] Appointment booked for ${detectedPhone} on ${apptDate} ${apptTime}`);
+        }
+      } catch (apptErr: any) {
+        console.warn('[SocialEmailAssistant] Failed to book appointment:', apptErr?.message);
+      }
+    }
+
+    // Per-rule Auto-Call (ONLY if matched rule has autoCallEnabled = true AND NEW phone detected)
     const autoCallResult = await this.triggerRuleAutoCallIfEnabled({
       userId,
       rule: matchedRule,
-      detectedPhone,
+      detectedPhone: rawNewPhone || (senderHistory.length === 0 ? detectedPhone : null),
       customerName: aiParsed.customerName,
       platform,
       incomingText,
@@ -658,7 +742,6 @@ Respond ONLY with a valid JSON object matching this exact schema:
       autoCallError: autoCallResult.error || null,
     };
 
-    const currentLogs = await this.getSocialLogs(userId);
     await this.writeJsonStore(
       userId,
       SOCIAL_LOG_KEY,
