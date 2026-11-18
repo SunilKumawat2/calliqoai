@@ -4,12 +4,27 @@ import {
   leads,
   appointments,
   agents,
+  knowledgeBase,
   crmWhitelabelConfigs,
   userEmailTemplates,
   users,
 } from '@shared/schema';
 import { emailService } from './email-service';
 import { WhatsAppAiBotService } from './whatsapp-ai-bot.service';
+
+export interface SocialAgentRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  channel: 'all' | 'instagram_comment' | 'instagram_dm' | 'facebook_comment' | 'facebook_dm';
+  matchKeywords: string;
+  agentId: string;
+  agentName?: string;
+  brochureUrl?: string;
+  customInstructions?: string;
+  autoCallEnabled: boolean;
+  callGreeting?: string;
+}
 
 export interface SocialLeadCaptureConfig {
   enabled: boolean;
@@ -29,6 +44,7 @@ export interface SocialLeadCaptureConfig {
   brochureUrl: string;
   defaultCommentReply: string;
   customQualificationPrompt: string;
+  agentRules?: SocialAgentRule[];
 }
 
 export interface SocialLeadEventLog {
@@ -48,6 +64,10 @@ export interface SocialLeadEventLog {
   sentiment: string;
   crmLeadId: string | null;
   summary: string;
+  matchedRuleName?: string | null;
+  autoCallTriggered?: boolean;
+  autoCallAgentName?: string | null;
+  autoCallError?: string | null;
 }
 
 export interface EmailSequenceStep {
@@ -116,6 +136,7 @@ const DEFAULT_SOCIAL_CONFIG: SocialLeadCaptureConfig = {
   brochureUrl: '',
   defaultCommentReply: 'Thank you for your interest! We have just sent you the complete details & brochure in your DM. Please check your inbox!',
   customQualificationPrompt: 'Qualify the prospect warmly, share the brochure/pricing details if requested, and politely ask for their WhatsApp phone number and preferred date/time so our team or AI assistant can schedule their consultation/site visit.',
+  agentRules: [],
 };
 
 const DEFAULT_EMAIL_CONFIG: EmailAssistantConfig = {
@@ -239,6 +260,134 @@ export class SocialEmailAssistantService {
     return this.readJsonStore<SocialLeadEventLog[]>(userId, SOCIAL_LOG_KEY, []);
   }
 
+  private static recentAutoCallPhones = new Map<string, number>();
+
+  /** Picks the first enabled Post/DM rule matching the channel & keywords (or a catch-all rule). */
+  private static resolveMatchingRule(
+    config: SocialLeadCaptureConfig,
+    platform: 'instagram_dm' | 'instagram_comment' | 'facebook_dm' | 'facebook_comment',
+    incomingText: string,
+    postOrReelTitle?: string
+  ): SocialAgentRule | null {
+    const rules = Array.isArray(config.agentRules) ? config.agentRules : [];
+    const eligible = rules.filter((r) => r.enabled && (r.channel === 'all' || r.channel === platform));
+    if (eligible.length === 0) return null;
+
+    const haystack = `${incomingText} ${postOrReelTitle || ''}`.toLowerCase();
+    for (const rule of eligible) {
+      const kws = (rule.matchKeywords || '')
+        .split(',')
+        .map((k) => k.trim().toLowerCase())
+        .filter(Boolean);
+      if (kws.length > 0 && kws.some((kw) => haystack.includes(kw))) {
+        return rule;
+      }
+    }
+    // Fallback: first enabled rule for this channel with empty matchKeywords
+    return eligible.find((r) => !(r.matchKeywords || '').trim()) || null;
+  }
+
+  /** Loads the selected Agent's prompt + the tenant's Knowledge Base entries for accurate replies. */
+  private static async buildAgentAndKnowledgeContext(
+    userId: string,
+    agentId?: string
+  ): Promise<{ agentName: string | null; agentPrompt: string; knowledgeContext: string }> {
+    let agentName: string | null = null;
+    let agentPrompt = '';
+    if (agentId) {
+      try {
+        const [ag] = await db
+          .select({ name: agents.name, systemPrompt: agents.systemPrompt, personality: agents.personality })
+          .from(agents)
+          .where(and(eq(agents.id, agentId), eq(agents.userId, userId)))
+          .limit(1);
+        if (ag) {
+          agentName = ag.name;
+          agentPrompt = [ag.personality ? `Tone/Personality: ${ag.personality}` : '', ag.systemPrompt || '']
+            .filter(Boolean)
+            .join('\n')
+            .slice(0, 2200);
+        }
+      } catch (_) {}
+    }
+
+    let knowledgeContext = '';
+    try {
+      const kbRows = await db
+        .select({ title: knowledgeBase.title, content: knowledgeBase.content, type: knowledgeBase.type })
+        .from(knowledgeBase)
+        .where(eq(knowledgeBase.userId, userId))
+        .orderBy(desc(knowledgeBase.createdAt))
+        .limit(8);
+
+      const parts: string[] = [];
+      let totalLen = 0;
+      for (const kb of kbRows) {
+        const text = String(kb.content || '').trim();
+        if (!text) continue;
+        const snippet = `[${kb.title} (${kb.type})]: ${text.slice(0, 800)}`;
+        if (totalLen + snippet.length > 3500) break;
+        parts.push(snippet);
+        totalLen += snippet.length;
+      }
+      knowledgeContext = parts.join('\n\n');
+    } catch (_) {}
+
+    return { agentName, agentPrompt, knowledgeContext };
+  }
+
+  /** Schedules an immediate AI Voice Call ONLY if the matched rule has autoCallEnabled = true. */
+  private static async triggerRuleAutoCallIfEnabled(params: {
+    userId: string;
+    rule: SocialAgentRule | null;
+    detectedPhone: string | null;
+    customerName: string;
+    platform: string;
+    incomingText: string;
+    businessName: string;
+  }): Promise<{ triggered: boolean; agentName: string | null; error?: string }> {
+    const { rule, detectedPhone } = params;
+    if (!rule || !rule.autoCallEnabled || !detectedPhone || !rule.agentId) {
+      return { triggered: false, agentName: rule?.agentName || null };
+    }
+
+    const last10 = WhatsAppAiBotService.normalizePhoneLast10(detectedPhone);
+    const dedupeKey = `${params.userId}:${last10 || detectedPhone}`;
+    const lastCallTs = this.recentAutoCallPhones.get(dedupeKey) || 0;
+    if (Date.now() - lastCallTs < 10 * 60 * 1000) {
+      return { triggered: false, agentName: rule.agentName || null, error: 'Skipped duplicate call within 10 min' };
+    }
+
+    try {
+      const { FollowUpSchedulerService } = await import('./follow-up-scheduler.service');
+      const greeting = (rule.callGreeting || '').trim()
+        ? rule.callGreeting!.trim()
+        : `Hello ${params.customerName || ''}, I am calling from ${params.businessName} regarding your recent ${params.platform.replace('_', ' ')} inquiry. Is this a good time to speak?`.trim();
+
+      const contextNote = `[CUSTOM_GREETING]: ${greeting} ||| Customer inquired via ${params.platform.replace('_', ' ')} (Rule: ${rule.name}): "${params.incomingText.slice(0, 240)}"`;
+      const scheduled = await FollowUpSchedulerService.scheduleFollowUp({
+        userId: params.userId,
+        agentId: rule.agentId,
+        phoneNumber: detectedPhone,
+        customerName: params.customerName,
+        scheduledAt: new Date(Date.now() + 3000),
+        preferredTimeText: 'Social Media Lead Instant Callback',
+        contextNote,
+      });
+
+      if (!scheduled) {
+        return { triggered: false, agentName: rule.agentName || null, error: 'Could not schedule outbound call' };
+      }
+
+      this.recentAutoCallPhones.set(dedupeKey, Date.now());
+      console.log(`[SocialEmailAssistant] Auto-Call scheduled for ${detectedPhone} via rule "${rule.name}" (agent ${rule.agentId})`);
+      return { triggered: true, agentName: rule.agentName || null };
+    } catch (err: any) {
+      console.warn('[SocialEmailAssistant] Auto-Call error:', err?.message);
+      return { triggered: false, agentName: rule.agentName || null, error: err?.message || 'Auto-call failed' };
+    }
+  }
+
   static async processSocialLeadEvent(params: {
     userId: string;
     platform: 'instagram_dm' | 'instagram_comment' | 'facebook_dm' | 'facebook_comment';
@@ -281,6 +430,15 @@ export class SocialEmailAssistantService {
       if (wl?.businessName) businessName = wl.businessName;
     } catch (_) {}
 
+    // Resolve Dynamic Post / DM Agent Rule + Agent Prompt + Knowledge Base
+    const matchedRule = this.resolveMatchingRule(config, platform, incomingText, postOrReelTitle);
+    const effectiveBrochureUrl = (matchedRule?.brochureUrl || '').trim() || config.brochureUrl;
+    const effectiveInstructions = (matchedRule?.customInstructions || '').trim() || config.customQualificationPrompt;
+    const { agentName, agentPrompt, knowledgeContext } = await this.buildAgentAndKnowledgeContext(
+      userId,
+      matchedRule?.agentId
+    );
+
     let aiParsed: {
       publicCommentReply: string | null;
       aiDmReply: string;
@@ -310,8 +468,10 @@ Sender Handle: ${senderHandle} (${senderName || senderHandle})
 Incoming Message/Comment: "${incomingText}"
 Detected Phone: ${detectedPhone || 'Not provided yet'}
 Detected Email: ${detectedEmail || 'Not provided yet'}
-Brochure Link: ${config.brochureUrl || 'Available on request'}
-Qualification Instructions: ${config.customQualificationPrompt}
+Brochure Link: ${effectiveBrochureUrl || 'Available on request'}
+Qualification Instructions: ${effectiveInstructions}
+${matchedRule ? `Matched Rule: ${matchedRule.name}${agentName ? ` (Agent: ${agentName})` : ''}` : ''}
+${agentPrompt ? `\n=== ASSIGNED AGENT PERSONA & INSTRUCTIONS ===\n${agentPrompt}\n` : ''}${knowledgeContext ? `\n=== BUSINESS KNOWLEDGE BASE (USE EXACT PRICES, TIMINGS & FACTS FROM HERE) ===\n${knowledgeContext}\n` : ''}
 
 Respond ONLY with a valid JSON object matching this exact schema:
 {
@@ -464,6 +624,17 @@ Respond ONLY with a valid JSON object matching this exact schema:
       }
     }
 
+    // Per-rule Auto-Call (ONLY if matched rule has autoCallEnabled = true AND phone detected)
+    const autoCallResult = await this.triggerRuleAutoCallIfEnabled({
+      userId,
+      rule: matchedRule,
+      detectedPhone,
+      customerName: aiParsed.customerName,
+      platform,
+      incomingText,
+      businessName,
+    });
+
     const eventEntry: SocialLeadEventLog = {
       id: `soc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       timestamp: new Date().toISOString(),
@@ -481,6 +652,10 @@ Respond ONLY with a valid JSON object matching this exact schema:
       sentiment: aiParsed.sentiment,
       crmLeadId,
       summary: aiParsed.summary,
+      matchedRuleName: matchedRule?.name || null,
+      autoCallTriggered: autoCallResult.triggered,
+      autoCallAgentName: agentName || autoCallResult.agentName || null,
+      autoCallError: autoCallResult.error || null,
     };
 
     const currentLogs = await this.getSocialLogs(userId);
@@ -577,6 +752,9 @@ Respond ONLY with a valid JSON object matching this exact schema:
       } catch (_) {}
     }
 
+    // Load Knowledge Base facts so email replies include accurate prices/timings/details
+    const { knowledgeContext } = await this.buildAgentAndKnowledgeContext(userId);
+
     let subject = `Follow-up from ${businessName} — ${purpose}`;
     let body = `Dear ${recipientName || 'Valued Customer'},\n\nThank you for connecting with ${businessName}.\n\n${
       customNotes || 'We wanted to share our complete details and assist you with your requirement.'
@@ -604,6 +782,7 @@ Booking Link: ${config.bookingLink || 'Not set'}
 Signature: ${config.signatureText || `Best Regards,\n${businessName}`}
 
 ${memoryContext ? `=== UNIFIED CUSTOMER MEMORY (PAST PHONE CALLS & WHATSAPP CHATS) ===\n${memoryContext}\nIMPORTANT: Naturally reference relevant details from their prior phone call or WhatsApp chat so the email feels 100% personal!` : ''}
+${knowledgeContext ? `\n=== BUSINESS KNOWLEDGE BASE (USE EXACT PRICES, TIMINGS & FACTS FROM HERE) ===\n${knowledgeContext}` : ''}
 
 Respond ONLY with a valid JSON object:
 {

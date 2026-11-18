@@ -497,6 +497,27 @@ salesTeamRouter.get('/social-lead-capture/webhook-status', async (req: Request, 
   }
 });
 
+salesTeamRouter.get('/social-lead-capture/agents', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { agents } = await import('@shared/schema');
+    const rows = await db
+      .select({
+        id: agents.id,
+        name: agents.name,
+        type: agents.type,
+        language: agents.language,
+        telephonyProvider: agents.telephonyProvider,
+      })
+      .from(agents)
+      .where(eq(agents.userId, userId));
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 salesTeamRouter.get('/email-assistant/sequence-enrollments', async (req: Request, res: Response) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });

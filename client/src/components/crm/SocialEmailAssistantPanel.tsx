@@ -25,6 +25,10 @@ import {
   Copy,
   FileText,
   History,
+  Plus,
+  Trash2,
+  PhoneCall,
+  Bot,
 } from "lucide-react";
 
 export function SocialLeadCaptureSection() {
@@ -51,6 +55,7 @@ export function SocialLeadCaptureSection() {
       "Thank you for your interest! We have just sent you the complete details & brochure in your DM. Please check your inbox!",
     customQualificationPrompt:
       "Qualify the prospect warmly, share the brochure/pricing details if requested, and politely ask for their WhatsApp phone number and preferred date/time so our team or AI assistant can schedule their consultation/site visit.",
+    agentRules: [] as any[],
   });
 
   const [simPlatform, setSimPlatform] = useState<
@@ -70,6 +75,10 @@ export function SocialLeadCaptureSection() {
 
   const { data: logs = [], refetch: refetchLogs } = useQuery<any[]>({
     queryKey: ["/api/sales-team/social-lead-capture-logs"],
+  });
+
+  const { data: availableAgents = [] } = useQuery<any[]>({
+    queryKey: ["/api/sales-team/social-lead-capture/agents"],
   });
 
   useEffect(() => {
@@ -386,6 +395,195 @@ export function SocialLeadCaptureSection() {
             </CardContent>
           </Card>
 
+          {/* Dynamic Post & DM Agent Rules (Per-Post/DM AI Agent + Knowledge Base + Auto-Call Control) */}
+          <Card className="border-pink-500/20">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Bot className="w-4 h-4 text-pink-500" />
+                    Dynamic Post &amp; DM Agent Rules (Auto-Reply + Auto-Call Control)
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Assign different Calliqo AI Agents (with their Prompt &amp; Knowledge Base) per post/keyword and control which ones trigger an instant AI Voice Call when a phone number is received.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    const newRule = {
+                      id: `rule-${Date.now()}`,
+                      name: `Rule ${(config.agentRules || []).length + 1}`,
+                      enabled: true,
+                      channel: "all",
+                      matchKeywords: "",
+                      agentId: availableAgents[0]?.id || "",
+                      agentName: availableAgents[0]?.name || "",
+                      brochureUrl: "",
+                      customInstructions: "",
+                      autoCallEnabled: false,
+                      callGreeting: "",
+                    };
+                    setConfig((p) => ({ ...p, agentRules: [...(p.agentRules || []), newRule] }));
+                  }}
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Post / DM Rule
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(config.agentRules || []).length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-4 border rounded-lg bg-muted/20">
+                  No custom Post/DM Agent rules yet. Click <b>+ Add Post / DM Rule</b> to assign specific AI Agents per post/keyword and control Auto-Call ON/OFF.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {(config.agentRules || []).map((rule: any, idx: number) => {
+                    const updateRule = (patch: Record<string, any>) => {
+                      const next = [...(config.agentRules || [])];
+                      next[idx] = { ...next[idx], ...patch };
+                      setConfig((p) => ({ ...p, agentRules: next }));
+                    };
+                    return (
+                      <div key={rule.id || idx} className="p-3 rounded-lg border bg-card space-y-2.5">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-1 min-w-[180px]">
+                            <Input
+                              className="h-7 text-xs font-semibold"
+                              value={rule.name}
+                              onChange={(e) => updateRule({ name: e.target.value })}
+                              placeholder="Rule Name (e.g. 3 BHK Reel / Dental Implant)"
+                            />
+                          </div>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-medium">Rule Active</span>
+                              <Switch
+                                checked={rule.enabled !== false}
+                                onCheckedChange={(v) => updateRule({ enabled: v })}
+                              />
+                            </div>
+                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border bg-muted/40">
+                              <PhoneCall className={`w-3 h-3 ${rule.autoCallEnabled ? "text-emerald-500" : "text-muted-foreground"}`} />
+                              <span className="text-[11px] font-medium">
+                                {rule.autoCallEnabled ? "Auto-Call ON" : "Auto-Call OFF"}
+                              </span>
+                              <Switch
+                                checked={Boolean(rule.autoCallEnabled)}
+                                onCheckedChange={(v) => updateRule({ autoCallEnabled: v })}
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-red-500"
+                              onClick={() => {
+                                const next = (config.agentRules || []).filter((_: any, i: number) => i !== idx);
+                                setConfig((p) => ({ ...p, agentRules: next }));
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[11px]">Channel</Label>
+                            <Select value={rule.channel || "all"} onValueChange={(v) => updateRule({ channel: v })}>
+                              <SelectTrigger className="h-7 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Channels</SelectItem>
+                                <SelectItem value="instagram_comment">Instagram Comments</SelectItem>
+                                <SelectItem value="instagram_dm">Instagram DMs</SelectItem>
+                                <SelectItem value="facebook_comment">Facebook Comments</SelectItem>
+                                <SelectItem value="facebook_dm">Facebook Messenger</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px]">Match Keywords / Post (blank = fallback)</Label>
+                            <Input
+                              className="h-7 text-xs"
+                              value={rule.matchKeywords || ""}
+                              onChange={(e) => updateRule({ matchKeywords: e.target.value })}
+                              placeholder="3bhk, flat, dental, price"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px]">AI Agent (Prompt + Knowledge Base)</Label>
+                            <Select
+                              value={rule.agentId || "__none__"}
+                              onValueChange={(v) => {
+                                if (v === "__none__") {
+                                  updateRule({ agentId: "", agentName: "" });
+                                } else {
+                                  const ag = availableAgents.find((a: any) => a.id === v);
+                                  updateRule({ agentId: v, agentName: ag?.name || "" });
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-xs">
+                                <SelectValue placeholder="Select Calliqo Agent" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Default (Knowledge Base Only)</SelectItem>
+                                {availableAgents.map((ag: any) => (
+                                  <SelectItem key={ag.id} value={ag.id}>
+                                    {ag.name} ({ag.telephonyProvider || ag.type})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[11px]">Rule Brochure / Offer URL (Optional)</Label>
+                            <Input
+                              className="h-7 text-xs"
+                              value={rule.brochureUrl || ""}
+                              onChange={(e) => updateRule({ brochureUrl: e.target.value })}
+                              placeholder="https://example.com/3bhk-brochure.pdf"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px]">Custom Reply Instructions (Optional)</Label>
+                            <Input
+                              className="h-7 text-xs"
+                              value={rule.customInstructions || ""}
+                              onChange={(e) => updateRule({ customInstructions: e.target.value })}
+                              placeholder="Share 3 BHK price and ask for site visit slot"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {(config.agentRules || []).length > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="w-full bg-pink-600 hover:bg-pink-700 text-white text-xs"
+                  onClick={() => saveMutation.mutate(config)}
+                  disabled={saveMutation.isPending}
+                >
+                  {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
+                  Save Post &amp; DM Agent Rules
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Recent Captured Social Media Leads */}
           <Card>
             <CardHeader className="pb-3">
@@ -417,7 +615,21 @@ export function SocialLeadCaptureSection() {
                             {item.platform?.replace("_", " ")}
                           </Badge>
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {item.matchedRuleName && (
+                            <Badge variant="outline" className="text-[10px] border-pink-500/40 text-pink-600">
+                              Rule: {item.matchedRuleName}
+                            </Badge>
+                          )}
+                          {item.autoCallTriggered ? (
+                            <Badge className="bg-blue-600 text-white text-[10px]">
+                              Auto-Call Triggered{item.autoCallAgentName ? ` (${item.autoCallAgentName})` : ""}
+                            </Badge>
+                          ) : item.matchedRuleName ? (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                              Call OFF (DM Only)
+                            </Badge>
+                          ) : null}
                           {item.extractedPhone && (
                             <Badge variant="secondary" className="text-[10px]">
                               {item.extractedPhone}
