@@ -262,6 +262,41 @@ export class SocialEmailAssistantService {
 
   private static recentAutoCallPhones = new Map<string, number>();
 
+  /** Strictly validates phone numbers (rejects 7-9 digit incomplete numbers like +91702308303). */
+  private static extractValidPhone(text: string): { validPhone: string | null; invalidAttempt: string | null } {
+    const matches = String(text || '').match(/\+?\d[\d\s-]{5,16}\d/g) || [];
+    let invalidAttempt: string | null = null;
+    for (const raw of matches) {
+      const cleaned = raw.trim();
+      const digits = cleaned.replace(/\D/g, '');
+      if (digits.length === 10 && /^[6-9]/.test(digits)) {
+        return { validPhone: `+91${digits}`, invalidAttempt: null };
+      }
+      if (digits.length === 12 && digits.startsWith('91') && /^[6-9]/.test(digits.slice(2))) {
+        return { validPhone: `+${digits}`, invalidAttempt: null };
+      }
+      if (digits.length === 11 && digits.startsWith('0') && /^[6-9]/.test(digits.slice(1))) {
+        return { validPhone: `+91${digits.slice(1)}`, invalidAttempt: null };
+      }
+      if (cleaned.startsWith('+') && !digits.startsWith('91') && digits.length >= 10 && digits.length <= 15) {
+        return { validPhone: `+${digits}`, invalidAttempt: null };
+      }
+      if (digits.length >= 6 && digits.length <= 14 && !invalidAttempt) {
+        invalidAttempt = cleaned;
+      }
+    }
+    return { validPhone: null, invalidAttempt };
+  }
+
+  /** Returns true only when the name is a real person's name (not a generic placeholder like "User"). */
+  private static isRealCustomerName(name?: string | null): boolean {
+    const n = String(name || '').trim().toLowerCase();
+    if (!n || n.length < 2) return false;
+    if (n.startsWith('fb:') || n.startsWith('ig:') || n.startsWith('@')) return false;
+    const generic = new Set(['user', 'customer', 'unknown', 'social', 'social media lead', 'not provided', 'not mentioned', 'guest', 'caller', 'calliqo ai']);
+    return !generic.has(n);
+  }
+
   /** Picks the first enabled Post/DM rule matching the channel & keywords (or a catch-all rule). */
   private static resolveMatchingRule(
     config: SocialLeadCaptureConfig,
@@ -425,12 +460,18 @@ export class SocialEmailAssistantService {
       .map((l) => `Customer: "${l.incomingText}"\nAI: "${l.aiDmReply}"`)
       .join('\n---\n');
 
-    // Extract phone number or email from message text, or reuse from recent conversation
-    const phoneMatch = incomingText.match(/(?:\+?91[\s-]?)?[6-9]\d{9}/);
+    // Strictly validate phone number (reject 7-9 digit typos); reuse valid phone from recent chat
+    const phoneCheck = params.extractedPhone?.trim()
+      ? this.extractValidPhone(params.extractedPhone)
+      : this.extractValidPhone(incomingText);
     const emailMatch = incomingText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    const rawNewPhone = params.extractedPhone?.trim() || (phoneMatch ? phoneMatch[0].replace(/\s+/g, '') : null);
-    const stickyPhone = [...senderHistory].reverse().find((l) => l.extractedPhone)?.extractedPhone || null;
+    const rawNewPhone = phoneCheck.validPhone;
+    const invalidPhoneAttempt = phoneCheck.invalidAttempt;
+    const stickyPhoneEntry = [...senderHistory].reverse().find((l) => l.extractedPhone);
+    const stickyPhone = stickyPhoneEntry?.extractedPhone ? this.extractValidPhone(stickyPhoneEntry.extractedPhone).validPhone : null;
     const detectedPhone = rawNewPhone || stickyPhone;
+    const stickyName = [...senderHistory].reverse().find((l) => this.isRealCustomerName(l.senderName))?.senderName || null;
+    const knownCustomerName = this.isRealCustomerName(senderName) ? senderName!.trim() : stickyName;
     const detectedEmail =
       params.extractedEmail?.trim() ||
       (emailMatch ? emailMatch[0] : null) ||
@@ -497,7 +538,9 @@ Post / Reel Context: ${postOrReelTitle || 'Direct Message / General Page Inquiry
 Sender Handle: ${senderHandle} (${senderName || senderHandle})
 ${recentChatHistory ? `\n=== RECENT CHAT HISTORY WITH THIS USER ===\n${recentChatHistory}\n` : ''}
 Latest Incoming Message/Comment: "${incomingText}"
-Known Phone Number: ${detectedPhone || 'NOT PROVIDED YET'}
+Known Customer Name: ${knownCustomerName || 'NOT PROVIDED YET'}
+Known Valid Phone Number: ${detectedPhone || 'NOT PROVIDED YET'}
+${invalidPhoneAttempt ? `INVALID/INCOMPLETE PHONE ATTEMPT DETECTED: "${invalidPhoneAttempt}" (too short / wrong digits — MUST tell user to share a valid 10-digit mobile number!)` : ''}
 Known Email: ${detectedEmail || 'Not provided yet'}
 Brochure Link: ${effectiveBrochureUrl || 'Available on request'}
 Qualification Instructions: ${effectiveInstructions}
@@ -506,10 +549,15 @@ ${agentPrompt ? `\n=== ASSIGNED AGENT PERSONA & INSTRUCTIONS (STAY STRICTLY IN T
 
 CRITICAL CONVERSATION RULES:
 1. Read the RECENT CHAT HISTORY carefully. Do NOT repeat questions the user already answered!
-2. If "Known Phone Number" is already present (${detectedPhone || 'none'}), NEVER ask for their phone/WhatsApp number again!
-3. If the user gives a date and time (e.g. "kal sham 4 bje", "19 nov 4 pm") AND "Known Phone Number" is present, extract "appointmentDate" (YYYY-MM-DD) and "appointmentTime" (HH:MM 24h) and CONFIRM the appointment clearly in "aiDmReply"!
-4. Match the user's language (if they write in Hindi/Hinglish or ask for Hindi/Hinglish, reply ONLY in natural Hinglish/Hindi).
-5. Stay strictly in the Assigned Agent's persona if present (do not mention another unrelated business).
+2. NEVER book or say "your appointment is booked/confirmed" unless we have BOTH:
+   (a) Known Customer Real Name (NOT "User" or blank — extract from message if user wrote "my name is ..."), AND
+   (b) A VALID 10-digit phone number (Known Valid Phone Number is present).
+   If Name or Valid Phone is missing, politely ask for the missing detail(s) first BEFORE confirming the appointment!
+3. If "INVALID/INCOMPLETE PHONE ATTEMPT DETECTED" is shown above, politely tell the customer their phone number appears incomplete/invalid and ask for a valid 10-digit mobile number.
+4. If "Known Valid Phone Number" is already present (${detectedPhone || 'none'}), NEVER ask for their phone number again!
+5. If user gives date + time AND we have BOTH Real Name and Valid Phone, extract "appointmentDate" (YYYY-MM-DD) and "appointmentTime" (HH:MM 24h) and CONFIRM the appointment clearly!
+6. Match the user's language (if they write in Hindi/Hinglish or ask for Hindi/Hinglish, reply ONLY in natural Hinglish/Hindi).
+7. Stay strictly in the Assigned Agent's persona if present (do not mention another unrelated business).
 
 Respond ONLY with a valid JSON object matching this exact schema:
 {
@@ -668,8 +716,11 @@ Respond ONLY with a valid JSON object matching this exact schema:
       }
     }
 
-    // Create Appointment in `appointments` table if date + time + phone are known
-    if (aiParsed.appointmentDate && aiParsed.appointmentTime && detectedPhone) {
+    // Create Appointment in `appointments` table ONLY when date + time + valid phone + real customer name are ALL known
+    const finalCustomerName = this.isRealCustomerName(aiParsed.customerName)
+      ? aiParsed.customerName.trim()
+      : knownCustomerName;
+    if (aiParsed.appointmentDate && aiParsed.appointmentTime && detectedPhone && finalCustomerName) {
       try {
         const apptDate = String(aiParsed.appointmentDate).trim();
         const apptTime = /^\d{2}:\d{2}$/.test(String(aiParsed.appointmentTime).trim())
@@ -690,7 +741,7 @@ Respond ONLY with a valid JSON object matching this exact schema:
           await db.insert(appointments).values({
             id: `apt_${Date.now()}_${Math.random().toString(36).substring(7)}`,
             userId,
-            contactName: aiParsed.customerName || senderName || 'Social Media Lead',
+            contactName: finalCustomerName,
             contactPhone: detectedPhone,
             contactEmail: detectedEmail || null,
             appointmentDate: apptDate as any,
