@@ -293,7 +293,26 @@ export class SocialEmailAssistantService {
     const n = String(name || '').trim().toLowerCase();
     if (!n || n.length < 2) return false;
     if (n.startsWith('fb:') || n.startsWith('ig:') || n.startsWith('@')) return false;
-    const generic = new Set(['user', 'customer', 'unknown', 'social', 'social media lead', 'not provided', 'not mentioned', 'guest', 'caller', 'calliqo ai']);
+    const generic = new Set([
+      'user',
+      'customer',
+      'unknown',
+      'unknown user',
+      'social',
+      'social media lead',
+      'not provided',
+      'not mentioned',
+      'not specified',
+      'n/a',
+      'na',
+      'none',
+      'anonymous',
+      'guest',
+      'caller',
+      'calliqo ai',
+      'fb user',
+      'instagram user',
+    ]);
     return !generic.has(n);
   }
 
@@ -449,8 +468,8 @@ export class SocialEmailAssistantService {
     const currentLogs = await this.getSocialLogs(userId);
     const isComment = platform === 'instagram_comment' || platform === 'facebook_comment';
 
-    // Load recent conversation history for this same sender (last 24h, up to 6 turns)
-    const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+    // Load recent conversation history for this same sender (last 2h, up to 6 turns)
+    const cutoffMs = Date.now() - 2 * 60 * 60 * 1000;
     const senderHistory = currentLogs
       .filter((l) => l.senderHandle === senderHandle && new Date(l.timestamp).getTime() > cutoffMs)
       .slice(0, 6)
@@ -563,7 +582,7 @@ Respond ONLY with a valid JSON object matching this exact schema:
 {
   "publicCommentReply": ${isComment ? '"Short polite public reply telling them to check their DM for details"' : 'null'},
   "aiDmReply": "Natural, non-repetitive DM response following the conversation rules above",
-  "customerName": "Inferred customer name from senderName or message",
+  "customerName": "Customer's real full name ONLY if explicitly stated in chat/profile (otherwise null — NEVER return 'User' or 'Not specified')",
   "requirement": "Extracted product/service/appointment interest",
   "category": "hot" | "warm" | "cold",
   "leadScore": 80,
