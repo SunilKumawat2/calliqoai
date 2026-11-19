@@ -289,6 +289,63 @@ export class LeadSourceService {
   }
 
   /**
+   * Parser for HubSpot CRM Workflow Webhook, Form Submission & Contact Object Payloads
+   */
+  static parseHubSpotLead(body: any): NormalizedLead {
+    let b = body || {};
+    if (Array.isArray(b) && b.length > 0) {
+      b = b[0];
+    }
+
+    // HubSpot Workflow / CRM object payloads often nest fields under `properties`
+    const props = (b.properties && typeof b.properties === 'object') ? b.properties : {};
+    const getProp = (keys: string[]) => {
+      for (const k of keys) {
+        const val = b[k] ?? props[k]?.value ?? props[k];
+        if (val !== undefined && val !== null && String(val).trim() !== '') {
+          return String(val).trim();
+        }
+      }
+      return '';
+    };
+
+    let firstName = getProp(['firstname', 'firstName', 'first_name']);
+    let lastName = getProp(['lastname', 'lastName', 'last_name']);
+    const fullName = getProp(['fullname', 'full_name', 'name', 'contact_name']);
+
+    if (!firstName && fullName) {
+      const parts = fullName.split(/\s+/);
+      firstName = parts[0] || 'HubSpot Prospect';
+      lastName = parts.slice(1).join(' ') || '';
+    } else if (!firstName) {
+      firstName = 'HubSpot Prospect';
+    }
+
+    const rawPhone = getProp(['phone', 'mobilephone', 'Phone', 'mobile', 'phone_number']);
+    const rawEmail = getProp(['email', 'Email', 'work_email']);
+    const rawCompany = getProp(['company', 'Company', 'associatedcompanyname']);
+    const rawCity = getProp(['city', 'City', 'state']);
+    const rawProject = getProp(['project', 'product_interest', 'hs_analytics_source', 'message']) || rawCompany;
+    const rawBudget = getProp(['annualrevenue', 'budget', 'deal_amount']);
+    const rawNotes = getProp(['notes', 'message', 'hs_lead_status', 'description']) || (rawCompany ? `Company: ${rawCompany}` : '');
+    const externalLeadId = getProp(['objectId', 'vid', 'hs_object_id', 'id']);
+
+    return {
+      firstName,
+      lastName: lastName || undefined,
+      phone: this.normalizePhoneNumber(rawPhone),
+      email: rawEmail || undefined,
+      company: rawCompany || undefined,
+      city: rawCity || undefined,
+      project: rawProject || undefined,
+      budget: rawBudget || undefined,
+      notes: rawNotes || undefined,
+      externalLeadId: externalLeadId || undefined,
+      rawPayload: b,
+    };
+  }
+
+  /**
    * Ingest lead from any source, save to CRM, and optionally trigger AI Speed-to-Lead call
    */
   static async ingestLead(

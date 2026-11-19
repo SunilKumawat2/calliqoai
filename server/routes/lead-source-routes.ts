@@ -221,6 +221,40 @@ leadSourceRouter.post('/v1/integrations/zoho/:webhookKey', async (req: Request, 
 });
 
 /**
+ * HubSpot CRM Dedicated Inbound Lead Webhook (Workflows & Form Webhooks)
+ */
+leadSourceRouter.post('/v1/integrations/hubspot/:webhookKey', async (req: Request, res: Response) => {
+  try {
+    const { webhookKey } = req.params;
+    const integration = await LeadSourceService.getIntegrationByWebhookKey(webhookKey);
+
+    if (!integration) {
+      return res.status(404).json({ success: false, error: 'HubSpot integration webhook key not found' });
+    }
+
+    if (integration.status !== 'active') {
+      return res.status(403).json({ success: false, error: 'HubSpot integration is currently paused' });
+    }
+
+    const payload = (req.body && Object.keys(req.body).length > 0) ? req.body : req.query;
+    const leadData = LeadSourceService.parseHubSpotLead(payload);
+    const result = await LeadSourceService.ingestLead(integration, leadData, 'hubspot');
+
+    return res.json({
+      success: true,
+      service: 'HubSpot CRM Lead Delivery',
+      leadId: result.leadId,
+      autoCallInitiated: result.callInitiated,
+      callId: result.callId,
+      message: 'HubSpot CRM lead successfully received and queued',
+    });
+  } catch (err: any) {
+    console.error('[LeadSource] HubSpot CRM webhook error:', err.message);
+    return res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * 2-Way External CRM Status Sync Webhook (Zoho CRM / HubSpot / Custom CRM -> Calliqo AI)
  * Updates lead stage, notes, or appointment status when modified in External CRM
  */
@@ -233,14 +267,17 @@ leadSourceRouter.post('/v1/integrations/crm-status-sync/:webhookKey', async (req
       return res.status(404).json({ success: false, error: 'Integration webhook key not found' });
     }
 
-    const payload = (req.body && Object.keys(req.body).length > 0) ? req.body : req.query;
+    const rawPayload = (req.body && Object.keys(req.body).length > 0) ? req.body : req.query;
+    const payload = (rawPayload?.properties && typeof rawPayload.properties === 'object')
+      ? { ...rawPayload, ...rawPayload.properties }
+      : rawPayload;
     const { db } = await import('../db');
     const { leads, appointments } = await import('@shared/schema');
     const { eq, and, or, sql } = await import('drizzle-orm');
 
-    const rawPhone = String(payload.phone || payload.Phone || payload.Mobile || payload.contactPhone || '').trim();
+    const rawPhone = String(payload.phone || payload.Phone || payload.Mobile || payload.mobilephone || payload.contactPhone || '').trim();
     const last10 = rawPhone.replace(/\D/g, '').slice(-10);
-    const stage = String(payload.stage || payload.Lead_Status || payload.status || '').trim().toLowerCase();
+    const stage = String(payload.stage || payload.Lead_Status || payload.hs_lead_status || payload.lifecyclestage || payload.status || '').trim().toLowerCase();
     const appointmentStatus = String(payload.appointmentStatus || payload.visitStatus || '').trim().toLowerCase();
 
     let updatedLeadId: string | null = null;
@@ -442,5 +479,38 @@ leadSourceRouter.post('/lead-sources/:id/test', async (req: Request, res: Respon
     });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/lead-sources/test-external-crm
+ * Test Zoho CRM OAuth or HubSpot Private App Token connectivity before/after saving
+ */
+leadSourceRouter.post('/lead-sources/test-external-crm', async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id || (req as any).userId;
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { provider, zohoDomain, zohoClientId, zohoClientSecret, zohoRefreshToken, hubspotAccessToken } = req.body || {};
+    const { ExternalCrmWritebackService } = await import('../services/crm-sync/external-crm-writeback.service');
+
+    if (provider === 'zoho_crm') {
+      const result = await ExternalCrmWritebackService.testZohoConnection({
+        zohoDomain,
+        zohoClientId,
+        zohoClientSecret,
+        zohoRefreshToken,
+      });
+      return res.json(result);
+    }
+
+    if (provider === 'hubspot') {
+      const result = await ExternalCrmWritebackService.testHubSpotConnection(hubspotAccessToken);
+      return res.json(result);
+    }
+
+    return res.status(400).json({ ok: false, error: 'Unsupported CRM provider' });
+  } catch (err: any) {
+    return res.status(400).json({ ok: false, error: err.message });
   }
 });

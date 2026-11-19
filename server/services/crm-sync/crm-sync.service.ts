@@ -394,6 +394,13 @@ export class CrmSyncService {
     recordingUrl?: string;
   }): Promise<boolean> {
     try {
+      // Non-blocking 2-way writeback to Zoho CRM / HubSpot / External Webhooks
+      import('./external-crm-writeback.service')
+        .then(({ ExternalCrmWritebackService }) =>
+          ExternalCrmWritebackService.writebackCallOutcome(callOutcome)
+        )
+        .catch(() => {});
+
       const normalizedPhone = this.normalizePhoneNumber(callOutcome.phone);
 
       let lead: any = null;

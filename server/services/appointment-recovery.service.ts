@@ -904,6 +904,15 @@ export class AppointmentRecoveryService {
         }
       }
 
+      // Also push directly to Zoho CRM / HubSpot REST APIs if configured
+      try {
+        const { ExternalCrmWritebackService } = await import('./crm-sync/external-crm-writeback.service');
+        const apiResult = await ExternalCrmWritebackService.pushEvent(userId, eventType, payload);
+        syncedCount += apiResult.syncedCount;
+      } catch {
+        // non-fatal
+      }
+
       return { syncedCount };
     } catch {
       return { syncedCount: 0 };

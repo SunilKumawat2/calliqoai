@@ -57,7 +57,7 @@ export interface LeadSourceIntegration {
   id: string;
   userId: string;
   name: string;
-  sourceType: 'website_form' | 'meta_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'housing' | 'custom_webhook' | 'zoho_crm';
+  sourceType: 'website_form' | 'meta_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'housing' | 'custom_webhook' | 'zoho_crm' | 'hubspot';
   campaignId: string | null;
   agentId: string | null;
   spreadsheetId: string | null;
@@ -97,6 +97,7 @@ export function CRMIntegrationsDashboard() {
 
   // Edit Lead Source Dialog State
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [testingExternalCrm, setTestingExternalCrm] = useState(false);
   const [editingSource, setEditingSource] = useState<{
     id: string;
     name: string;
@@ -111,6 +112,12 @@ export function CRMIntegrationsDashboard() {
     propertyName: string;
     city: string;
     outboundWebhookUrl: string;
+    zohoDomain: string;
+    zohoModule: string;
+    zohoClientId: string;
+    zohoClientSecret: string;
+    zohoRefreshToken: string;
+    hubspotAccessToken: string;
   } | null>(null);
 
   // Inbound Form Simulator Dialog state
@@ -141,6 +148,12 @@ export function CRMIntegrationsDashboard() {
     propertyName: "",
     city: "",
     outboundWebhookUrl: "",
+    zohoDomain: "in",
+    zohoModule: "Leads",
+    zohoClientId: "",
+    zohoClientSecret: "",
+    zohoRefreshToken: "",
+    hubspotAccessToken: "",
   });
 
   // Column mapping form state for Google Sheets
@@ -289,8 +302,44 @@ export function CRMIntegrationsDashboard() {
       propertyName: source.portalConfig?.propertyName || "",
       city: source.portalConfig?.city || "",
       outboundWebhookUrl: source.portalConfig?.outboundWebhookUrl || "",
+      zohoDomain: source.portalConfig?.zohoDomain || "in",
+      zohoModule: source.portalConfig?.zohoModule || "Leads",
+      zohoClientId: source.portalConfig?.zohoClientId || "",
+      zohoClientSecret: source.portalConfig?.zohoClientSecret || "",
+      zohoRefreshToken: source.portalConfig?.zohoRefreshToken || "",
+      hubspotAccessToken: source.portalConfig?.hubspotAccessToken || "",
     });
     setEditDialogOpen(true);
+  };
+
+  const handleTestExternalCrm = async (params: {
+    provider: "zoho_crm" | "hubspot";
+    zohoDomain?: string;
+    zohoClientId?: string;
+    zohoClientSecret?: string;
+    zohoRefreshToken?: string;
+    hubspotAccessToken?: string;
+  }) => {
+    setTestingExternalCrm(true);
+    try {
+      const res = await apiRequest("POST", "/api/lead-sources/test-external-crm", params);
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Connection test failed");
+      }
+      toast({
+        title: "2-Way CRM Connected!",
+        description: data.message,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Connection Test Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setTestingExternalCrm(false);
+    }
   };
 
   // Submit Simulator Form
@@ -471,6 +520,12 @@ export function CRMIntegrationsDashboard() {
           propertyName: newLeadSource.propertyName || undefined,
           city: newLeadSource.city || undefined,
           outboundWebhookUrl: newLeadSource.outboundWebhookUrl || undefined,
+          zohoDomain: newLeadSource.zohoDomain || "in",
+          zohoModule: newLeadSource.zohoModule || "Leads",
+          zohoClientId: newLeadSource.zohoClientId || undefined,
+          zohoClientSecret: newLeadSource.zohoClientSecret || undefined,
+          zohoRefreshToken: newLeadSource.zohoRefreshToken || undefined,
+          hubspotAccessToken: newLeadSource.hubspotAccessToken || undefined,
         },
       };
       const res = await apiRequest("POST", "/api/lead-sources", payload);
@@ -494,6 +549,12 @@ export function CRMIntegrationsDashboard() {
         propertyName: "",
         city: "",
         outboundWebhookUrl: "",
+        zohoDomain: "in",
+        zohoModule: "Leads",
+        zohoClientId: "",
+        zohoClientSecret: "",
+        zohoRefreshToken: "",
+        hubspotAccessToken: "",
       });
       refetchLeadSources();
       queryClient.invalidateQueries({ queryKey: ["/api/lead-sources"] });
@@ -520,6 +581,12 @@ export function CRMIntegrationsDashboard() {
           propertyName: editingSource.propertyName || undefined,
           city: editingSource.city || undefined,
           outboundWebhookUrl: editingSource.outboundWebhookUrl || undefined,
+          zohoDomain: editingSource.zohoDomain || "in",
+          zohoModule: editingSource.zohoModule || "Leads",
+          zohoClientId: editingSource.zohoClientId || undefined,
+          zohoClientSecret: editingSource.zohoClientSecret || undefined,
+          zohoRefreshToken: editingSource.zohoRefreshToken || undefined,
+          hubspotAccessToken: editingSource.hubspotAccessToken || undefined,
         },
       };
       const res = await apiRequest("PATCH", `/api/lead-sources/${editingSource.id}`, payload);
@@ -583,6 +650,7 @@ export function CRMIntegrationsDashboard() {
   const adSources = leadSources.filter(s => ['meta_ads', 'google_ads'].includes(s.sourceType));
   const webSources = leadSources.filter(s => ['website_form', 'custom_webhook'].includes(s.sourceType));
   const zohoSources = leadSources.filter(s => s.sourceType === 'zoho_crm');
+  const hubspotSources = leadSources.filter(s => s.sourceType === 'hubspot');
 
   // Compute aggregate stats
   const totalLeadsCaptured = leadSources.reduce((acc, curr) => acc + (curr.totalLeads || 0), 0) + 
@@ -594,6 +662,8 @@ export function CRMIntegrationsDashboard() {
     switch (source.sourceType) {
       case 'zoho_crm':
         return `${baseUrl}/api/v1/integrations/zoho/${source.webhookKey}`;
+      case 'hubspot':
+        return `${baseUrl}/api/v1/integrations/hubspot/${source.webhookKey}`;
       case '99acres':
         return `${baseUrl}/api/v1/integrations/99acres/${source.webhookKey}`;
       case 'magicbricks':
@@ -643,6 +713,13 @@ export function CRMIntegrationsDashboard() {
               <FileSpreadsheet className="w-3 h-3 text-emerald-600" />
               Sheet: {assignedSheet ? assignedSheet.name : "All Connected Sheets (Default)"}
             </Badge>
+
+            {(src.portalConfig?.zohoRefreshToken || src.portalConfig?.hubspotAccessToken || src.portalConfig?.outboundWebhookUrl) && (
+              <Badge className="bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 text-[10px] gap-1 font-semibold">
+                <RefreshCw className="w-3 h-3 text-blue-600" />
+                2-Way Writeback Active
+              </Badge>
+            )}
 
             <Badge className={src.status === 'active' ? 'bg-emerald-500/10 text-emerald-600 border-0 text-[10px]' : 'bg-amber-500/10 text-amber-600 border-0 text-[10px]'}>
               {src.status}
@@ -1136,7 +1213,7 @@ export function CRMIntegrationsDashboard() {
 
       {/* Main Tabs Navigation */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-2 md:grid-cols-6 h-auto p-1 bg-muted/60 border border-border/50 rounded-xl">
+        <TabsList className="grid grid-cols-2 md:grid-cols-7 h-auto p-1 bg-muted/60 border border-border/50 rounded-xl">
           <TabsTrigger value="overview" className="gap-2 py-2.5 text-xs font-semibold">
             <Sparkles className="w-4 h-4 text-emerald-500" />
             Overview & Hub
@@ -1148,6 +1225,10 @@ export function CRMIntegrationsDashboard() {
           <TabsTrigger value="zoho-crm" className="gap-2 py-2.5 text-xs font-semibold">
             <Database className="w-4 h-4 text-red-500" />
             Zoho CRM ({zohoSources.length})
+          </TabsTrigger>
+          <TabsTrigger value="hubspot-crm" className="gap-2 py-2.5 text-xs font-semibold">
+            <Database className="w-4 h-4 text-orange-500" />
+            HubSpot ({hubspotSources.length})
           </TabsTrigger>
           <TabsTrigger value="real-estate" className="gap-2 py-2.5 text-xs font-semibold">
             <Building2 className="w-4 h-4 text-blue-500" />
@@ -1422,6 +1503,102 @@ export function CRMIntegrationsDashboard() {
               ) : (
                 <div className="divide-y divide-border/60">
                   {zohoSources.map(renderLeadSourceCard)}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ============================================================ */}
+        {/* TAB: HUBSPOT CRM INTEGRATION (2-Way Lead & Call Writeback) */}
+        {/* ============================================================ */}
+        <TabsContent value="hubspot-crm" className="space-y-6 m-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="border border-border/60 hover:shadow-md transition-all md:col-span-2">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-xl bg-orange-600/10 text-orange-600 flex items-center justify-center font-bold">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <Badge className="bg-orange-500/10 text-orange-600 border-0 text-[10px] font-semibold">
+                    2-Way HubSpot Sync & Writeback
+                  </Badge>
+                </div>
+                <CardTitle className="text-base font-semibold mt-2 flex items-center gap-2">
+                  HubSpot CRM Automated Lead-to-Call & 2-Way Writeback
+                </CardTitle>
+                <CardDescription className="text-xs leading-relaxed">
+                  Connect your HubSpot CRM with {brandName}. New HubSpot contacts trigger instant AI Voice calls, and after every call or appointment update, {brandName} automatically writes the call summary, lead score, recording, and status back to the HubSpot Contact timeline!
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-center">
+                    <span className="text-xs text-muted-foreground block">Inbound Capture</span>
+                    <span className="text-sm font-bold text-emerald-500">HubSpot Workflows</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-center">
+                    <span className="text-xs text-muted-foreground block">2-Way Writeback</span>
+                    <span className="text-sm font-bold text-orange-500">Notes + Lead Status</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-center">
+                    <span className="text-xs text-muted-foreground block">Auth Method</span>
+                    <span className="text-sm font-bold text-blue-500">Private App Token</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <Button
+                    size="sm"
+                    className="bg-orange-600 hover:bg-orange-700 text-white gap-2 font-medium"
+                    onClick={() => {
+                      setNewLeadSource(prev => ({ ...prev, name: "HubSpot CRM Stream", sourceType: "hubspot" }));
+                      setLeadSourceDialogOpen(true);
+                    }}
+                  >
+                    <Plus className="w-4 h-4" /> Connect HubSpot Stream
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border border-border/60 bg-muted/20">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" /> 60-Second HubSpot Setup
+                </CardTitle>
+                <CardDescription className="text-[11px]">
+                  Inbound + 2-Way Writeback setup:
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2.5 text-xs text-muted-foreground">
+                <div className="space-y-1">
+                  <p className="font-semibold text-foreground">1. Inbound (HubSpot → {brandName}):</p>
+                  <p className="text-[11px]">In HubSpot <strong>Automation &gt; Workflows</strong>, add a <strong>Send a Webhook (POST)</strong> action with the endpoint below.</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-semibold text-foreground">2. 2-Way Writeback ({brandName} → HubSpot):</p>
+                  <p className="text-[11px]">In HubSpot <strong>Settings &gt; Integrations &gt; Private Apps</strong>, create a token with <code className="bg-background px-1 py-0.5 rounded">crm.objects.contacts.write</code> &amp; notes scope and paste it in Configure.</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Active HubSpot CRM Endpoints</CardTitle>
+              <CardDescription className="text-xs">
+                Copy this webhook URL into your HubSpot Workflow and configure your Private App Token for 2-way writeback
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {hubspotSources.length === 0 ? (
+                <div className="text-center py-8 text-xs text-muted-foreground border border-dashed rounded-xl">
+                  No HubSpot CRM streams configured yet. Click "Connect HubSpot Stream" above to generate your webhook URL.
+                </div>
+              ) : (
+                <div className="divide-y divide-border/60">
+                  {hubspotSources.map(renderLeadSourceCard)}
                 </div>
               )}
             </CardContent>
@@ -1809,7 +1986,8 @@ export function CRMIntegrationsDashboard() {
                     <SelectValue placeholder="Select platform" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zoho_crm">Zoho CRM (Webhook & Workflow Automation)</SelectItem>
+                    <SelectItem value="zoho_crm">Zoho CRM (Webhook &amp; 2-Way API Sync)</SelectItem>
+                    <SelectItem value="hubspot">HubSpot CRM (Webhook &amp; 2-Way API Sync)</SelectItem>
                     <SelectItem value="99acres">99acres.com</SelectItem>
                     <SelectItem value="magicbricks">Magicbricks.com</SelectItem>
                     <SelectItem value="housing">Housing.com</SelectItem>
@@ -1966,6 +2144,143 @@ export function CRMIntegrationsDashboard() {
                 Whenever an appointment is confirmed, attended, marked No-Show, or Deal Won, {brandName} will automatically push the live status to your external CRM.
               </p>
             </div>
+
+            {newLeadSource.sourceType === "zoho_crm" && (
+              <div className="space-y-3 p-3 rounded-xl bg-red-500/5 border border-red-500/20">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-1.5 text-xs font-semibold text-red-700 dark:text-red-300">
+                    <Database className="w-3.5 h-3.5 text-red-600" />
+                    Zoho CRM Direct 2-Way API Writeback (Optional)
+                  </Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[11px]"
+                    disabled={testingExternalCrm}
+                    onClick={() =>
+                      handleTestExternalCrm({
+                        provider: "zoho_crm",
+                        zohoDomain: newLeadSource.zohoDomain,
+                        zohoClientId: newLeadSource.zohoClientId,
+                        zohoClientSecret: newLeadSource.zohoClientSecret,
+                        zohoRefreshToken: newLeadSource.zohoRefreshToken,
+                      })
+                    }
+                  >
+                    {testingExternalCrm ? "Testing..." : "Test Zoho Auth"}
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Zoho Data Center</Label>
+                    <Select
+                      value={newLeadSource.zohoDomain}
+                      onValueChange={(val) => setNewLeadSource({ ...newLeadSource, zohoDomain: val })}
+                    >
+                      <SelectTrigger className="h-8 text-xs bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="in">India (.in)</SelectItem>
+                        <SelectItem value="com">US / Global (.com)</SelectItem>
+                        <SelectItem value="eu">Europe (.eu)</SelectItem>
+                        <SelectItem value="com.au">Australia (.com.au)</SelectItem>
+                        <SelectItem value="jp">Japan (.jp)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Zoho Module</Label>
+                    <Select
+                      value={newLeadSource.zohoModule}
+                      onValueChange={(val) => setNewLeadSource({ ...newLeadSource, zohoModule: val })}
+                    >
+                      <SelectTrigger className="h-8 text-xs bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Leads">Leads</SelectItem>
+                        <SelectItem value="Contacts">Contacts</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Zoho Client ID</Label>
+                    <Input
+                      placeholder="1000.XXXX"
+                      value={newLeadSource.zohoClientId}
+                      onChange={(e) => setNewLeadSource({ ...newLeadSource, zohoClientId: e.target.value })}
+                      className="h-8 text-xs bg-background font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Zoho Client Secret</Label>
+                    <Input
+                      type="password"
+                      placeholder="Client Secret"
+                      value={newLeadSource.zohoClientSecret}
+                      onChange={(e) => setNewLeadSource({ ...newLeadSource, zohoClientSecret: e.target.value })}
+                      className="h-8 text-xs bg-background font-mono"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Zoho OAuth Refresh Token</Label>
+                  <Input
+                    type="password"
+                    placeholder="1000.xxxx.xxxx"
+                    value={newLeadSource.zohoRefreshToken}
+                    onChange={(e) => setNewLeadSource({ ...newLeadSource, zohoRefreshToken: e.target.value })}
+                    className="h-8 text-xs bg-background font-mono"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Writes Call Summary, Lead Status, Score, Recording URL &amp; Appointment notes directly back into Zoho CRM after every AI call.
+                </p>
+              </div>
+            )}
+
+            {newLeadSource.sourceType === "hubspot" && (
+              <div className="space-y-2.5 p-3 rounded-xl bg-orange-500/5 border border-orange-500/20">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-1.5 text-xs font-semibold text-orange-700 dark:text-orange-300">
+                    <Database className="w-3.5 h-3.5 text-orange-600" />
+                    HubSpot Direct 2-Way API Writeback (Optional)
+                  </Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[11px]"
+                    disabled={testingExternalCrm}
+                    onClick={() =>
+                      handleTestExternalCrm({
+                        provider: "hubspot",
+                        hubspotAccessToken: newLeadSource.hubspotAccessToken,
+                      })
+                    }
+                  >
+                    {testingExternalCrm ? "Testing..." : "Test HubSpot Token"}
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">HubSpot Private App Access Token</Label>
+                  <Input
+                    type="password"
+                    placeholder="pat-na1-xxxx-xxxx-xxxx"
+                    value={newLeadSource.hubspotAccessToken}
+                    onChange={(e) => setNewLeadSource({ ...newLeadSource, hubspotAccessToken: e.target.value })}
+                    className="h-8 text-xs bg-background font-mono"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Automatically updates HubSpot Contact Lead Status and logs AI Call Summary + Appointment notes on the Contact timeline.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="p-4 px-6 border-t border-border/50 bg-muted/20 shrink-0">
@@ -2602,6 +2917,137 @@ export function CRMIntegrationsDashboard() {
                   </div>
                 )}
               </div>
+
+              {editingSource.sourceType === "zoho_crm" && (
+                <div className="space-y-3 p-3 rounded-xl bg-red-500/5 border border-red-500/20">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-1.5 text-xs font-semibold text-red-700 dark:text-red-300">
+                      <Database className="w-3.5 h-3.5 text-red-600" />
+                      Zoho CRM Direct 2-Way API Writeback
+                    </Label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[11px]"
+                      disabled={testingExternalCrm}
+                      onClick={() =>
+                        handleTestExternalCrm({
+                          provider: "zoho_crm",
+                          zohoDomain: editingSource.zohoDomain,
+                          zohoClientId: editingSource.zohoClientId,
+                          zohoClientSecret: editingSource.zohoClientSecret,
+                          zohoRefreshToken: editingSource.zohoRefreshToken,
+                        })
+                      }
+                    >
+                      {testingExternalCrm ? "Testing..." : "Test Zoho Auth"}
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Zoho Data Center</Label>
+                      <Select
+                        value={editingSource.zohoDomain}
+                        onValueChange={(val) => setEditingSource({ ...editingSource, zohoDomain: val })}
+                      >
+                        <SelectTrigger className="h-8 text-xs bg-background">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="in">India (.in)</SelectItem>
+                          <SelectItem value="com">US / Global (.com)</SelectItem>
+                          <SelectItem value="eu">Europe (.eu)</SelectItem>
+                          <SelectItem value="com.au">Australia (.com.au)</SelectItem>
+                          <SelectItem value="jp">Japan (.jp)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Zoho Module</Label>
+                      <Select
+                        value={editingSource.zohoModule}
+                        onValueChange={(val) => setEditingSource({ ...editingSource, zohoModule: val })}
+                      >
+                        <SelectTrigger className="h-8 text-xs bg-background">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Leads">Leads</SelectItem>
+                          <SelectItem value="Contacts">Contacts</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Zoho Client ID</Label>
+                      <Input
+                        placeholder="1000.XXXX"
+                        value={editingSource.zohoClientId}
+                        onChange={(e) => setEditingSource({ ...editingSource, zohoClientId: e.target.value })}
+                        className="h-8 text-xs bg-background font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Zoho Client Secret</Label>
+                      <Input
+                        type="password"
+                        placeholder="Client Secret"
+                        value={editingSource.zohoClientSecret}
+                        onChange={(e) => setEditingSource({ ...editingSource, zohoClientSecret: e.target.value })}
+                        className="h-8 text-xs bg-background font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Zoho OAuth Refresh Token</Label>
+                    <Input
+                      type="password"
+                      placeholder="1000.xxxx.xxxx"
+                      value={editingSource.zohoRefreshToken}
+                      onChange={(e) => setEditingSource({ ...editingSource, zohoRefreshToken: e.target.value })}
+                      className="h-8 text-xs bg-background font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {editingSource.sourceType === "hubspot" && (
+                <div className="space-y-2.5 p-3 rounded-xl bg-orange-500/5 border border-orange-500/20">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-1.5 text-xs font-semibold text-orange-700 dark:text-orange-300">
+                      <Database className="w-3.5 h-3.5 text-orange-600" />
+                      HubSpot Direct 2-Way API Writeback
+                    </Label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[11px]"
+                      disabled={testingExternalCrm}
+                      onClick={() =>
+                        handleTestExternalCrm({
+                          provider: "hubspot",
+                          hubspotAccessToken: editingSource.hubspotAccessToken,
+                        })
+                      }
+                    >
+                      {testingExternalCrm ? "Testing..." : "Test HubSpot Token"}
+                    </Button>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">HubSpot Private App Access Token</Label>
+                    <Input
+                      type="password"
+                      placeholder="pat-na1-xxxx-xxxx-xxxx"
+                      value={editingSource.hubspotAccessToken}
+                      onChange={(e) => setEditingSource({ ...editingSource, hubspotAccessToken: e.target.value })}
+                      className="h-8 text-xs bg-background font-mono"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
