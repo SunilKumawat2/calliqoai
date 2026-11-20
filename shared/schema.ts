@@ -3452,3 +3452,56 @@ export const crmWhitelabelConfigs = pgTable("crm_whitelabel_configs", {
 
 export type CrmWhitelabelConfig = typeof crmWhitelabelConfigs.$inferSelect;
 export type InsertCrmWhitelabelConfig = typeof crmWhitelabelConfigs.$inferInsert;
+
+// ============================================================
+// Support Tickets & Escalation Engine (Phase 2)
+// Captures unresolved customer complaints, refund requests & issues
+// with instant multi-channel staff escalation & resolution tracking
+// ============================================================
+
+export const supportTickets = pgTable("support_tickets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketNumber: varchar("ticket_number", { length: 32 }).notNull(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  customerName: varchar("customer_name", { length: 255 }).notNull(),
+  customerPhone: varchar("customer_phone", { length: 50 }).notNull(),
+  customerEmail: varchar("customer_email", { length: 255 }),
+  channel: varchar("channel", { length: 50 }).notNull().default("voice_call"), // 'voice_call' | 'whatsapp' | 'instagram_dm' | 'facebook_dm' | 'manual' | 'email'
+  sourceId: varchar("source_id", { length: 64 }), // callId, messageId, etc.
+  category: varchar("category", { length: 64 }).notNull().default("service_complaint"), // 'service_complaint' | 'billing_refund' | 'technical_issue' | 'escalation_request' | 'appointment_issue' | 'general'
+  priority: varchar("priority", { length: 32 }).notNull().default("medium"), // 'low' | 'medium' | 'high' | 'urgent'
+  status: varchar("status", { length: 32 }).notNull().default("open"), // 'open' | 'in_progress' | 'resolved' | 'closed'
+  subject: varchar("subject", { length: 255 }).notNull(),
+  description: text("description"),
+  aiSummary: text("ai_summary"),
+  sentiment: varchar("sentiment", { length: 50 }).default("neutral"),
+  assignedStaffId: varchar("assigned_staff_id"),
+  assignedStaffName: varchar("assigned_staff_name", { length: 255 }),
+  assignedStaffPhone: varchar("assigned_staff_phone", { length: 50 }),
+  assignedStaffEmail: varchar("assigned_staff_email", { length: 255 }),
+  escalated: boolean("escalated").notNull().default(false),
+  escalatedAt: timestamp("escalated_at"),
+  escalationSentWhatsapp: boolean("escalation_sent_whatsapp").default(false),
+  escalationSentEmail: boolean("escalation_sent_email").default(false),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: varchar("resolved_by", { length: 255 }),
+  resolutionNotes: text("resolution_notes"),
+  resolutionSource: varchar("resolution_source", { length: 32 }).default("human_staff"), // 'ai_auto' | 'human_staff'
+  metadata: jsonb("metadata").$type<Record<string, any>>().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  supportTicketsUserIdIdx: index("support_tickets_user_id_idx").on(table.userId),
+  supportTicketsStatusIdx: index("support_tickets_status_idx").on(table.status),
+  supportTicketsPriorityIdx: index("support_tickets_priority_idx").on(table.priority),
+  supportTicketsCreatedAtIdx: index("support_tickets_created_at_idx").on(table.createdAt),
+}));
+
+export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
+export type SupportTicket = typeof supportTickets.$inferSelect;
+

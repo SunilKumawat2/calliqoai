@@ -1670,6 +1670,10 @@ When using a tool:
   const { salesTeamRouter } = await import("./routes/sales-team-routes");
   app.use("/api/sales-team", routeContext.authenticateHybrid as unknown as import('express').RequestHandler, salesTeamRouter);
 
+  // Support Tickets & Resolution Rate Engine (Phase 2)
+  const { supportTicketRouter } = await import("./routes/support-ticket.routes");
+  app.use("/api", routeContext.authenticateHybrid as unknown as import('express').RequestHandler, supportTicketRouter);
+
   // Company / Tenant Custom SMTP Settings routes
   const { crmSmtpRouter } = await import("./routes/crm-smtp-routes");
   app.use("/api/crm", routeContext.authenticateHybrid as unknown as import('express').RequestHandler, crmSmtpRouter);

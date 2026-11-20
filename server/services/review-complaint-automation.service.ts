@@ -693,6 +693,12 @@ export class ReviewComplaintAutomationService {
       logger.info(
         `[ReviewComplaint] Complaint alert for call ${callData.id}: whatsapp=${whatsappSent}, email=${emailSent} (${detection.reason})`
       );
+
+      // Auto-create persistent Support Ticket for Customer Support & Resolution Rate tracking
+      import('./support-ticket.service')
+        .then(({ SupportTicketService }) => SupportTicketService.autoCreateFromCall(callData, detection))
+        .catch(() => {});
+
       return { alerted: true, reason: detection.reason, whatsappSent, emailSent };
     } catch (err: any) {
       logger.warn(`[ReviewComplaint] handleCompletedCall error: ${err?.message}`);

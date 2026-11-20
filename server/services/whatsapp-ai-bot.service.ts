@@ -1146,5 +1146,18 @@ Customer (${contactName || contactPhone}): ${messageText}`;
         } catch (_) {}
       }
     }
+
+    // 3. Auto-create Support Ticket for Customer Support & Resolution Rate tracking
+    try {
+      const { SupportTicketService } = await import('./support-ticket.service');
+      await SupportTicketService.autoCreateFromWhatsApp({
+        userId,
+        contactPhone: conv.contactPhone,
+        contactName: conv.contactName || info.contactName,
+        messageText: info.latestMessage,
+        reason: info.handoverReason,
+        conversationId: conv.id,
+      });
+    } catch (_) {}
   }
 }

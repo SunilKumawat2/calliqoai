@@ -22,7 +22,7 @@ import {
   TrendingUp, TrendingDown, Minus, Clock, Flame, UserX, PhoneMissed,
   ClipboardCheck, UserCheck, ArrowDownUp, PhoneCall, Zap, Palette, Check,
   History, Tag, Trash2, BarChart3, Square, CheckSquare, X, Megaphone, PhoneIncoming,
-  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet, ExternalLink, CalendarDays, Bell, Sparkles
+  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet, ExternalLink, CalendarDays, Bell, Sparkles, Headset
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -35,6 +35,7 @@ import { SourceToSaleFunnel } from "@/components/crm/SourceToSaleFunnel";
 import { WeeklyOwnerBriefPanel } from "@/components/crm/WeeklyOwnerBriefPanel";
 import { WhatsAppAiBotPanel } from "@/components/crm/WhatsAppAiBotPanel";
 import { CRMWhiteLabelSettings } from "@/components/crm/CRMWhiteLabelSettings";
+import { SupportTicketsPanel } from "@/components/crm/SupportTicketsPanel";
 import { AuthStorage } from "@/lib/auth-storage";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -1686,7 +1687,7 @@ export default function CRMPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const queryClientRef = useQueryClient();
-  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team" | "whatsapp_ai" | "whitelabel">("kanban");
+  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team" | "whatsapp_ai" | "support_tickets" | "whitelabel">("kanban");
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedSourceId, setSelectedSourceId] = useState<string>("all");
@@ -1753,6 +1754,17 @@ export default function CRMPage() {
   });
   const unassignedVisitsCount = salesStats?.unassignedCount || 0;
   const latestUnassignedVisit = salesStats?.latestUnassigned;
+
+  // Support Tickets open count badge
+  const { data: supportMetrics } = useQuery<{ openTickets: number; inProgressTickets: number }>({
+    queryKey: ["/api/support-tickets/metrics"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/support-tickets/metrics");
+      return res.json();
+    },
+    refetchInterval: 25000,
+  });
+  const openSupportTicketsCount = (supportMetrics?.openTickets || 0) + (supportMetrics?.inProgressTickets || 0);
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery<CRMAnalytics>({
     queryKey: ["/api/crm/analytics"],
@@ -2560,7 +2572,7 @@ export default function CRMPage() {
 
           {/* Main CRM Navigation Tabs Bar (Full Width, Cleanly Aligned) */}
           <div className="pt-2 border-t border-border/50">
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
               <button
                 type="button"
                 onClick={() => setViewMode("kanban")}
@@ -2672,6 +2684,26 @@ export default function CRMPage() {
               >
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate">{AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry" : "Brand Customization"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode("support_tickets")}
+                data-testid="view-support-tickets"
+                title="Customer Support Tickets & AI Resolution Rate Dashboard"
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                  viewMode === "support_tickets"
+                    ? "bg-amber-600 text-white border-amber-500 shadow-xs"
+                    : "bg-amber-500/5 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15"
+                }`}
+              >
+                <Headset className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Support Tickets</span>
+                {openSupportTicketsCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-red-500 text-white font-bold shrink-0">
+                    {openSupportTicketsCount}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -3053,7 +3085,13 @@ export default function CRMPage() {
       </Dialog>
 
       <div className="flex-1 overflow-hidden">
-        {viewMode === "whitelabel" ? (
+        {viewMode === "support_tickets" ? (
+          <ScrollArea className="h-full">
+            <div className="p-6">
+              <SupportTicketsPanel />
+            </div>
+          </ScrollArea>
+        ) : viewMode === "whitelabel" ? (
           <ScrollArea className="h-full">
             <div className="p-6">
               <CRMWhiteLabelSettings />
