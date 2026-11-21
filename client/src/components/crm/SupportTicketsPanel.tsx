@@ -207,6 +207,30 @@ export function SupportTicketsPanel() {
     },
   });
 
+  // Simulate AI Call Complaint Mutation
+  const simulateCallMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/support-tickets/test-auto-call", {
+        customerName: "Rajesh Verma",
+        phone: "+917023088303",
+        customerEmail: "sunilmi7891@gmail.com",
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: `🤖 Auto Ticket #${data.ticket?.ticketNumber || "New"} Generated!`,
+        description: "AI detected complaint in voice call & auto-created ticket with instant escalation alert.",
+      });
+      refetchTickets();
+      refetchMetrics();
+      queryClient.invalidateQueries({ queryKey: ["/api/support-tickets"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Simulation failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   // 5. Update Ticket Mutation
   const updateTicketMutation = useMutation({
     mutationFn: async () => {
@@ -481,6 +505,17 @@ export function SupportTicketsPanel() {
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${ticketsLoading || metricsLoading ? "animate-spin" : ""}`} />
                 Refresh
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 text-xs gap-1.5 border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-semibold"
+                title="Simulate an AI call complaint to test automatic ticket generation and email escalation"
+                disabled={simulateCallMutation.isPending}
+                onClick={() => simulateCallMutation.mutate()}
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${simulateCallMutation.isPending ? "animate-spin" : ""}`} />
+                {simulateCallMutation.isPending ? "Simulating AI Call..." : "⚡ Simulate AI Call Complaint"}
               </Button>
               <Button
                 size="sm"

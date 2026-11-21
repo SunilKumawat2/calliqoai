@@ -578,7 +578,6 @@ export class ReviewComplaintAutomationService {
     try {
       if (!callData?.id || !callData?.userId) return { alerted: false };
       const config = await this.getConfig(callData.userId);
-      if (!config.complaintAlertEnabled && !callData.test) return { alerted: false };
       if (!callData.test && (callData.duration ?? 0) > 0 && (callData.duration ?? 0) < config.complaintMinCallSeconds) {
         return { alerted: false };
       }
@@ -590,6 +589,13 @@ export class ReviewComplaintAutomationService {
       if (this.processingCallIds.has(callData.id)) return { alerted: false };
       this.processingCallIds.add(callData.id);
       setTimeout(() => this.processingCallIds.delete(callData.id), 10 * 60 * 1000);
+
+      // Auto-create persistent Support Ticket for Customer Support & Resolution Rate tracking
+      import('./support-ticket.service')
+        .then(({ SupportTicketService }) => SupportTicketService.autoCreateFromCall(callData, detection))
+        .catch(() => {});
+
+      if (!config.complaintAlertEnabled && !callData.test) return { alerted: false };
       if (!callData.test) {
         const logs = await this.getLogs(callData.userId);
         if (logs.complaints.some((c) => c.callId === callData.id)) return { alerted: false };

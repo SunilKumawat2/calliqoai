@@ -129,6 +129,50 @@ supportTicketRouter.post('/support-tickets', async (req: Request, res: Response)
 });
 
 /**
+ * POST /api/support-tickets/test-auto-call
+ * Simulate an automatic AI call complaint to test the auto-ticket creation pipeline
+ */
+supportTicketRouter.post('/support-tickets/test-auto-call', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { phone, customerName, customerEmail } = req.body || {};
+    const testCallId = `call_test_${Date.now()}`;
+    const detection = {
+      isComplaint: true,
+      reason: 'Negative sentiment detected • Complaint keywords: refund, bekar, manager',
+      matchedKeywords: ['refund', 'bekar', 'manager'],
+    };
+
+    const ticket = await SupportTicketService.autoCreateFromCall(
+      {
+        id: testCallId,
+        userId,
+        phoneNumber: phone || '+917023088303',
+        callDirection: 'incoming',
+        duration: 85,
+        firstName: customerName || 'Rajesh',
+        lastName: 'Verma',
+        sentiment: 'negative',
+        aiSummary: 'Customer complained about service delay and demanded an immediate refund. Requested escalation to manager.',
+        metadata: {
+          customerPhone: phone || '+917023088303',
+          customerName: customerName || 'Rajesh Verma',
+          customerEmail: customerEmail || 'sunilmi17891@gmail.com',
+          recordingUrl: 'https://calliqoai.com/sample-complaint-call.mp3',
+        },
+      },
+      detection
+    );
+
+    return res.status(201).json({ success: true, ticket });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * GET /api/support-tickets/:id
  * Get single ticket details
  */

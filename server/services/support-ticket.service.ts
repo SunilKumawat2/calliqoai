@@ -221,10 +221,14 @@ export class SupportTicketService {
           .forEach((p) => recipientPhones.add(p));
       }
 
-      // Collect recipient emails (Assigned staff email + Manager emails + Account Owner)
+      // Collect recipient emails (Assigned staff email + Manager emails + Custom alert email + Account Owner)
       const recipientEmails = new Set<string>();
       if (ticket.assignedStaffEmail && ticket.assignedStaffEmail.includes('@')) {
         recipientEmails.add(ticket.assignedStaffEmail.trim());
+      }
+      if (ticket.metadata && typeof ticket.metadata === 'object' && (ticket.metadata as any).escalationEmail) {
+        const extraEmail = String((ticket.metadata as any).escalationEmail).trim();
+        if (extraEmail.includes('@')) recipientEmails.add(extraEmail);
       }
       if (config.managerEmails) {
         config.managerEmails
@@ -309,6 +313,50 @@ export class SupportTicketService {
           }
         } catch (err: any) {
           logger.warn(`[SupportTicket] Email alert failed: ${err.message}`);
+        }
+      }
+
+      // 3. Customer Ticket Receipt / Confirmation Email (Sent directly to customer's email)
+      if (ticket.customerEmail && ticket.customerEmail.includes('@')) {
+        try {
+          const { emailService } = await import('./email-service');
+          const customerSubject = `✅ Support Ticket #${ticket.ticketNumber} Confirmation: ${ticket.subject}`;
+          const customerHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#0f172a;color:#f8fafc;padding:24px;">
+  <div style="max-width:600px;margin:0 auto;background:#1e293b;border-radius:14px;border:1px solid #334155;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#0284c7,#0d9488);padding:24px;text-align:center;">
+      <h1 style="color:#ffffff;margin:0;font-size:22px;">Support Ticket #${ticket.ticketNumber}</h1>
+      <p style="color:#e0f2fe;margin:6px 0 0;font-size:13px;">We have received your support inquiry</p>
+    </div>
+    <div style="padding:24px;font-size:14px;line-height:1.6;color:#cbd5e1;">
+      <p style="margin:0 0 14px;color:#f8fafc;font-size:15px;">Hello <strong>${ticket.customerName}</strong>,</p>
+      <p style="margin:0 0 14px;">Thank you for contacting customer support. We have successfully logged your request under ticket <strong>#${ticket.ticketNumber}</strong>.</p>
+      <div style="background:#0f172a;padding:16px;border-radius:8px;border:1px solid #334155;margin:18px 0;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr><td style="padding:6px 0;color:#94a3b8;width:35%;">Ticket ID:</td><td style="font-weight:700;color:#38bdf8;">#${ticket.ticketNumber}</td></tr>
+          <tr><td style="padding:6px 0;color:#94a3b8;">Subject:</td><td style="font-weight:600;color:#f8fafc;">${ticket.subject}</td></tr>
+          <tr><td style="padding:6px 0;color:#94a3b8;">Status:</td><td style="color:#fbbf24;font-weight:600;">Open &amp; Under Review</td></tr>
+          <tr><td style="padding:6px 0;color:#94a3b8;">Priority:</td><td style="color:#f87171;font-weight:700;">${ticket.priority.toUpperCase()}</td></tr>
+          ${ticket.description ? `<tr><td style="padding:6px 0;color:#94a3b8;vertical-align:top;">Notes:</td><td style="color:#cbd5e1;">${ticket.description}</td></tr>` : ''}
+        </table>
+      </div>
+      <p style="margin:0 0 12px;">Our team has been notified and is currently reviewing this. We will update you shortly.</p>
+      <p style="margin:16px 0 0;color:#94a3b8;font-size:12px;">Need to share more details? Reply directly to this email referencing Ticket #${ticket.ticketNumber}.</p>
+    </div>
+  </div>
+</body></html>`;
+
+          const custRes = await emailService.sendEmail(
+            ticket.customerEmail.trim(),
+            customerSubject,
+            customerHtml,
+            undefined,
+            { userId }
+          );
+          if (custRes?.success) emailSent = true;
+          logger.info(`[SupportTicket] Customer confirmation email sent to ${ticket.customerEmail}`);
+        } catch (err: any) {
+          logger.warn(`[SupportTicket] Customer confirmation email failed: ${err.message}`);
         }
       }
 
