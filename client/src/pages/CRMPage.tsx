@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +17,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { 
   Loader2, Search, LayoutGrid, List, Users, Phone, Star, Calendar, 
-  FileText, ArrowRightLeft, PhoneForwarded, Play, Pause, ChevronDown,
+  FileText, ArrowRightLeft, PhoneForwarded, Play, Pause, ChevronDown, ChevronLeft, ChevronRight,
   MoreHorizontal, RefreshCw, Download, Plus, MessageSquare, CheckCircle2,
   TrendingUp, TrendingDown, Minus, Clock, Flame, UserX, PhoneMissed,
   ClipboardCheck, UserCheck, ArrowDownUp, PhoneCall, Zap, Palette, Check,
@@ -1704,6 +1704,52 @@ export default function CRMPage() {
   const [newTagInput, setNewTagInput] = useState("");
   const LEADS_PER_PAGE = 50;
 
+  // CRM Navigation Tabs horizontal scroll & next/prev navigation
+  const navTabsRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const checkTabsScroll = () => {
+    const el = navTabsRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setCanScrollLeft(scrollLeft > 6);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 6);
+  };
+
+  useEffect(() => {
+    checkTabsScroll();
+    const el = navTabsRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkTabsScroll, { passive: true });
+    window.addEventListener("resize", checkTabsScroll);
+    return () => {
+      el.removeEventListener("scroll", checkTabsScroll);
+      window.removeEventListener("resize", checkTabsScroll);
+    };
+  }, []);
+
+  const scrollNav = (direction: "left" | "right") => {
+    const el = navTabsRef.current;
+    if (!el) return;
+    const scrollAmount = direction === "left" ? -300 : 300;
+    el.scrollBy({ left: scrollAmount, behavior: "smooth" });
+    setTimeout(checkTabsScroll, 350);
+  };
+
+  // Auto-scroll active tab into view when viewMode changes
+  useEffect(() => {
+    if (navTabsRef.current) {
+      const activeBtn = navTabsRef.current.querySelector<HTMLButtonElement>(
+        `[data-testid="view-${viewMode === 'sales_team' ? 'sales-team' : viewMode === 'whatsapp_ai' ? 'whatsapp-ai' : viewMode === 'support_tickets' ? 'support-tickets' : viewMode}"]`
+      );
+      if (activeBtn) {
+        activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    }
+    setTimeout(checkTabsScroll, 300);
+  }, [viewMode]);
+
   // White-label & Industry profile
   const { data: whitelabelConfig } = useQuery<{
     businessName?: string;
@@ -2570,140 +2616,186 @@ export default function CRMPage() {
             </div>
           </div>
 
-          {/* Main CRM Navigation Tabs Bar (Full Width, Cleanly Aligned) */}
+          {/* Main CRM Navigation Tabs Bar (Full Width, Smooth Horizontal Scroll with Next & Prev Controls) */}
           <div className="pt-2 border-t border-border/50">
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+            <div className="relative flex items-center gap-1.5 w-full">
+              {/* Prev Button */}
               <button
                 type="button"
-                onClick={() => setViewMode("kanban")}
-                data-testid="view-kanban"
-                title={t("crmPage.kanbanView")}
-                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  viewMode === "kanban"
-                    ? "bg-primary text-primary-foreground border-primary shadow-xs"
-                    : "bg-card/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                onClick={() => scrollNav("left")}
+                disabled={!canScrollLeft}
+                data-testid="crm-nav-prev"
+                title="Scroll Previous Tabs"
+                aria-label="Previous Tabs"
+                className={`flex items-center justify-center w-8 h-9 rounded-lg border shrink-0 transition-all cursor-pointer ${
+                  canScrollLeft
+                    ? "bg-card hover:bg-muted text-foreground border-border shadow-xs hover:scale-105 active:scale-95"
+                    : "opacity-30 cursor-not-allowed text-muted-foreground border-border/40 bg-card/40"
                 }`}
               >
-                <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                <span>Kanban Board</span>
+                <ChevronLeft className="w-4 h-4" />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setViewMode("list")}
-                data-testid="view-list"
-                title={t("crmPage.listView")}
-                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  viewMode === "list"
-                    ? "bg-primary text-primary-foreground border-primary shadow-xs"
-                    : "bg-card/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                }`}
-              >
-                <List className="w-3.5 h-3.5 shrink-0" />
-                <span>Leads List</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode("analytics")}
-                data-testid="view-analytics"
-                title={t("crmPage.analyticsView")}
-                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  viewMode === "analytics"
-                    ? "bg-primary text-primary-foreground border-primary shadow-xs"
-                    : "bg-card/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5 shrink-0" />
-                <span>Analytics</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode("integrations")}
-                data-testid="view-integrations"
-                title="Google Sheets & Calendar Sync"
-                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  viewMode === "integrations"
-                    ? "bg-emerald-600 text-white border-emerald-500 shadow-xs"
-                    : "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15"
-                }`}
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">Integrations & Sync</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode("sales_team");
-                  setSalesBannerDismissed(true);
+              {/* Scrollable Tabs Container */}
+              <div
+                ref={navTabsRef}
+                onWheel={(e) => {
+                  if (navTabsRef.current && Math.abs(e.deltaX) < Math.abs(e.deltaY)) {
+                    navTabsRef.current.scrollLeft += e.deltaY;
+                  }
                 }}
-                data-testid="view-sales-team"
-                title="Staff & Appointments"
-                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  viewMode === "sales_team"
-                    ? "bg-blue-600 text-white border-blue-500 shadow-xs"
-                    : "bg-blue-500/5 border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/15"
-                }`}
+                className="flex items-center gap-2 overflow-x-auto scroll-smooth scrollbar-none flex-1 py-1 px-0.5"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
               >
-                <Users className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">Staff & Appointments</span>
-                {unassignedVisitsCount > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-bold shrink-0">
-                    {unassignedVisitsCount} New
-                  </span>
-                )}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("kanban")}
+                  data-testid="view-kanban"
+                  title={t("crmPage.kanbanView")}
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    viewMode === "kanban"
+                      ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                      : "bg-card/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+                  <span>Kanban Board</span>
+                </button>
 
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  data-testid="view-list"
+                  title={t("crmPage.listView")}
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    viewMode === "list"
+                      ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                      : "bg-card/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5 shrink-0" />
+                  <span>Leads List</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("analytics")}
+                  data-testid="view-analytics"
+                  title={t("crmPage.analyticsView")}
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    viewMode === "analytics"
+                      ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                      : "bg-card/60 border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5 shrink-0" />
+                  <span>Analytics</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("integrations")}
+                  data-testid="view-integrations"
+                  title="Google Sheets & Calendar Sync"
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    viewMode === "integrations"
+                      ? "bg-emerald-600 text-white border-emerald-500 shadow-xs"
+                      : "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15"
+                  }`}
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 shrink-0" />
+                  <span>Integrations & Sync</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode("sales_team");
+                    setSalesBannerDismissed(true);
+                  }}
+                  data-testid="view-sales-team"
+                  title="Staff & Appointments"
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    viewMode === "sales_team"
+                      ? "bg-blue-600 text-white border-blue-500 shadow-xs"
+                      : "bg-blue-500/5 border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/15"
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 shrink-0" />
+                  <span>Staff & Appointments</span>
+                  {unassignedVisitsCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-bold shrink-0">
+                      {unassignedVisitsCount} New
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("whatsapp_ai")}
+                  data-testid="view-whatsapp-ai"
+                  title="2-Way WhatsApp AI Bot, Instagram/Facebook Lead Capture & AI Email Assistant"
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    viewMode === "whatsapp_ai"
+                      ? "bg-teal-600 text-white border-teal-500 shadow-xs"
+                      : "bg-teal-500/5 border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/15"
+                  }`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                  <span>WhatsApp, Social & Email AI</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("whitelabel")}
+                  data-testid="view-whitelabel"
+                  title={AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry Setup" : "Clinic & Brand Customization"}
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    viewMode === "whitelabel"
+                      ? "bg-purple-600 text-white border-purple-500 shadow-xs"
+                      : "bg-purple-500/5 border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/15"
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <span>{AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry" : "Brand Customization"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("support_tickets")}
+                  data-testid="view-support-tickets"
+                  title="Customer Support Tickets & AI Resolution Rate Dashboard"
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    viewMode === "support_tickets"
+                      ? "bg-amber-600 text-white border-amber-500 shadow-xs"
+                      : "bg-amber-500/5 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15"
+                  }`}
+                >
+                  <Headset className="w-3.5 h-3.5 shrink-0" />
+                  <span>Support Tickets</span>
+                  {openSupportTicketsCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-red-500 text-white font-bold shrink-0">
+                      {openSupportTicketsCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Next Button */}
               <button
                 type="button"
-                onClick={() => setViewMode("whatsapp_ai")}
-                data-testid="view-whatsapp-ai"
-                title="2-Way WhatsApp AI Bot, Instagram/Facebook Lead Capture & AI Email Assistant"
-                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  viewMode === "whatsapp_ai"
-                    ? "bg-teal-600 text-white border-teal-500 shadow-xs"
-                    : "bg-teal-500/5 border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/15"
+                onClick={() => scrollNav("right")}
+                disabled={!canScrollRight}
+                data-testid="crm-nav-next"
+                title="Scroll Next Tabs"
+                aria-label="Next Tabs"
+                className={`flex items-center justify-center w-8 h-9 rounded-lg border shrink-0 transition-all cursor-pointer ${
+                  canScrollRight
+                    ? "bg-card hover:bg-muted text-foreground border-border shadow-xs hover:scale-105 active:scale-95"
+                    : "opacity-30 cursor-not-allowed text-muted-foreground border-border/40 bg-card/40"
                 }`}
               >
-                <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">WhatsApp, Social & Email AI</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode("whitelabel")}
-                data-testid="view-whitelabel"
-                title={AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry Setup" : "Clinic & Brand Customization"}
-                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  viewMode === "whitelabel"
-                    ? "bg-purple-600 text-white border-purple-500 shadow-xs"
-                    : "bg-purple-500/5 border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/15"
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">{AuthStorage.getUser()?.role === "admin" ? "White-Label & Industry" : "Brand Customization"}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode("support_tickets")}
-                data-testid="view-support-tickets"
-                title="Customer Support Tickets & AI Resolution Rate Dashboard"
-                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                  viewMode === "support_tickets"
-                    ? "bg-amber-600 text-white border-amber-500 shadow-xs"
-                    : "bg-amber-500/5 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15"
-                }`}
-              >
-                <Headset className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">Support Tickets</span>
-                {openSupportTicketsCount > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-red-500 text-white font-bold shrink-0">
-                    {openSupportTicketsCount}
-                  </span>
-                )}
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
