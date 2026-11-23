@@ -437,7 +437,24 @@ export class ReviewComplaintAutomationService {
 
     // B. Email
     let emailSent = false;
-    if (config.reviewChannels.email && apt.contactEmail) {
+    let targetEmail = apt.contactEmail ? String(apt.contactEmail).trim() : '';
+    if (!targetEmail && apt.contactPhone) {
+      try {
+        const { leads } = await import('@shared/schema');
+        const [matchedLead] = await db
+          .select({ email: leads.email })
+          .from(leads)
+          .where(and(eq(leads.userId, userId), eq(leads.phone, apt.contactPhone)))
+          .limit(1);
+        if (matchedLead?.email) {
+          targetEmail = String(matchedLead.email).trim();
+        }
+      } catch (err: any) {
+        logger.warn(`[ReviewComplaint] Fallback lead email lookup error: ${err?.message}`);
+      }
+    }
+
+    if (config.reviewChannels.email && targetEmail) {
       const subject = this.interpolate(config.reviewEmailSubject, vars);
       const bodyHtml = this.escapeHtml(this.interpolate(config.reviewEmailMessage, vars)).replace(/\n/g, '<br>');
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
@@ -456,7 +473,7 @@ export class ReviewComplaintAutomationService {
     <div style="padding:16px;text-align:center;font-size:12px;color:#94a3b8;border-top:1px solid #f1f5f9;">${this.escapeHtml(businessName)}</div>
   </div>
 </body></html>`;
-      emailSent = await this.sendEmail(userId, apt.contactEmail, subject, html);
+      emailSent = await this.sendEmail(userId, targetEmail, subject, html);
     }
 
     const success = whatsappSent || emailSent;
