@@ -1741,6 +1741,10 @@ When using a tool:
   const { googleCalendarRouter } = await import("./services/google-calendar/google-calendar.routes");
   app.use("/api/google-calendar", authenticateToken as unknown as import('express').RequestHandler, googleCalendarRouter);
 
+  // Google Business Profile authenticated endpoints (auth, exchange, status, disconnect, reviews, reply)
+  const { googleBusinessRouter } = await import("./services/google-business/google-business.routes");
+  app.use("/api/google-business", authenticateToken as unknown as import('express').RequestHandler, googleBusinessRouter);
+
   // This must be registered on the httpServer to properly handle Twilio WebSocket streams
   httpServer.on('upgrade', (request, socket, head) => {
     const pathname = request.url?.split('?')[0] || '';

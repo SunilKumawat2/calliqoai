@@ -22,7 +22,7 @@ export default function GoogleCallbackPage() {
   const [, navigate] = useLocation();
   const [status, setStatus] = useState<Status>("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
-  const [integrationType, setIntegrationType] = useState<"sheets" | "calendar">("sheets");
+  const [integrationType, setIntegrationType] = useState<"sheets" | "calendar" | "business">("sheets");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -31,7 +31,7 @@ export default function GoogleCallbackPage() {
     const error = params.get("error");
 
     const type = state ? detectType(state) : "sheets";
-    const resolvedType = type === "calendar" ? "calendar" : "sheets";
+    const resolvedType = type === "calendar" ? "calendar" : type === "business" ? "business" : "sheets";
     setIntegrationType(resolvedType);
 
     if (error || !code || !state) {
@@ -40,6 +40,8 @@ export default function GoogleCallbackPage() {
       setErrorMessage(errorCode === "access_denied" ? "Access was denied by Google." : `Google returned an error: ${errorCode}`);
       const redirectBase = resolvedType === "calendar"
         ? "/app/flows/appointments"
+        : resolvedType === "business"
+        ? "/app/crm"
         : "/app/tools";
       setTimeout(() => navigate(`${redirectBase}?google_error=${encodeURIComponent(errorCode)}`), 2500);
       return;
@@ -47,6 +49,8 @@ export default function GoogleCallbackPage() {
 
     const endpoint = resolvedType === "calendar"
       ? "/api/google-calendar/exchange"
+      : resolvedType === "business"
+      ? "/api/google-business/exchange"
       : "/api/integrations/google/exchange";
 
     apiRequest("POST", endpoint, { code, state })
@@ -59,12 +63,16 @@ export default function GoogleCallbackPage() {
           const errCode = body?.errorCode || "server_error";
           const redirectBase = resolvedType === "calendar"
             ? "/app/flows/appointments"
+            : resolvedType === "business"
+            ? "/app/crm"
             : "/app/tools";
           setTimeout(() => navigate(`${redirectBase}?google_error=${encodeURIComponent(errCode)}`), 2500);
         } else {
           setStatus("success");
           if (resolvedType === "calendar") {
             setTimeout(() => navigate("/app/flows/appointments?google_calendar_connected=true"), 1500);
+          } else if (resolvedType === "business") {
+            setTimeout(() => navigate("/app/crm?google_business_connected=true"), 1500);
           } else {
             setTimeout(() => navigate("/app/tools?google_connected=true"), 1500);
           }
@@ -75,12 +83,14 @@ export default function GoogleCallbackPage() {
         setErrorMessage("A network error occurred. Please try again.");
         const redirectBase = resolvedType === "calendar"
           ? "/app/flows/appointments"
+          : resolvedType === "business"
+          ? "/app/crm"
           : "/app/tools";
         setTimeout(() => navigate(`${redirectBase}?google_error=server_error`), 2500);
       });
   }, [navigate]);
 
-  const productName = integrationType === "calendar" ? "Google Calendar" : "Google Sheets";
+  const productName = integrationType === "calendar" ? "Google Calendar" : integrationType === "business" ? "Google Business Profile" : "Google Sheets";
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen gap-4 text-center px-4">

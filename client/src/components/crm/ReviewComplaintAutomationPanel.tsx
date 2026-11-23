@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Star, AlertTriangle, CheckCircle2, MessageSquare, Mail, Send, Clock, 
   ShieldAlert, History, Sparkles, Copy, Check, Trash2, Edit3, ThumbsUp, 
-  RefreshCw, ChevronRight, MessageCircle, HeartHandshake, Zap
+  RefreshCw, ChevronRight, MessageCircle, HeartHandshake, Zap, Globe, Bot,
+  ExternalLink, User, ArrowRight
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,32 @@ interface LogsResponse {
 const CONFIG_KEY = ["/api/sales-team/review-complaint-config"];
 const LOGS_KEY = ["/api/sales-team/review-complaint-logs"];
 const DRAFTS_HISTORY_KEY = ["/api/sales-team/review-reply-drafts/history"];
+const GOOGLE_BUSINESS_STATUS_KEY = ["/api/google-business/status"];
+const GOOGLE_BUSINESS_REVIEWS_KEY = ["/api/google-business/reviews"];
+
+export interface GoogleBusinessStatus {
+  connected: boolean;
+  connectedEmail: string | null;
+  accountName: string | null;
+  locationName: string | null;
+  autoReplyEnabled: boolean;
+  autoReplyMinStars: number;
+  requireApprovalBelowStars: number;
+  lastSyncedAt: string | null;
+}
+
+export interface GoogleBusinessReviewItem {
+  id: string;
+  googleReviewId: string;
+  reviewerName: string;
+  reviewerPhotoUrl: string | null;
+  starRating: number;
+  comment: string | null;
+  reviewCreateTime: string;
+  replyComment: string | null;
+  replyStatus: string;
+  repliedAt: string | null;
+}
 
 const DELAY_PRESETS = [
   { value: "0", label: "Immediately (turant)" },
@@ -140,8 +167,25 @@ export function ReviewComplaintAutomationPanel() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Active sub-view tab: 'drafts' | 'rules' | 'logs'
-  const [activeTab, setActiveTab] = useState<"drafts" | "rules" | "logs">("drafts");
+  // Active sub-view tab: 'google_live' | 'drafts' | 'rules' | 'logs'
+  const [activeTab, setActiveTab] = useState<"google_live" | "drafts" | "rules" | "logs">("google_live");
+
+  // Google Business integration status
+  const { data: gmbStatus, refetch: refetchGmbStatus } = useQuery<GoogleBusinessStatus>({
+    queryKey: GOOGLE_BUSINESS_STATUS_KEY,
+  });
+
+  // Google Business live reviews
+  const { data: gmbReviews = [], refetch: refetchGmbReviews, isLoading: isReviewsLoading } = useQuery<GoogleBusinessReviewItem[]>({
+    queryKey: GOOGLE_BUSINESS_REVIEWS_KEY,
+    enabled: !!gmbStatus?.connected,
+    refetchInterval: 30000,
+  });
+
+  // Replying state for live reviews
+  const [activeReplyReviewId, setActiveReplyReviewId] = useState<string | null>(null);
+  const [inlineReplyText, setInlineReplyText] = useState<string>("");
+  const [generatingReplyId, setGeneratingReplyId] = useState<string | null>(null);
 
   // Review & Complaint Automations config & logs
   const { data: savedConfig } = useQuery<ReviewComplaintConfig>({ queryKey: CONFIG_KEY });
@@ -299,6 +343,116 @@ export function ReviewComplaintAutomationPanel() {
     });
   };
 
+  // Connect Google Profile Mutation
+  const connectGmbMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("GET", "/api/google-business/auth");
+      return res.json();
+    },
+    onSuccess: (data: { url: string }) => {
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Connection Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Quick Connect (Demo / Instant Sync)
+  const quickConnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/google-business/quick-connect", {
+        email: "developer7023@gmail.com",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: GOOGLE_BUSINESS_STATUS_KEY });
+      queryClient.invalidateQueries({ queryKey: GOOGLE_BUSINESS_REVIEWS_KEY });
+      toast({ title: "✅ Google Profile Connected!", description: "Live reviews synced & Auto-Pilot is active." });
+    },
+  });
+
+  // Disconnect Mutation
+  const disconnectGmbMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/google-business/disconnect");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: GOOGLE_BUSINESS_STATUS_KEY });
+      queryClient.invalidateQueries({ queryKey: GOOGLE_BUSINESS_REVIEWS_KEY });
+      toast({ title: "Google Profile Disconnected" });
+    },
+  });
+
+  // Sync Reviews Mutation
+  const syncGmbMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/google-business/sync-reviews");
+      return res.json();
+    },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: GOOGLE_BUSINESS_REVIEWS_KEY });
+      queryClient.invalidateQueries({ queryKey: GOOGLE_BUSINESS_STATUS_KEY });
+      toast({
+        title: "🔄 Reviews Synced with Google",
+        description: `${res.newReviews || 0} reviews synced (${res.autoReplied || 0} auto-replied by AI).`,
+      });
+    },
+    onError: (err: any) => toast({ title: "Sync Failed", description: err.message, variant: "destructive" }),
+  });
+
+  // Update Settings Mutation
+  const updateGmbSettingsMutation = useMutation({
+    mutationFn: async (settings: any) => {
+      const res = await apiRequest("PUT", "/api/google-business/settings", settings);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: GOOGLE_BUSINESS_STATUS_KEY });
+      toast({ title: "✅ Auto-Pilot Settings Updated" });
+    },
+  });
+
+  // Reply to Google Review Mutation
+  const replyToGmbReviewMutation = useMutation({
+    mutationFn: async ({ reviewId, replyText, mode }: { reviewId: string; replyText: string; mode?: string }) => {
+      const res = await apiRequest("POST", "/api/google-business/reply", { reviewId, replyText, mode });
+      return res.json();
+    },
+    onSuccess: () => {
+      setActiveReplyReviewId(null);
+      setInlineReplyText("");
+      queryClient.invalidateQueries({ queryKey: GOOGLE_BUSINESS_REVIEWS_KEY });
+      queryClient.invalidateQueries({ queryKey: DRAFTS_HISTORY_KEY });
+      toast({ title: "✅ Reply Posted to Google Review!" });
+    },
+    onError: (err: any) => toast({ title: "Reply Failed", description: err.message, variant: "destructive" }),
+  });
+
+  // Trigger AI Draft for specific review item in live feed
+  const handleGenerateReplyForReview = async (review: GoogleBusinessReviewItem) => {
+    setGeneratingReplyId(review.id);
+    setActiveReplyReviewId(review.id);
+    try {
+      const res = await apiRequest("POST", "/api/sales-team/review-reply-drafts/generate", {
+        reviewerName: review.reviewerName,
+        starRating: review.starRating,
+        reviewText: review.comment || "",
+        platform: "Google My Business",
+      });
+      const data = await res.json();
+      const bestDraft = data?.drafts?.warm || data?.drafts?.professional || data?.drafts?.crisp || "";
+      setInlineReplyText(bestDraft);
+    } catch (err: any) {
+      toast({ title: "AI Draft Generation Error", description: err.message, variant: "destructive" });
+    } finally {
+      setGeneratingReplyId(null);
+    }
+  };
+
   const applySample = (sample: typeof SAMPLE_REVIEWS[0]) => {
     setReviewerName(sample.name);
     setRating(sample.rating);
@@ -361,7 +515,23 @@ export function ReviewComplaintAutomationPanel() {
         </div>
 
         {/* Tab Switcher Pills */}
-        <div className="flex items-center gap-1.5 p-1 rounded-lg bg-card/80 border border-border/70 shrink-0">
+        <div className="flex items-center gap-1.5 p-1 rounded-lg bg-card/80 border border-border/70 shrink-0 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setActiveTab("google_live")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === "google_live"
+                ? "bg-yellow-600 text-white shadow-xs"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>Google Profile & Auto-Pilot</span>
+            {gmbStatus?.connected && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+            )}
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab("drafts")}
@@ -372,7 +542,7 @@ export function ReviewComplaintAutomationPanel() {
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>AI Review Reply Drafts</span>
+            <span>AI Reply Generator</span>
           </button>
 
           <button
@@ -402,6 +572,410 @@ export function ReviewComplaintAutomationPanel() {
           </button>
         </div>
       </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          TAB 0: 🌐 GOOGLE BUSINESS PROFILE & FULL AUTO-PILOT
+      ───────────────────────────────────────────────────────────── */}
+      {activeTab === "google_live" && (
+        <div className="space-y-6">
+          {/* 1. Connection Status Card */}
+          <Card className="border-yellow-500/30 bg-gradient-to-br from-card via-card to-yellow-500/5">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center shrink-0">
+                    <Globe className="w-5 h-5 text-yellow-500" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      Google Business Profile Connection
+                      {gmbStatus?.connected ? (
+                        <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px]">
+                          🟢 Connected & Synced
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-amber-500 border-amber-500/30 text-[10px]">
+                          ⚠️ Not Connected
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      {gmbStatus?.connected
+                        ? `Direct API Link active for ${gmbStatus.accountName || "Apex Realty & Living"} (${gmbStatus.locationName || "Jaipur"}).`
+                        : "Connect your Google Profile to enable automatic review ingestion and 100% hands-free AI replies."}
+                    </CardDescription>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {gmbStatus?.connected ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => syncGmbMutation.mutate()}
+                        disabled={syncGmbMutation.isPending}
+                        className="text-xs gap-1.5"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${syncGmbMutation.isPending ? "animate-spin text-yellow-500" : ""}`} />
+                        <span>Sync Reviews</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => disconnectGmbMutation.mutate()}
+                        disabled={disconnectGmbMutation.isPending}
+                        className="text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                      >
+                        Disconnect
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => quickConnectMutation.mutate()}
+                        disabled={quickConnectMutation.isPending}
+                        className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white gap-1.5"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>⚡ Quick Connect (developer7023@gmail.com)</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => connectGmbMutation.mutate()}
+                        disabled={connectGmbMutation.isPending}
+                        className="text-xs gap-1.5"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>OAuth Connect with Google</span>
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+
+            {gmbStatus?.connected && (
+              <CardContent className="pt-0 pb-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-lg bg-muted/40 border text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Connected Google Email:</span>
+                    <div className="font-semibold text-foreground">{gmbStatus.connectedEmail}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Location Profile:</span>
+                    <div className="font-semibold text-foreground">{gmbStatus.locationName || "Apex Realty & Living - Jaipur"}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Last Auto-Sync:</span>
+                    <div className="font-semibold text-foreground">
+                      {gmbStatus.lastSyncedAt ? new Date(gmbStatus.lastSyncedAt).toLocaleString("en-IN") : "Just now"}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+
+          {/* 2. Auto-Pilot Controls Card */}
+          {gmbStatus?.connected && (
+            <Card className="border-border/70">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-yellow-500" />
+                  AI Auto-Pilot Rules (Set & Forget)
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Choose which reviews should be replied to automatically and which require manual review.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Rule 1: Auto-Pilot for 4 & 5 stars */}
+                  <div className="p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold text-xs flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                        <Zap className="w-3.5 h-3.5" />
+                        Full Auto-Pilot on 4-Star & 5-Star Reviews
+                      </div>
+                      <Switch
+                        checked={gmbStatus.autoReplyEnabled}
+                        onCheckedChange={(checked) =>
+                          updateGmbSettingsMutation.mutate({ autoReplyEnabled: checked })
+                        }
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Jab bhi koi customer Google par ⭐⭐⭐⭐⭐ ya ⭐⭐⭐⭐ review post karega, Calliqo AI bina aapka time liye 2 second me warm and grateful reply bana kar sidhe Google par post kar dega.
+                    </p>
+                  </div>
+
+                  {/* Rule 2: Manager approval for 1 & 2 stars */}
+                  <div className="p-3.5 rounded-xl border border-red-500/20 bg-red-500/5 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold text-xs flex items-center gap-1.5 text-red-600 dark:text-red-400">
+                        <ShieldAlert className="w-3.5 h-3.5" />
+                        Manager Approval for 1-Star & 2-Star Complaints
+                      </div>
+                      <Switch
+                        checked={(gmbStatus.requireApprovalBelowStars ?? 0) > 0}
+                        onCheckedChange={(checked) =>
+                          updateGmbSettingsMutation.mutate({ requireApprovalBelowStars: checked ? 3 : 0 })
+                        }
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Agar koi 1-Star ya 2-Star shikayat aati hai, to AI direct post nahi karega. AI pehle draft taiyar karega aur manager ke approval ke baad hi Google par submit hoga.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 3. Live Google Reviews Stream */}
+          <Card className="border-border/70">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                  Live Google Customer Reviews ({gmbReviews.length})
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Reviews synced from Google Business Profile with real-time AI reply status.
+                </CardDescription>
+              </div>
+              {gmbStatus?.connected && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => syncGmbMutation.mutate()}
+                  disabled={syncGmbMutation.isPending}
+                  className="text-xs gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncGmbMutation.isPending ? "animate-spin text-yellow-500" : ""}`} />
+                  <span>Check for New Reviews</span>
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {!gmbStatus?.connected ? (
+                <div className="p-8 text-center space-y-3 rounded-lg border border-dashed text-muted-foreground">
+                  <Globe className="w-8 h-8 text-muted-foreground mx-auto opacity-50" />
+                  <p className="text-sm font-medium">Google Profile is not connected yet</p>
+                  <p className="text-xs max-w-md mx-auto">
+                    Click <strong>"⚡ Quick Connect"</strong> above to instantly sync reviews and test hands-free Auto-Pilot!
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={() => quickConnectMutation.mutate()}
+                    className="bg-yellow-600 hover:bg-yellow-700 text-white text-xs gap-1.5"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Quick Connect Now</span>
+                  </Button>
+                </div>
+              ) : isReviewsLoading ? (
+                <div className="p-8 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-yellow-500" />
+                  <span>Loading live reviews from Google...</span>
+                </div>
+              ) : gmbReviews.length === 0 ? (
+                <div className="p-8 text-center space-y-2 text-muted-foreground">
+                  <p className="text-sm">No reviews found yet.</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => syncGmbMutation.mutate()}
+                    className="text-xs"
+                  >
+                    Sync Reviews Now
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {gmbReviews.map((rev) => (
+                    <div
+                      key={rev.id}
+                      className="p-4 rounded-xl border border-border/70 bg-card hover:border-yellow-500/30 transition-all space-y-3"
+                    >
+                      {/* Review Top Meta */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          {rev.reviewerPhotoUrl ? (
+                            <img
+                              src={rev.reviewerPhotoUrl}
+                              alt={rev.reviewerName}
+                              className="w-8 h-8 rounded-full object-cover border"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-yellow-500/20 text-yellow-600 flex items-center justify-center font-bold text-xs">
+                              {rev.reviewerName.charAt(0)}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-semibold text-xs text-foreground flex items-center gap-2">
+                              {rev.reviewerName}
+                              <span className="text-yellow-500 font-bold tracking-wider">
+                                {"⭐".repeat(rev.starRating)}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {new Date(rev.reviewCreateTime).toLocaleString("en-IN")} • Google My Business
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <div>
+                          {rev.replyStatus === "auto_replied" && (
+                            <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px] gap-1 font-semibold">
+                              <Zap className="w-3 h-3" /> Auto-Replied by AI (Auto-Pilot)
+                            </Badge>
+                          )}
+                          {rev.replyStatus === "manual_replied" && (
+                            <Badge className="bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30 text-[10px] gap-1 font-semibold">
+                              <CheckCircle2 className="w-3 h-3" /> Replied
+                            </Badge>
+                          )}
+                          {rev.replyStatus === "pending_approval" && (
+                            <Badge className="bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30 text-[10px] gap-1 font-semibold">
+                              <ShieldAlert className="w-3 h-3" /> 1-Star Complaint (Needs Approval)
+                            </Badge>
+                          )}
+                          {rev.replyStatus === "not_replied" && (
+                            <Badge variant="outline" className="text-muted-foreground text-[10px]">
+                              Awaiting Reply
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Customer Review Text */}
+                      <p className="text-xs text-foreground/90 pl-10 leading-relaxed italic">
+                        "{rev.comment || "(No written text with rating)"}"
+                      </p>
+
+                      {/* Existing Reply Display */}
+                      {rev.replyComment && (
+                        <div className="ml-10 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-xs space-y-1">
+                          <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                            <Bot className="w-3.5 h-3.5" />
+                            <span>Business Reply on Google:</span>
+                            {rev.repliedAt && (
+                              <span className="text-muted-foreground font-normal">
+                                • {new Date(rev.repliedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-foreground/90 leading-relaxed">
+                            {rev.replyComment}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Action Row if not replied or pending approval */}
+                      {!rev.replyComment && (
+                        <div className="ml-10 pt-1">
+                          {activeReplyReviewId !== rev.id ? (
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleGenerateReplyForReview(rev)}
+                                disabled={generatingReplyId === rev.id}
+                                className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white gap-1.5"
+                              >
+                                {generatingReplyId === rev.id ? (
+                                  <>
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    <span>AI Drafting...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    <span>✨ 1-Click AI Reply</span>
+                                  </>
+                                )}
+                              </Button>
+                              <span className="text-[11px] text-muted-foreground">
+                                {rev.starRating <= 2
+                                  ? "🚨 Sincere apology & manager contact will be included"
+                                  : "🌟 Warm thank-you draft will be generated"}
+                              </span>
+                            </div>
+                          ) : (
+                            /* Inline AI Reply Box */
+                            <div className="p-3 rounded-lg border border-yellow-500/40 bg-yellow-500/5 space-y-2">
+                              <div className="flex items-center justify-between text-xs font-semibold text-yellow-600 dark:text-yellow-400">
+                                <span className="flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5" /> AI Reply Draft (Review & Confirm):
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleGenerateReplyForReview(rev)}
+                                  disabled={generatingReplyId === rev.id}
+                                  className="h-6 text-[10px] gap-1 px-2"
+                                >
+                                  <RefreshCw className={`w-3 h-3 ${generatingReplyId === rev.id ? "animate-spin" : ""}`} />
+                                  Regenerate
+                                </Button>
+                              </div>
+
+                              <Textarea
+                                value={inlineReplyText}
+                                onChange={(e) => setInlineReplyText(e.target.value)}
+                                rows={3}
+                                className="text-xs bg-background"
+                                placeholder="Type or edit reply..."
+                              />
+
+                              <div className="flex items-center justify-end gap-2 pt-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setActiveReplyReviewId(null);
+                                    setInlineReplyText("");
+                                  }}
+                                  className="text-xs h-7"
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    replyToGmbReviewMutation.mutate({
+                                      reviewId: rev.id,
+                                      replyText: inlineReplyText,
+                                      mode: rev.starRating <= 2 ? "approve" : "manual",
+                                    })
+                                  }
+                                  disabled={!inlineReplyText.trim() || replyToGmbReviewMutation.isPending}
+                                  className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white h-7 gap-1"
+                                >
+                                  {replyToGmbReviewMutation.isPending ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Send className="w-3 h-3" />
+                                  )}
+                                  <span>{rev.starRating <= 2 ? "Approve & Post to Google" : "Post Reply to Google"}</span>
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* ─────────────────────────────────────────────────────────────
           TAB 1: ✍️ AI REVIEW REPLY DRAFTS (1-Click ORM Engine)

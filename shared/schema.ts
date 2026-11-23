@@ -3196,6 +3196,62 @@ export const insertGoogleSheetsCredentialSchema = createInsertSchema(googleSheet
 export type InsertGoogleSheetsCredential = z.infer<typeof insertGoogleSheetsCredentialSchema>;
 export type GoogleSheetsCredential = typeof googleSheetsCredentials.$inferSelect;
 
+// Google Business Profile Credentials & Settings
+export const googleBusinessCredentials = pgTable("google_business_credentials", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  tokenExpiry: timestamp("token_expiry").notNull(),
+  connectedEmail: text("connected_email").notNull(),
+  accountId: text("account_id"),
+  accountName: text("account_name"),
+  locationId: text("location_id"),
+  locationName: text("location_name"),
+  autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(true),
+  autoReplyMinStars: integer("auto_reply_min_stars").notNull().default(4), // e.g. 4 or 5 stars automatically replied
+  requireApprovalBelowStars: integer("require_approval_below_stars").notNull().default(3), // 1-3 stars need approval
+  lastSyncedAt: timestamp("last_synced_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertGoogleBusinessCredentialSchema = createInsertSchema(googleBusinessCredentials).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertGoogleBusinessCredential = z.infer<typeof insertGoogleBusinessCredentialSchema>;
+export type GoogleBusinessCredential = typeof googleBusinessCredentials.$inferSelect;
+
+// Google Business Reviews - Synced reviews from Google My Business Profile
+export const googleBusinessReviews = pgTable("google_business_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  googleReviewId: text("google_review_id").notNull(),
+  reviewerName: text("reviewer_name").notNull(),
+  reviewerPhotoUrl: text("reviewer_photo_url"),
+  starRating: integer("star_rating").notNull(),
+  comment: text("comment"),
+  reviewCreateTime: timestamp("review_create_time").notNull().defaultNow(),
+  replyComment: text("reply_comment"),
+  replyStatus: text("reply_status").notNull().default("not_replied"), // 'not_replied' | 'auto_replied' | 'manual_replied' | 'pending_approval'
+  repliedAt: timestamp("replied_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("google_business_reviews_user_idx").on(table.userId),
+  unique("google_business_reviews_user_review_unique").on(table.userId, table.googleReviewId),
+]);
+
+export const insertGoogleBusinessReviewSchema = createInsertSchema(googleBusinessReviews).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertGoogleBusinessReview = z.infer<typeof insertGoogleBusinessReviewSchema>;
+export type GoogleBusinessReview = typeof googleBusinessReviews.$inferSelect;
+
 // Phone Release Retry Queue - Durable retry queue for Twilio/Plivo phone number releases
 // When a provider release call fails transiently (timeout, 5xx, rate-limit), we enqueue the
 // release so a background worker can retry with backoff instead of silently dropping it.
