@@ -76,8 +76,27 @@ export interface ReviewLogEntry {
   createdAt: string;
 }
 
+export interface ReviewDraftEntry {
+  id: string;
+  reviewerName: string;
+  rating: number; // 1 to 5
+  reviewText: string;
+  platform?: string;
+  drafts: {
+    warm: string;
+    professional: string;
+    crisp: string;
+  };
+  chosenReply?: string;
+  sentiment?: string;
+  status: 'draft' | 'replied';
+  createdAt: string;
+  repliedAt?: string;
+}
+
 const CONFIG_TEMPLATE_NAME = '__CRM_REVIEW_COMPLAINT_CONFIG__';
 const LOG_TEMPLATE_NAME = '__CRM_REVIEW_COMPLAINT_LOG__';
+const DRAFTS_LOG_TEMPLATE_NAME = '__CRM_REVIEW_DRAFTS_LOG__';
 const MAX_LOG_ENTRIES = 100;
 
 const DEFAULT_COMPLAINT_KEYWORDS = [
@@ -709,6 +728,245 @@ export class ReviewComplaintAutomationService {
     } catch (err: any) {
       logger.warn(`[ReviewComplaint] handleCompletedCall error: ${err?.message}`);
       return { alerted: false };
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 5. Review Reply Drafts (1-Click AI ORM Reply Generation)
+  // ─────────────────────────────────────────────────────────────
+  static async getReviewDraftsHistory(userId: string): Promise<ReviewDraftEntry[]> {
+    try {
+      const [row] = await db
+        .select()
+        .from(userEmailTemplates)
+        .where(and(eq(userEmailTemplates.userId, userId), eq(userEmailTemplates.name, DRAFTS_LOG_TEMPLATE_NAME)))
+        .limit(1);
+      const data = (row?.designJson as any) || {};
+      return Array.isArray(data.items) ? data.items : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static async saveReviewDraftEntry(userId: string, entry: Partial<ReviewDraftEntry>): Promise<ReviewDraftEntry> {
+    try {
+      const items = await this.getReviewDraftsHistory(userId);
+      const id = entry.id || `rd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const savedEntry: ReviewDraftEntry = {
+        id,
+        reviewerName: entry.reviewerName || 'Anonymous Customer',
+        rating: Math.max(1, Math.min(5, Number(entry.rating) || 5)),
+        reviewText: entry.reviewText || '',
+        platform: entry.platform || 'Google My Business',
+        drafts: {
+          warm: entry.drafts?.warm || '',
+          professional: entry.drafts?.professional || '',
+          crisp: entry.drafts?.crisp || '',
+        },
+        sentiment: entry.sentiment || (entry.rating && entry.rating >= 4 ? 'positive' : entry.rating === 3 ? 'neutral' : 'negative'),
+        chosenReply: entry.chosenReply || '',
+        status: entry.status || (entry.chosenReply ? 'replied' : 'draft'),
+        createdAt: entry.createdAt || new Date().toISOString(),
+        repliedAt: entry.chosenReply ? (entry.repliedAt || new Date().toISOString()) : undefined,
+      };
+
+      const existingIndex = items.findIndex((i) => i.id === id);
+      let updatedList: ReviewDraftEntry[];
+      if (existingIndex >= 0) {
+        updatedList = [...items];
+        updatedList[existingIndex] = savedEntry;
+      } else {
+        updatedList = [savedEntry, ...items].slice(0, MAX_LOG_ENTRIES);
+      }
+
+      const [existing] = await db
+        .select({ id: userEmailTemplates.id })
+        .from(userEmailTemplates)
+        .where(and(eq(userEmailTemplates.userId, userId), eq(userEmailTemplates.name, DRAFTS_LOG_TEMPLATE_NAME)))
+        .limit(1);
+
+      if (existing) {
+        await db
+          .update(userEmailTemplates)
+          .set({ designJson: { items: updatedList } as any, updatedAt: new Date() })
+          .where(eq(userEmailTemplates.id, existing.id));
+      } else {
+        await db.insert(userEmailTemplates).values({
+          userId,
+          name: DRAFTS_LOG_TEMPLATE_NAME,
+          subject: 'CRM Review Reply Drafts Log',
+          htmlBody: 'JSON_LOG',
+          variables: [],
+          isActive: false,
+          designJson: { items: updatedList } as any,
+        });
+      }
+
+      return savedEntry;
+    } catch (err: any) {
+      logger.warn(`[ReviewComplaint] saveReviewDraftEntry error: ${err?.message}`);
+      throw err;
+    }
+  }
+
+  static async deleteReviewDraftEntry(userId: string, entryId: string): Promise<boolean> {
+    try {
+      const items = await this.getReviewDraftsHistory(userId);
+      const filtered = items.filter((i) => i.id !== entryId);
+
+      const [existing] = await db
+        .select({ id: userEmailTemplates.id })
+        .from(userEmailTemplates)
+        .where(and(eq(userEmailTemplates.userId, userId), eq(userEmailTemplates.name, DRAFTS_LOG_TEMPLATE_NAME)))
+        .limit(1);
+
+      if (existing) {
+        await db
+          .update(userEmailTemplates)
+          .set({ designJson: { items: filtered } as any, updatedAt: new Date() })
+          .where(eq(userEmailTemplates.id, existing.id));
+      }
+      return true;
+    } catch (err: any) {
+      logger.warn(`[ReviewComplaint] deleteReviewDraftEntry error: ${err?.message}`);
+      return false;
+    }
+  }
+
+  static async generateReviewReplyDrafts(
+    userId: string,
+    params: {
+      reviewerName?: string;
+      rating?: number;
+      reviewText: string;
+      platform?: string;
+      customInstructions?: string;
+    }
+  ): Promise<{ drafts: { warm: string; professional: string; crisp: string }; sentiment: string; keyPoints: string[] }> {
+    const reviewerName = (params.reviewerName || 'Customer').trim();
+    const rating = Math.max(1, Math.min(5, Number(params.rating) || 5));
+    const reviewText = (params.reviewText || '').trim();
+    const platform = (params.platform || 'Google My Business').trim();
+    const customInstructions = (params.customInstructions || '').trim();
+
+    // Context retrieval (white-label business & escalation manager contact)
+    let businessName = 'Our Business';
+    let contactInfo = 'our management team';
+    try {
+      const [whitelabel] = await db
+        .select()
+        .from(crmWhitelabelConfigs)
+        .where(eq(crmWhitelabelConfigs.userId, userId))
+        .limit(1);
+      if (whitelabel?.businessName) businessName = whitelabel.businessName;
+
+      const config = await this.getConfig(userId);
+      const managerPhone = config.managerPhones?.split(',')[0]?.trim();
+      const managerEmail = config.managerEmails?.split(',')[0]?.trim();
+      const parts = [managerPhone, managerEmail].filter(Boolean);
+      if (parts.length > 0) contactInfo = parts.join(' or ');
+    } catch (err: any) {
+      logger.warn(`[ReviewComplaint] Error loading context: ${err?.message}`);
+    }
+
+    // Try OpenAI completion with gpt-4o-mini
+    try {
+      const dbKeyRes = await db.execute(sql`SELECT value FROM global_settings WHERE key = 'openai_api_key' LIMIT 1`);
+      let apiKey = (dbKeyRes.rows[0]?.value as string) || process.env.OPENAI_API_KEY || '';
+      if (typeof apiKey === 'string') apiKey = apiKey.replace(/^"|"$/g, '').trim();
+
+      if (apiKey) {
+        const { default: OpenAI } = await import('openai');
+        const openai = new OpenAI({ apiKey });
+
+        const prompt = `You are an expert Online Reputation Management (ORM) Copywriter for "${businessName}".
+Generate 3 distinct, high-quality, professional public reply drafts for a customer review on ${platform}.
+
+Review Details:
+- Customer Name: ${reviewerName}
+- Star Rating: ${rating} out of 5 stars
+- Customer Review: "${reviewText}"
+- Platform: ${platform}
+${customInstructions ? `- Special Instructions: ${customInstructions}` : ''}
+
+Business Context:
+- Business Name: ${businessName}
+- Direct Escalation Contact: ${contactInfo}
+
+Guidelines for the 3 drafts:
+1. "warm": Heartfelt, grateful, polite, and personalized. (If 4-5 stars: celebrate their positive experience and welcome them back. If 1-3 stars: express sincere empathy, understanding, and care).
+2. "professional": Objective, solution-oriented, and reassuring. (If 1-3 stars: offer an honest apology, avoid defensiveness, uphold quality commitment, and provide direct contact: "${contactInfo}" to resolve).
+3. "crisp": Short, polite, and punchy (2-3 sentences max).
+
+Strictly output JSON in this format:
+{
+  "sentiment": "positive" | "neutral" | "negative",
+  "keyPoints": ["point 1", "point 2"],
+  "drafts": {
+    "warm": "...",
+    "professional": "...",
+    "crisp": "..."
+  }
+}`;
+
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          temperature: 0.35,
+        });
+
+        const raw = completion.choices[0]?.message?.content;
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.drafts && parsed.drafts.warm && parsed.drafts.professional && parsed.drafts.crisp) {
+            return {
+              drafts: {
+                warm: String(parsed.drafts.warm).trim(),
+                professional: String(parsed.drafts.professional).trim(),
+                crisp: String(parsed.drafts.crisp).trim(),
+              },
+              sentiment: parsed.sentiment || (rating >= 4 ? 'positive' : rating === 3 ? 'neutral' : 'negative'),
+              keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints : [],
+            };
+          }
+        }
+      }
+    } catch (err: any) {
+      logger.warn(`[ReviewComplaint] OpenAI review reply generation fallback: ${err?.message}`);
+    }
+
+    // High quality deterministic fallbacks if OpenAI unavailable
+    if (rating >= 4) {
+      return {
+        sentiment: 'positive',
+        keyPoints: ['Expressed satisfaction', 'Great experience'],
+        drafts: {
+          warm: `Thank you so much, ${reviewerName} ji! 🌟 We are truly delighted to hear that you had a wonderful experience at ${businessName}. Your kind review motivates our entire team to keep delivering top quality care. We eagerly look forward to welcoming you back!`,
+          professional: `Dear ${reviewerName}, thank you for taking the time to share your positive review. At ${businessName}, customer satisfaction is our highest priority, and we are glad our standards met your expectations. Thank you for choosing us!`,
+          crisp: `Thanks a lot for the 5-star rating, ${reviewerName}! We truly appreciate your support and look forward to seeing you again at ${businessName}.`,
+        },
+      };
+    } else if (rating === 3) {
+      return {
+        sentiment: 'neutral',
+        keyPoints: ['Average experience', 'Room for improvement'],
+        drafts: {
+          warm: `Dear ${reviewerName}, thank you for sharing your feedback with us. We strive to provide a 5-star experience to every customer, and we are sorry that we fell short during your visit to ${businessName}. We would love to understand how we can improve — please reach out to us directly at ${contactInfo}.`,
+          professional: `Dear ${reviewerName}, thank you for your candid review. At ${businessName}, we continuously work to elevate our service standards. We value your feedback and would appreciate the chance to discuss your experience directly via ${contactInfo}.`,
+          crisp: `Thank you for your feedback, ${reviewerName}. We are always working to improve and would appreciate hearing more from you directly at ${contactInfo}.`,
+        },
+      };
+    } else {
+      return {
+        sentiment: 'negative',
+        keyPoints: ['Expressed dissatisfaction', 'Immediate resolution requested'],
+        drafts: {
+          warm: `Dear ${reviewerName}, we sincerely apologize for the experience you had with ${businessName}. This is far from the standard of service we hold ourselves to, and we truly regret any frustration or inconvenience caused. We take your words to heart and would deeply appreciate the chance to make this right — please contact us directly at ${contactInfo}.`,
+          professional: `Dear ${reviewerName}, please accept our sincere apologies for your recent experience. We take all feedback with utmost seriousness and are actively looking into this matter with our team. Please connect with our management directly at ${contactInfo} so we can personally investigate and resolve this for you.`,
+          crisp: `We sincerely apologize for your experience, ${reviewerName}. Please reach out to us directly at ${contactInfo} so our management can resolve this for you immediately.`,
+        },
+      };
     }
   }
 }

@@ -158,6 +158,59 @@ salesTeamRouter.post('/review-complaint/test-alert', async (req: Request, res: R
   }
 });
 
+// ── 2C-2. Review Reply Drafts (1-Click AI ORM Reply Generation) ────
+salesTeamRouter.post('/review-reply-drafts/generate', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { ReviewComplaintAutomationService } = await import('../services/review-complaint-automation.service');
+    const result = await ReviewComplaintAutomationService.generateReviewReplyDrafts(userId, req.body || {});
+    res.json(result);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error generating review reply drafts: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.get('/review-reply-drafts/history', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { ReviewComplaintAutomationService } = await import('../services/review-complaint-automation.service');
+    const history = await ReviewComplaintAutomationService.getReviewDraftsHistory(userId);
+    res.json(history);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error fetching review reply history: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.post('/review-reply-drafts/save', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { ReviewComplaintAutomationService } = await import('../services/review-complaint-automation.service');
+    const saved = await ReviewComplaintAutomationService.saveReviewDraftEntry(userId, req.body || {});
+    res.json(saved);
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error saving review reply entry: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
+salesTeamRouter.delete('/review-reply-drafts/:id', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const { ReviewComplaintAutomationService } = await import('../services/review-complaint-automation.service');
+    const success = await ReviewComplaintAutomationService.deleteReviewDraftEntry(userId, req.params.id);
+    res.json({ success });
+  } catch (error: any) {
+    logger.error(`[SalesTeam] Error deleting review reply entry: ${error.message}`, error, 'SalesTeam');
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── 2D. Source-to-Sale ROI Funnel (read-only analytics + its own settings) ──
 // Must be registered BEFORE PUT /:id so it is not captured as a staff ID.
 salesTeamRouter.get('/roi-funnel', async (req: Request, res: Response) => {

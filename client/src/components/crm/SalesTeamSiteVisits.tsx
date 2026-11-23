@@ -1380,10 +1380,10 @@ export function SalesTeamSiteVisits() {
           >
             <span className="flex items-center gap-2 truncate">
               <Sparkles className="w-4 h-4 shrink-0" />
-              <span className="truncate">Review & Complaint Alerts</span>
+              <span className="truncate">Google Reviews & AI Replies</span>
             </span>
             <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-600 dark:text-yellow-300 text-[9px] font-bold uppercase tracking-wider shrink-0">
-              ⭐ + 🚨
+              ⭐ AI + 🚨
             </span>
           </button>
 
