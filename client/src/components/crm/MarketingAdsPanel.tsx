@@ -25,6 +25,14 @@ import {
   Zap,
   BookmarkCheck,
   FileText,
+  Play,
+  Download,
+  Film,
+  Key,
+  Sliders,
+  Eye,
+  EyeOff,
+  Tv,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +41,14 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -52,6 +68,12 @@ export interface MarketingScriptItem {
   approvedBy?: string;
   scheduledFor?: string;
   notes?: string;
+  videoStatus?: "none" | "rendering" | "completed" | "failed";
+  videoUrl?: string;
+  videoThumbnailUrl?: string;
+  videoProvider?: string;
+  videoJobId?: string;
+  videoDuration?: string;
   createdAt: string;
 }
 
@@ -64,6 +86,10 @@ export interface BrandKitData {
   ctaLink: string;
   primaryLanguage: string;
   keyUSPs: string[];
+  videoProvider?: string;
+  videoApiKey?: string;
+  videoAvatarId?: string;
+  videoVoiceId?: string;
 }
 
 export interface AdAttributionItem {
@@ -199,6 +225,88 @@ export function MarketingAdsPanel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: SCRIPTS_KEY });
       toast({ title: "Script Deleted" });
+    },
+  });
+
+  // AI Video Generation State
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [selectedScriptForVideo, setSelectedScriptForVideo] = useState<MarketingScriptItem | null>(null);
+  const [modalProvider, setModalProvider] = useState<string>("simulator");
+  const [modalAvatarId, setModalAvatarId] = useState<string>("Daisy-in-blazer");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [testKeyStatus, setTestKeyStatus] = useState<{ testing?: boolean; success?: boolean; message?: string } | null>(null);
+
+  // Video mutations
+  const generateVideoMutation = useMutation({
+    mutationFn: async ({
+      scriptId,
+      provider,
+      avatarId,
+      apiKey,
+    }: {
+      scriptId: string;
+      provider?: string;
+      avatarId?: string;
+      apiKey?: string;
+    }) => {
+      const res = await apiRequest("POST", `/api/marketing/scripts/${scriptId}/generate-video`, {
+        provider,
+        avatarId,
+        apiKey,
+      });
+      return res.json();
+    },
+    onSuccess: (updated: MarketingScriptItem) => {
+      queryClient.invalidateQueries({ queryKey: SCRIPTS_KEY });
+      setVideoModalOpen(false);
+      if (updated.videoStatus === "rendering") {
+        toast({
+          title: "⏳ AI Video Generation Started!",
+          description: `Rendering on ${updated.videoProvider || "AI Engine"}. Check back shortly.`,
+        });
+      } else {
+        toast({
+          title: "🎉 AI Video Created Successfully!",
+          description: "Your 9:16 vertical video reel is ready to preview, play, and download.",
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Video Generation Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const checkVideoStatusMutation = useMutation({
+    mutationFn: async (scriptId: string) => {
+      const res = await apiRequest("GET", `/api/marketing/scripts/${scriptId}/video-status`, {});
+      return res.json();
+    },
+    onSuccess: (updated: MarketingScriptItem) => {
+      queryClient.invalidateQueries({ queryKey: SCRIPTS_KEY });
+      if (updated.videoStatus === "completed") {
+        toast({ title: "✅ Video Ready!", description: "Video render completed successfully." });
+      } else {
+        toast({ title: "Status: " + updated.videoStatus, description: "Video is still processing..." });
+      }
+    },
+  });
+
+  const testCredentialsMutation = useMutation({
+    mutationFn: async ({ provider, apiKey }: { provider: string; apiKey: string }) => {
+      const res = await apiRequest("POST", "/api/marketing/test-video-credentials", { provider, apiKey });
+      return res.json();
+    },
+    onSuccess: (res: any) => {
+      setTestKeyStatus({ testing: false, success: res.success, message: res.message });
+      if (res.success) {
+        toast({ title: "✅ Connection Verified", description: res.message });
+      } else {
+        toast({ title: "❌ Connection Failed", description: res.message, variant: "destructive" });
+      }
+    },
+    onError: (err: any) => {
+      setTestKeyStatus({ testing: false, success: false, message: err.message });
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -583,6 +691,97 @@ ${script.callToAction}`;
                         </div>
                       </div>
 
+                      {/* AI Video Preview / Player Block */}
+                      {script.videoStatus === "completed" && script.videoUrl && (
+                        <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 space-y-3">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <Badge className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px] gap-1 font-bold">
+                                <Film className="w-3 h-3" /> 🎬 9:16 AI Video Reel Ready
+                              </Badge>
+                              <span className="text-[10px] text-muted-foreground uppercase">
+                                Provider: {script.videoProvider || "Simulator"} • {script.videoDuration || "0:38"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(script.videoUrl!);
+                                  toast({ title: "🔗 Video Link Copied to Clipboard!" });
+                                }}
+                                className="h-7 text-xs gap-1"
+                              >
+                                <Copy className="w-3 h-3" />
+                                <span>Copy Link</span>
+                              </Button>
+                              <a
+                                href={script.videoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                download={`calliqo-reel-${script.id}.mp4`}
+                                className="inline-flex items-center justify-center h-7 px-3 text-xs font-medium rounded-md bg-purple-600 hover:bg-purple-700 text-white gap-1 transition-colors"
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>Download MP4</span>
+                              </a>
+                            </div>
+                          </div>
+
+                          {/* Video player view */}
+                          <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
+                            <div className="relative w-full max-w-[210px] aspect-[9/16] rounded-xl overflow-hidden border border-purple-500/40 shadow-xl bg-black shrink-0">
+                              <video
+                                src={script.videoUrl}
+                                poster={script.videoThumbnailUrl}
+                                controls
+                                playsInline
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="text-xs space-y-2 flex-1">
+                              <p className="font-semibold text-foreground flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                                <span>High-Converting Vertical Video Ready for Meta Ads & Instagram Reels</span>
+                              </p>
+                              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                                Ye video customer calls ke real objections aur script hook ke anusaar 9:16 format me render ho chuka hai. Aap ise seedha Instagram Reel, Facebook Ad ya WhatsApp Status par use kar sakte hain.
+                              </p>
+                              <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
+                                <div className="p-2 rounded border bg-card/60">
+                                  <span className="text-muted-foreground block text-[10px]">Aspect Ratio</span>
+                                  <span className="font-semibold text-foreground">9:16 Vertical (1080x1920)</span>
+                                </div>
+                                <div className="p-2 rounded border bg-card/60">
+                                  <span className="text-muted-foreground block text-[10px]">Optimal Duration</span>
+                                  <span className="font-semibold text-foreground">{script.videoDuration || "30-45 sec"}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {script.videoStatus === "rendering" && (
+                        <div className="p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5 flex items-center justify-between flex-wrap gap-2 text-xs">
+                          <div className="flex items-center gap-2">
+                            <RefreshCw className="w-4 h-4 animate-spin text-yellow-500" />
+                            <span className="font-semibold text-foreground">AI Video is rendering...</span>
+                            <span className="text-[11px] text-muted-foreground">({script.videoProvider || "AI Engine"})</span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => checkVideoStatusMutation.mutate(script.id)}
+                            className="h-7 text-xs gap-1"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Check Status</span>
+                          </Button>
+                        </div>
+                      )}
+
                       {/* Card Actions Footer */}
                       <div className="flex items-center justify-between pt-2 border-t text-xs">
                         <div className="text-[11px] text-muted-foreground">
@@ -591,6 +790,47 @@ ${script.callToAction}`;
                         </div>
 
                         <div className="flex items-center gap-2">
+                          {script.videoStatus === "completed" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedScriptForVideo(script);
+                                setModalProvider(brandKit?.videoProvider || "simulator");
+                                setModalAvatarId(brandKit?.videoAvatarId || "Daisy-in-blazer");
+                                setVideoModalOpen(true);
+                              }}
+                              className="h-7 text-xs border-purple-500/40 text-purple-600 dark:text-purple-300 hover:bg-purple-500/10 gap-1.5"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              <span>Re-generate Video</span>
+                            </Button>
+                          ) : script.videoStatus === "rendering" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled
+                              className="h-7 text-xs gap-1.5 text-yellow-500"
+                            >
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              <span>Rendering...</span>
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setSelectedScriptForVideo(script);
+                                setModalProvider(brandKit?.videoProvider || "simulator");
+                                setModalAvatarId(brandKit?.videoAvatarId || "Daisy-in-blazer");
+                                setVideoModalOpen(true);
+                              }}
+                              className="h-7 text-xs bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white gap-1.5 shadow-sm font-semibold"
+                            >
+                              <Video className="w-3.5 h-3.5" />
+                              <span>🎥 Generate AI Video</span>
+                            </Button>
+                          )}
+
                           <Button
                             size="sm"
                             variant="outline"
@@ -713,6 +953,149 @@ ${script.callToAction}`;
                   <Check className="w-3.5 h-3.5" />
                   <span>Save Brand Kit</span>
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* AI Video Generation Credentials Card */}
+          <Card className="border-purple-500/30 bg-gradient-to-br from-card via-card to-purple-500/5">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Video className="w-4 h-4 text-purple-400" />
+                  AI Video Generation Tool & API Credentials
+                </CardTitle>
+                <Badge className="bg-purple-500/15 text-purple-600 dark:text-purple-300 border-purple-500/30 text-[10px]">
+                  HeyGen • D-ID • Instant Simulator
+                </Badge>
+              </div>
+              <CardDescription className="text-xs">
+                Apne pasandida AI video tool ke credentials yahan connect karein. Agar aapke paas API key nahi hai, toh Built-in Simulator se turant 9:16 vertical test videos generate kiye ja sakte hain.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Provider Selector */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Video AI Platform</Label>
+                  <Select
+                    value={brandForm?.videoProvider || "simulator"}
+                    onValueChange={(val) => setBrandForm((prev) => prev ? { ...prev, videoProvider: val } : prev)}
+                  >
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="simulator">⚡ Instant AI Video Simulator (Ready to Use)</SelectItem>
+                      <SelectItem value="heygen">🤖 HeyGen API (Talking Avatars & 9:16 Reels)</SelectItem>
+                      <SelectItem value="did">🎭 D-ID API (Interactive Presenters)</SelectItem>
+                      <SelectItem value="creatomate">🎬 Creatomate / InVideo AI</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Avatar Style */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Presenter / Avatar Style</Label>
+                  <Select
+                    value={brandForm?.videoAvatarId || "Daisy-in-blazer"}
+                    onValueChange={(val) => setBrandForm((prev) => prev ? { ...prev, videoAvatarId: val } : prev)}
+                  >
+                    <SelectTrigger className="text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Daisy-in-blazer">👩 Daisy - Corporate Real Estate Host</SelectItem>
+                      <SelectItem value="josh_lite3_20230714">👨 Josh - Energetic Modern Consultant</SelectItem>
+                      <SelectItem value="Wayne_20240711">👨 Wayne - Senior Luxury Advisor</SelectItem>
+                      <SelectItem value="Ann_Doctor_Sitting_public">👩 Ann - Warm & Friendly Consultant</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* API Key Input */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold">API Key / Token</Label>
+                    {brandForm?.videoProvider !== "simulator" && (
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="text-[10px] text-purple-400 hover:underline flex items-center gap-0.5"
+                      >
+                        {showApiKey ? "Hide Key" : "Show Key"}
+                      </button>
+                    )}
+                  </div>
+                  <Input
+                    type={showApiKey ? "text" : "password"}
+                    value={brandForm?.videoApiKey || ""}
+                    onChange={(e) => setBrandForm((prev) => prev ? { ...prev, videoApiKey: e.target.value } : prev)}
+                    placeholder={
+                      brandForm?.videoProvider === "simulator"
+                        ? "Key not required for Instant Simulator"
+                        : "Paste your API Key here (e.g. hey_... or d-id token)"
+                    }
+                    disabled={brandForm?.videoProvider === "simulator"}
+                    className="text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Status and Action Buttons */}
+              <div className="flex items-center justify-between pt-2 border-t flex-wrap gap-2">
+                <div className="text-xs">
+                  {brandForm?.videoProvider === "simulator" ? (
+                    <span className="text-emerald-500 font-medium flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Instant Video Simulator ready: Har script ka 9:16 vertical reel bina API key ke turant banega.
+                    </span>
+                  ) : testKeyStatus?.message ? (
+                    <span className={testKeyStatus.success ? "text-emerald-500 font-medium" : "text-red-500 font-medium"}>
+                      {testKeyStatus.message}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground text-[11px]">
+                      Enter your {brandForm?.videoProvider === "heygen" ? "HeyGen" : "D-ID"} API key to generate high-end talking avatar reels.
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {brandForm?.videoProvider !== "simulator" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (brandForm) {
+                          testCredentialsMutation.mutate({
+                            provider: brandForm.videoProvider || "heygen",
+                            apiKey: brandForm.videoApiKey || "",
+                          });
+                        }
+                      }}
+                      disabled={testCredentialsMutation.isPending || !brandForm?.videoApiKey}
+                      className="h-8 text-xs gap-1"
+                    >
+                      {testCredentialsMutation.isPending ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Check className="w-3.5 h-3.5" />
+                      )}
+                      <span>Test Key</span>
+                    </Button>
+                  )}
+
+                  <Button
+                    type="button"
+                    onClick={() => brandForm && saveBrandKitMutation.mutate(brandForm)}
+                    disabled={saveBrandKitMutation.isPending}
+                    className="h-8 text-xs bg-purple-600 hover:bg-purple-700 text-white gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Save Credentials</span>
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -998,6 +1381,117 @@ ${script.callToAction}`;
           </Card>
         </div>
       )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          AI VIDEO GENERATION MODAL
+      ───────────────────────────────────────────────────────────── */}
+      <Dialog open={videoModalOpen} onOpenChange={setVideoModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm flex items-center gap-2">
+              <Film className="w-4 h-4 text-purple-400" />
+              Generate 9:16 AI Video Reel
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Is script se automated 9:16 vertical video reel banayein with video cues and hook.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedScriptForVideo && (
+            <div className="space-y-4 py-2 text-xs">
+              {/* Script Summary */}
+              <div className="p-3 rounded-lg border bg-muted/30 space-y-1">
+                <span className="font-semibold text-foreground block">{selectedScriptForVideo.title}</span>
+                <p className="text-[11px] text-muted-foreground line-clamp-2">
+                  <strong>Hook:</strong> {selectedScriptForVideo.hook}
+                </p>
+                <div className="flex items-center gap-2 pt-1 text-[10px] text-purple-400">
+                  <Badge variant="outline" className="text-[9px] uppercase">
+                    {selectedScriptForVideo.scriptType.replace("_", " ")}
+                  </Badge>
+                  <span>•</span>
+                  <span>{selectedScriptForVideo.estimatedDuration || "30-45 sec"}</span>
+                </div>
+              </div>
+
+              {/* Provider Selection */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Render Engine</Label>
+                <Select value={modalProvider} onValueChange={setModalProvider}>
+                  <SelectTrigger className="text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="simulator">⚡ Instant Video Simulator (Fast & Ready)</SelectItem>
+                    <SelectItem value="heygen">🤖 HeyGen API (Custom Avatar Reel)</SelectItem>
+                    <SelectItem value="did">🎭 D-ID API (Presenter AI)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Avatar Style */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">AI Presenter</Label>
+                <Select value={modalAvatarId} onValueChange={setModalAvatarId}>
+                  <SelectTrigger className="text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Daisy-in-blazer">👩 Daisy - Corporate Host</SelectItem>
+                    <SelectItem value="josh_lite3_20230714">👨 Josh - Modern Consultant</SelectItem>
+                    <SelectItem value="Wayne_20240711">👨 Wayne - Senior Luxury Advisor</SelectItem>
+                    <SelectItem value="Ann_Doctor_Sitting_public">👩 Ann - Warm Consultant</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="p-2.5 rounded-lg border border-purple-500/20 bg-purple-500/5 text-[11px] text-purple-600 dark:text-purple-300">
+                ✨ Output: Full HD 9:16 (1080x1920) vertical reel MP4 ready for Instagram, Meta Ads & WhatsApp.
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex items-center justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setVideoModalOpen(false)}
+              className="text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                if (selectedScriptForVideo) {
+                  generateVideoMutation.mutate({
+                    scriptId: selectedScriptForVideo.id,
+                    provider: modalProvider,
+                    avatarId: modalAvatarId,
+                    apiKey: brandKit?.videoApiKey,
+                  });
+                }
+              }}
+              disabled={generateVideoMutation.isPending}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-xs gap-1.5 font-semibold"
+            >
+              {generateVideoMutation.isPending ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Rendering Video...</span>
+                </>
+              ) : (
+                <>
+                  <Film className="w-3.5 h-3.5" />
+                  <span>🎬 Render 9:16 Video Now</span>
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

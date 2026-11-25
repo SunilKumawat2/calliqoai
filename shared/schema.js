@@ -2619,6 +2619,15 @@ const marketingScripts = pgTable("marketing_scripts", {
   approvedBy: text("approved_by"),
   scheduledFor: timestamp("scheduled_for"),
   notes: text("notes"),
+  // AI Video Generation integration
+  videoStatus: text("video_status").notNull().default("none"),
+  // 'none' | 'rendering' | 'completed' | 'failed'
+  videoUrl: text("video_url"),
+  videoThumbnailUrl: text("video_thumbnail_url"),
+  videoProvider: text("video_provider"),
+  // 'simulator' | 'heygen' | 'did' | 'creatomate'
+  videoJobId: text("video_job_id"),
+  videoDuration: text("video_duration"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 }, (table) => [
@@ -2641,6 +2650,12 @@ const marketingBrandKits = pgTable("marketing_brand_kits", {
   ctaLink: text("cta_link").default("https://wa.me/917023088303?text=Hi%20ApexRealty%20I%20want%20site%20visit"),
   primaryLanguage: text("primary_language").default("hinglish"),
   keyUSPs: jsonb("key_usps").default(["RERA Approved Properties", "Prime Locations with 80% Green Living", "Transparent Pricing & No Hidden Charges", "Immediate Loan Assistance"]),
+  // AI Video Engine Credentials
+  videoProvider: text("video_provider").default("simulator"),
+  // 'simulator' | 'heygen' | 'did' | 'creatomate'
+  videoApiKey: text("video_api_key"),
+  videoAvatarId: text("video_avatar_id").default("Daisy-in-blazer"),
+  videoVoiceId: text("video_voice_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });

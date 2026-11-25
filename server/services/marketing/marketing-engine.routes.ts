@@ -111,6 +111,49 @@ marketingEngineRouter.delete("/scripts/:id", async (req: Request, res: Response)
   }
 });
 
+// 3B. AI VIDEO GENERATION & STATUS
+marketingEngineRouter.post("/scripts/:id/generate-video", async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id || (req as any).userId;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const { id } = req.params;
+  try {
+    const updated = await MarketingEngineService.generateVideoForScript(userId, id, req.body);
+    res.json(updated);
+  } catch (err: any) {
+    logger.error(`[MarketingRoutes] Error generating video: ${err?.message}`);
+    res.status(500).json({ error: err?.message || "Failed to generate video" });
+  }
+});
+
+marketingEngineRouter.get("/scripts/:id/video-status", async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id || (req as any).userId;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const { id } = req.params;
+  try {
+    const script = await MarketingEngineService.checkVideoStatus(userId, id);
+    res.json(script);
+  } catch (err: any) {
+    logger.error(`[MarketingRoutes] Error checking video status: ${err?.message}`);
+    res.status(500).json({ error: err?.message || "Failed to check status" });
+  }
+});
+
+marketingEngineRouter.post("/test-video-credentials", async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id || (req as any).userId;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const { provider, apiKey } = req.body;
+  try {
+    const result = await MarketingEngineService.testVideoCredentials(provider, apiKey);
+    res.json(result);
+  } catch (err: any) {
+    logger.error(`[MarketingRoutes] Error testing video credentials: ${err?.message}`);
+    res.status(400).json({ error: err?.message || "Failed to test credentials" });
+  }
+});
+
 // 4. CLICK-TO-WHATSAPP (CTWA) & AD ATTRIBUTION
 marketingEngineRouter.get("/ad-attributions", async (req: Request, res: Response) => {
   const userId = (req as any).user?.id || (req as any).userId;
