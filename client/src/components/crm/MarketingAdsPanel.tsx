@@ -755,6 +755,7 @@ ${script.callToAction}`;
                           <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
                             <div className="relative w-full max-w-[210px] aspect-[9/16] rounded-xl overflow-hidden border border-purple-500/40 shadow-xl bg-black shrink-0">
                               <video
+                                key={script.videoUrl}
                                 src={script.videoUrl}
                                 poster={script.videoThumbnailUrl}
                                 controls
@@ -763,21 +764,29 @@ ${script.callToAction}`;
                               />
                             </div>
                             <div className="text-xs space-y-2 flex-1">
-                              <p className="font-semibold text-foreground flex items-center gap-1.5">
-                                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                                <span>High-Converting Vertical Video Ready for Meta Ads & Instagram Reels</span>
-                              </p>
+                              <div className="p-2.5 rounded-lg border border-purple-500/30 bg-purple-500/10 space-y-1">
+                                <span className="text-[10px] uppercase font-bold text-purple-400 flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3" /> Script-Matched AI Video & Voiceover
+                                </span>
+                                <div className="font-semibold text-foreground text-xs leading-snug">
+                                  "{script.title}"
+                                </div>
+                                <p className="text-[11px] text-muted-foreground line-clamp-2">
+                                  <strong>Voiceover Audio:</strong> {script.hook}
+                                </p>
+                              </div>
+
                               <p className="text-muted-foreground text-[11px] leading-relaxed">
-                                Ye video customer calls ke real objections aur script hook ke anusaar 9:16 format me render ho chuka hai. Aap ise seedha Instagram Reel, Facebook Ad ya WhatsApp Status par use kar sakte hain.
+                                Ye video aapki script ke exact Hook, Dialogues aur Brand Name ke anuroop AI voiceover ke sath merge ho chuka hai. Video play karke voiceover sunein ya 1-click me MP4 download karein.
                               </p>
                               <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
                                 <div className="p-2 rounded border bg-card/60">
-                                  <span className="text-muted-foreground block text-[10px]">Aspect Ratio</span>
-                                  <span className="font-semibold text-foreground">9:16 Vertical (1080x1920)</span>
+                                  <span className="text-muted-foreground block text-[10px]">AI Voice Model</span>
+                                  <span className="font-semibold text-foreground">Natural Hinglish (Onyx/Nova)</span>
                                 </div>
                                 <div className="p-2 rounded border bg-card/60">
-                                  <span className="text-muted-foreground block text-[10px]">Optimal Duration</span>
-                                  <span className="font-semibold text-foreground">{script.videoDuration || "30-45 sec"}</span>
+                                  <span className="text-muted-foreground block text-[10px]">Aspect Ratio</span>
+                                  <span className="font-semibold text-foreground">9:16 Vertical (1080x1920)</span>
                                 </div>
                               </div>
                             </div>

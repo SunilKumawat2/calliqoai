@@ -493,18 +493,92 @@ Required Output Format (Return STRICT JSON only):
       }
     }
 
-    // 3. High-Quality Real-World Video Simulator (Instant 9:16 Vertical Reel)
+    // 3. High-Quality Script-Matched Video Engine (Dynamic Voiceover & Custom Reel)
     const hashIndex = Math.abs(scriptId.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0)) % this.SAMPLE_VIDEO_REELS.length;
     const sample = this.SAMPLE_VIDEO_REELS[hashIndex];
+    let customVideoUrl = sample.videoUrl;
+    let customDuration = sample.duration;
+
+    try {
+      const dbKeyRes = await db.execute(
+        sql`SELECT value FROM global_settings WHERE key = 'openai_api_key' LIMIT 1`
+      );
+      let openAiKey = (dbKeyRes.rows[0]?.value as string) || process.env.OPENAI_API_KEY || "";
+      if (typeof openAiKey === "string") openAiKey = openAiKey.replace(/^"|"$/g, "").trim();
+
+      if (openAiKey) {
+        let speechText = `${script.hook}. ${script.bodyText
+          .replace(/\[\d+:\d+\s*-\s*\d+:\d+\]/g, "")
+          .replace(/\(.*?\)/g, "")
+          .replace(/["'{}\\]/g, " ")
+          .replace(/(timestamp|cameraAngle|bRollCue|spokenDialogue|Visual|Spoken|Camera|B-roll)/gi, "")
+          .replace(/[:|]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()}`.slice(0, 1000);
+
+        const voice = avatarId?.includes("josh") || avatarId?.includes("Wayne") ? "onyx" : "nova";
+
+        const ttsResp = await fetch("https://api.openai.com/v1/audio/speech", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${openAiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "tts-1",
+            voice,
+            input: speechText,
+          }),
+        });
+
+        if (ttsResp.ok) {
+          const { promises: fsPromises } = await import("fs");
+          const { exec } = await import("child_process");
+          const path = await import("path");
+          const audioBuffer = Buffer.from(await ttsResp.arrayBuffer());
+
+          const distPublicDir = "/home/calliqoai/htdocs/calliqoai.com/dist/public/videos";
+          await fsPromises.mkdir(distPublicDir, { recursive: true }).catch(() => {});
+
+          const audioFileName = `voiceover-${scriptId}.mp3`;
+          const audioPath = path.join(distPublicDir, audioFileName);
+          await fsPromises.writeFile(audioPath, audioBuffer);
+
+          const bgVideoFile = hashIndex % 2 === 0 ? "reel-property-1.mp4" : "reel-property-2.mp4";
+          const bgVideoPath = path.join(distPublicDir, bgVideoFile);
+          const outReelFile = `reel-${scriptId}.mp4`;
+          const outReelPath = path.join(distPublicDir, outReelFile);
+          const ffmpegBin = "/home/calliqoai/htdocs/calliqoai.com/bin/ffmpeg";
+
+          await new Promise((resolve) => {
+            exec(
+              `${ffmpegBin} -y -stream_loop -1 -i ${bgVideoPath} -i ${audioPath} -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -shortest ${outReelPath}`,
+              (err) => {
+                if (!err) {
+                  customVideoUrl = `/videos/${outReelFile}`;
+                  customDuration = "0:36";
+                  logger.info(`[MarketingEngine] Custom script video generated successfully: ${customVideoUrl}`);
+                } else {
+                  logger.warn(`[MarketingEngine] FFmpeg merge warning: ${err?.message}`);
+                }
+                resolve(null);
+              }
+            );
+          });
+        }
+      }
+    } catch (ttsErr: any) {
+      logger.warn(`[MarketingEngine] Custom script TTS audio generation notice: ${ttsErr?.message}`);
+    }
 
     const [updated] = await db
       .update(marketingScripts)
       .set({
         videoStatus: "completed",
-        videoUrl: sample.videoUrl,
+        videoUrl: customVideoUrl,
         videoThumbnailUrl: sample.thumbnailUrl,
         videoProvider: provider,
-        videoDuration: sample.duration,
+        videoDuration: customDuration,
         updatedAt: new Date(),
       })
       .where(eq(marketingScripts.id, scriptId))
