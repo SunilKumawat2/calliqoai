@@ -351,22 +351,22 @@ Required Output Format (Return STRICT JSON only):
 
   private static SAMPLE_VIDEO_REELS = [
     {
-      videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-modern-apartment-interior-design-39798-large.mp4",
+      videoUrl: "/videos/reel-property-1.mp4",
       thumbnailUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=720&q=80",
       duration: "0:38",
     },
     {
-      videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-living-room-in-a-modern-house-41553-large.mp4",
+      videoUrl: "/videos/reel-property-2.mp4",
       thumbnailUrl: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=720&q=80",
       duration: "0:42",
     },
     {
-      videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-kitchen-in-a-modern-apartment-41554-large.mp4",
+      videoUrl: "/videos/reel-property-1.mp4",
       thumbnailUrl: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=720&q=80",
       duration: "0:35",
     },
     {
-      videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-top-view-of-a-luxurious-real-estate-house-42013-large.mp4",
+      videoUrl: "/videos/reel-property-2.mp4",
       thumbnailUrl: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=720&q=80",
       duration: "0:45",
     },

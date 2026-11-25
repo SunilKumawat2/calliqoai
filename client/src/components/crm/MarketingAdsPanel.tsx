@@ -352,6 +352,27 @@ ${script.callToAction}`;
     });
   };
 
+  const handleDownloadVideo = async (url: string, title: string) => {
+    try {
+      const fullUrl = url.startsWith("http") ? url : `${window.location.origin}${url}`;
+      toast({ title: "⏳ Starting Download...", description: "Fetching MP4 video file..." });
+      const resp = await fetch(fullUrl);
+      if (!resp.ok) throw new Error("File fetch failed");
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-reel.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      toast({ title: "✅ Download Complete!", description: "Video saved to your device." });
+    } catch {
+      window.open(url, "_blank");
+    }
+  };
+
   // Attribution KPI totals
   const totalSpend = adAttributionsList.reduce((acc, a) => acc + parseFloat(a.adSpend || "0"), 0);
   const totalRevenue = adAttributionsList.reduce((acc, a) => acc + parseFloat(a.totalRevenue || "0"), 0);
@@ -708,24 +729,25 @@ ${script.callToAction}`;
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(script.videoUrl!);
-                                  toast({ title: "🔗 Video Link Copied to Clipboard!" });
+                                  const fullUrl = script.videoUrl?.startsWith("http")
+                                    ? script.videoUrl
+                                    : `${window.location.origin}${script.videoUrl}`;
+                                  navigator.clipboard.writeText(fullUrl);
+                                  toast({ title: "🔗 Video Link Copied to Clipboard!", description: fullUrl });
                                 }}
                                 className="h-7 text-xs gap-1"
                               >
                                 <Copy className="w-3 h-3" />
                                 <span>Copy Link</span>
                               </Button>
-                              <a
-                                href={script.videoUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                download={`calliqo-reel-${script.id}.mp4`}
-                                className="inline-flex items-center justify-center h-7 px-3 text-xs font-medium rounded-md bg-purple-600 hover:bg-purple-700 text-white gap-1 transition-colors"
+                              <Button
+                                size="sm"
+                                onClick={() => handleDownloadVideo(script.videoUrl!, script.title)}
+                                className="h-7 px-3 text-xs font-medium rounded-md bg-purple-600 hover:bg-purple-700 text-white gap-1 transition-colors"
                               >
                                 <Download className="w-3 h-3" />
                                 <span>Download MP4</span>
-                              </a>
+                              </Button>
                             </div>
                           </div>
 
