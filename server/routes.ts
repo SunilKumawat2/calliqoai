@@ -1745,6 +1745,10 @@ When using a tool:
   const { googleBusinessRouter } = await import("./services/google-business/google-business.routes");
   app.use("/api/google-business", authenticateToken as unknown as import('express').RequestHandler, googleBusinessRouter);
 
+  // Section 5: Marketing & Creative Scripts Engine (Call-to-Script, Brand Kit, CTWA Attribution)
+  const { marketingEngineRouter } = await import("./services/marketing/marketing-engine.routes");
+  app.use("/api/marketing", authenticateToken as unknown as import('express').RequestHandler, marketingEngineRouter);
+
   // This must be registered on the httpServer to properly handle Twilio WebSocket streams
   httpServer.on('upgrade', (request, socket, head) => {
     const pathname = request.url?.split('?')[0] || '';

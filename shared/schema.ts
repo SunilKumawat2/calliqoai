@@ -3252,6 +3252,95 @@ export const insertGoogleBusinessReviewSchema = createInsertSchema(googleBusines
 export type InsertGoogleBusinessReview = z.infer<typeof insertGoogleBusinessReviewSchema>;
 export type GoogleBusinessReview = typeof googleBusinessReviews.$inferSelect;
 
+// Section 5: Marketing & Creative Scripts Engine
+export const marketingScripts = pgTable("marketing_scripts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  title: text("title").notNull(),
+  scriptType: text("script_type").notNull().default("instagram_reel"), // 'instagram_reel' | 'meta_ad' | 'whatsapp_broadcast' | 'youtube_short'
+  sourceTopic: text("source_topic"), // Customer objection or FAQ extracted from calls
+  targetAudience: text("target_audience"),
+  hook: text("hook").notNull(), // 0-3 sec viral hook
+  bodyText: text("body_text").notNull(), // Full script with video cues, spoken dialogue & on-screen text
+  callToAction: text("call_to_action").notNull(), // CTA e.g. "Comment VISIT or DM us"
+  language: text("language").notNull().default("hinglish"), // 'hinglish' | 'hindi' | 'english'
+  estimatedDuration: text("estimated_duration").default("30-45 sec"),
+  status: text("status").notNull().default("draft"), // 'draft' | 'approved' | 'scheduled' | 'published'
+  approvedAt: timestamp("approved_at"),
+  approvedBy: text("approved_by"),
+  scheduledFor: timestamp("scheduled_for"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("marketing_scripts_user_idx").on(table.userId),
+  index("marketing_scripts_status_idx").on(table.userId, table.status),
+]);
+
+export const insertMarketingScriptSchema = createInsertSchema(marketingScripts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertMarketingScript = z.infer<typeof insertMarketingScriptSchema>;
+export type MarketingScript = typeof marketingScripts.$inferSelect;
+
+// Section 5: Marketing Brand Kit
+export const marketingBrandKits = pgTable("marketing_brand_kits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  brandName: text("brand_name").notNull().default("Apex Realty & Living"),
+  brandVoice: text("brand_voice").notNull().default("energetic"), // 'energetic' | 'authoritative' | 'friendly_helpful' | 'luxury_premium'
+  targetAudience: text("target_audience").default("Home buyers & real estate investors aged 25-50 looking for premium living in Tricity & Jaipur"),
+  coreOffer: text("core_offer").default("Zero Brokerage Site Visits + Instant Free Floorplan & Pricing Brochure"),
+  ctaLink: text("cta_link").default("https://wa.me/917023088303?text=Hi%20ApexRealty%20I%20want%20site%20visit"),
+  primaryLanguage: text("primary_language").default("hinglish"),
+  keyUSPs: jsonb("key_usps").default(["RERA Approved Properties", "Prime Locations with 80% Green Living", "Transparent Pricing & No Hidden Charges", "Immediate Loan Assistance"]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertMarketingBrandKitSchema = createInsertSchema(marketingBrandKits).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertMarketingBrandKit = z.infer<typeof insertMarketingBrandKitSchema>;
+export type MarketingBrandKit = typeof marketingBrandKits.$inferSelect;
+
+// Section 5: Click-to-WhatsApp (CTWA) & Ad Attribution Engine
+export const adAttributions = pgTable("ad_attributions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  campaignName: text("campaign_name").notNull(),
+  adsetName: text("adset_name"),
+  adName: text("ad_name").notNull(),
+  platform: text("platform").notNull().default("ctwa_whatsapp"), // 'ctwa_whatsapp' | 'facebook' | 'instagram' | 'google_ads'
+  adCreativeUrl: text("ad_creative_url"),
+  utmCampaign: text("utm_campaign"),
+  utmSource: text("utm_source").default("meta_ads"),
+  utmMedium: text("utm_medium").default("cpc"),
+  clicks: integer("clicks").notNull().default(0),
+  enquiriesCount: integer("enquiries_count").notNull().default(0),
+  qualifiedCount: integer("qualified_count").notNull().default(0),
+  appointmentsCount: integer("appointments_count").notNull().default(0),
+  salesCount: integer("sales_count").notNull().default(0),
+  totalRevenue: decimal("total_revenue", { precision: 12, scale: 2 }).notNull().default("0"),
+  adSpend: decimal("ad_spend", { precision: 10, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ad_attributions_user_idx").on(table.userId),
+]);
+
+export const insertAdAttributionSchema = createInsertSchema(adAttributions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertAdAttribution = z.infer<typeof insertAdAttributionSchema>;
+export type AdAttribution = typeof adAttributions.$inferSelect;
+
 // Phone Release Retry Queue - Durable retry queue for Twilio/Plivo phone number releases
 // When a provider release call fails transiently (timeout, 5xx, rate-limit), we enqueue the
 // release so a background worker can retry with backoff instead of silently dropping it.

@@ -22,7 +22,7 @@ import {
   TrendingUp, TrendingDown, Minus, Clock, Flame, UserX, PhoneMissed,
   ClipboardCheck, UserCheck, ArrowDownUp, PhoneCall, Zap, Palette, Check,
   History, Tag, Trash2, BarChart3, Square, CheckSquare, X, Megaphone, PhoneIncoming,
-  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet, ExternalLink, CalendarDays, Bell, Sparkles, Headset
+  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet, ExternalLink, CalendarDays, Bell, Sparkles, Headset, Clapperboard
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -36,6 +36,7 @@ import { WeeklyOwnerBriefPanel } from "@/components/crm/WeeklyOwnerBriefPanel";
 import { WhatsAppAiBotPanel } from "@/components/crm/WhatsAppAiBotPanel";
 import { CRMWhiteLabelSettings } from "@/components/crm/CRMWhiteLabelSettings";
 import { SupportTicketsPanel } from "@/components/crm/SupportTicketsPanel";
+import { MarketingAdsPanel } from "@/components/crm/MarketingAdsPanel";
 import { AuthStorage } from "@/lib/auth-storage";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -1687,7 +1688,7 @@ export default function CRMPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const queryClientRef = useQueryClient();
-  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team" | "whatsapp_ai" | "support_tickets" | "whitelabel">("kanban");
+  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team" | "whatsapp_ai" | "support_tickets" | "whitelabel" | "marketing">("kanban");
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedSourceId, setSelectedSourceId] = useState<string>("all");
@@ -1741,7 +1742,7 @@ export default function CRMPage() {
   useEffect(() => {
     if (navTabsRef.current) {
       const activeBtn = navTabsRef.current.querySelector<HTMLButtonElement>(
-        `[data-testid="view-${viewMode === 'sales_team' ? 'sales-team' : viewMode === 'whatsapp_ai' ? 'whatsapp-ai' : viewMode === 'support_tickets' ? 'support-tickets' : viewMode}"]`
+        `[data-testid="view-${viewMode === 'sales_team' ? 'sales-team' : viewMode === 'whatsapp_ai' ? 'whatsapp-ai' : viewMode === 'support_tickets' ? 'support-tickets' : viewMode === 'marketing' ? 'marketing' : viewMode}"]`
       );
       if (activeBtn) {
         activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
@@ -2779,6 +2780,24 @@ export default function CRMPage() {
                     </span>
                   )}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("marketing")}
+                  data-testid="view-marketing"
+                  title="Marketing, Video Scripts & Click-to-WhatsApp Ads Engine (Section 5)"
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    viewMode === "marketing"
+                      ? "bg-purple-600 text-white border-purple-500 shadow-xs"
+                      : "bg-purple-500/5 border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/15"
+                  }`}
+                >
+                  <Clapperboard className="w-3.5 h-3.5 shrink-0" />
+                  <span>Marketing & Video Ads</span>
+                  <Badge variant="outline" className="text-[9px] h-4 px-1 ml-0.5 border-purple-400/40 text-purple-400">
+                    🎬 Section 5
+                  </Badge>
+                </button>
               </div>
 
               {/* Next Button */}
@@ -3177,7 +3196,13 @@ export default function CRMPage() {
       </Dialog>
 
       <div className="flex-1 overflow-hidden">
-        {viewMode === "support_tickets" ? (
+        {viewMode === "marketing" ? (
+          <ScrollArea className="h-full">
+            <div className="p-6">
+              <MarketingAdsPanel />
+            </div>
+          </ScrollArea>
+        ) : viewMode === "support_tickets" ? (
           <ScrollArea className="h-full">
             <div className="p-6">
               <SupportTicketsPanel />
