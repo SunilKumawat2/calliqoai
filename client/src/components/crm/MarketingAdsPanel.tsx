@@ -231,8 +231,9 @@ export function MarketingAdsPanel() {
   // AI Video Generation State
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [selectedScriptForVideo, setSelectedScriptForVideo] = useState<MarketingScriptItem | null>(null);
-  const [modalProvider, setModalProvider] = useState<string>("simulator");
+  const [modalProvider, setModalProvider] = useState<string>("google_flow");
   const [modalAvatarId, setModalAvatarId] = useState<string>("Daisy-in-blazer");
+  const [customFlowApiKey, setCustomFlowApiKey] = useState<string>("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [testKeyStatus, setTestKeyStatus] = useState<{ testing?: boolean; success?: boolean; message?: string } | null>(null);
 
@@ -858,20 +859,36 @@ ${script.callToAction}`;
                         </div>
 
                         <div className="flex items-center gap-2">
+                          {/* Option 1: Direct Google Flow Studio */}
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setSelectedScriptForVideo(script);
+                              setModalProvider("google_flow");
+                              setVideoModalOpen(true);
+                            }}
+                            className="h-7 text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white gap-1.5 shadow-xs font-semibold"
+                            title="Generate with Google Flow (Veo AI Studio)"
+                          >
+                            <Film className="w-3.5 h-3.5" />
+                            <span>🎥 Google Flow AI</span>
+                          </Button>
+
+                          {/* Option 2: Platform Selector / Re-generate */}
                           {script.videoStatus === "completed" ? (
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => {
                                 setSelectedScriptForVideo(script);
-                                setModalProvider(brandKit?.videoProvider || "simulator");
+                                setModalProvider("simulator");
                                 setModalAvatarId(brandKit?.videoAvatarId || "Daisy-in-blazer");
                                 setVideoModalOpen(true);
                               }}
                               className="h-7 text-xs border-purple-500/40 text-purple-600 dark:text-purple-300 hover:bg-purple-500/10 gap-1.5"
                             >
                               <RefreshCw className="w-3 h-3" />
-                              <span>Re-generate Video</span>
+                              <span>Re-generate</span>
                             </Button>
                           ) : script.videoStatus === "rendering" ? (
                             <Button
@@ -888,14 +905,14 @@ ${script.callToAction}`;
                               size="sm"
                               onClick={() => {
                                 setSelectedScriptForVideo(script);
-                                setModalProvider(brandKit?.videoProvider || "simulator");
+                                setModalProvider("simulator");
                                 setModalAvatarId(brandKit?.videoAvatarId || "Daisy-in-blazer");
                                 setVideoModalOpen(true);
                               }}
                               className="h-7 text-xs bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white gap-1.5 shadow-sm font-semibold"
                             >
                               <Video className="w-3.5 h-3.5" />
-                              <span>🎥 Generate AI Video</span>
+                              <span>🎬 Choose Platform</span>
                             </Button>
                           )}
 
@@ -916,17 +933,6 @@ ${script.callToAction}`;
                                 <span>Copy Script</span>
                               </>
                             )}
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleCopyGoogleFlowPrompt(script)}
-                            className="h-7 text-xs border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 gap-1.5 font-medium"
-                            title="Export scene-by-scene cinematic prompts for Google Flow & Google Veo"
-                          >
-                            <Sparkles className="w-3 h-3 text-blue-400" />
-                            <span>Google Flow Prompts</span>
                           </Button>
 
                           <Button
@@ -1469,89 +1475,246 @@ ${script.callToAction}`;
           AI VIDEO GENERATION MODAL
       ───────────────────────────────────────────────────────────── */}
       <Dialog open={videoModalOpen} onOpenChange={setVideoModalOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-sm flex items-center gap-2">
+            <DialogTitle className="text-sm font-bold flex items-center gap-2">
               <Film className="w-4 h-4 text-purple-400" />
-              Generate 9:16 AI Video Reel
+              🎬 AI Video Reel Generator & Studio
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Is script se automated 9:16 vertical video reel banayein with video cues and hook.
+              Apni script ke liye AI video platform chunein (Google Flow, Built-in Real Estate Engine, HeyGen, D-ID).
             </DialogDescription>
           </DialogHeader>
 
           {selectedScriptForVideo && (
             <div className="space-y-4 py-2 text-xs">
               {/* Script Summary */}
-              <div className="p-3 rounded-lg border bg-muted/30 space-y-1">
-                <span className="font-semibold text-foreground block">{selectedScriptForVideo.title}</span>
-                <p className="text-[11px] text-muted-foreground line-clamp-2">
-                  <strong>Hook:</strong> {selectedScriptForVideo.hook}
-                </p>
-                <div className="flex items-center gap-2 pt-1 text-[10px] text-purple-400">
+              <div className="p-3 rounded-xl border border-purple-500/20 bg-purple-500/5 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-foreground text-xs">{selectedScriptForVideo.title}</span>
                   <Badge variant="outline" className="text-[9px] uppercase">
                     {selectedScriptForVideo.scriptType.replace("_", " ")}
                   </Badge>
-                  <span>•</span>
-                  <span>{selectedScriptForVideo.estimatedDuration || "30-45 sec"}</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground line-clamp-2">
+                  <strong>Hook:</strong> {selectedScriptForVideo.hook}
+                </p>
+              </div>
+
+              {/* AI Platform Selector Cards */}
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-foreground">Select AI Video Platform:</Label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {/* Option 1: Google Flow */}
+                  <button
+                    type="button"
+                    onClick={() => setModalProvider("google_flow")}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      modalProvider === "google_flow"
+                        ? "border-blue-500 bg-blue-500/10 shadow-xs ring-1 ring-blue-500"
+                        : "border-border/60 hover:border-blue-400/40 bg-card/60"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-blue-500/20 text-blue-500 font-bold flex items-center justify-center text-xs">
+                          G
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                            Google Flow
+                            <Badge className="bg-blue-500/20 text-blue-500 text-[9px] px-1 py-0">Veo AI</Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">Scene Prompts & Studio</div>
+                        </div>
+                      </div>
+                      {modalProvider === "google_flow" && <CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" />}
+                    </div>
+                  </button>
+
+                  {/* Option 2: Instant Engine */}
+                  <button
+                    type="button"
+                    onClick={() => setModalProvider("simulator")}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      modalProvider === "simulator"
+                        ? "border-purple-500 bg-purple-500/10 shadow-xs ring-1 ring-purple-500"
+                        : "border-border/60 hover:border-purple-400/40 bg-card/60"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                          <Zap className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                            In-App Reel Engine
+                            <Badge className="bg-purple-500/20 text-purple-400 text-[9px] px-1 py-0">Instant</Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">Voiceover + 9:16 Visuals</div>
+                        </div>
+                      </div>
+                      {modalProvider === "simulator" && <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" />}
+                    </div>
+                  </button>
+
+                  {/* Option 3: HeyGen */}
+                  <button
+                    type="button"
+                    onClick={() => setModalProvider("heygen")}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      modalProvider === "heygen"
+                        ? "border-emerald-500 bg-emerald-500/10 shadow-xs ring-1 ring-emerald-500"
+                        : "border-border/60 hover:border-emerald-400/40 bg-card/60"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-500 font-bold flex items-center justify-center text-xs">
+                          H
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                            HeyGen AI
+                            <Badge className="bg-emerald-500/20 text-emerald-500 text-[9px] px-1 py-0">Avatar</Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">Digital Human Presenter</div>
+                        </div>
+                      </div>
+                      {modalProvider === "heygen" && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
+                    </div>
+                  </button>
+
+                  {/* Option 4: D-ID */}
+                  <button
+                    type="button"
+                    onClick={() => setModalProvider("did")}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      modalProvider === "did"
+                        ? "border-pink-500 bg-pink-500/10 shadow-xs ring-1 ring-pink-500"
+                        : "border-border/60 hover:border-pink-400/40 bg-card/60"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-pink-500/20 text-pink-400 font-bold flex items-center justify-center text-xs">
+                          D
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                            D-ID Studio
+                            <Badge className="bg-pink-500/20 text-pink-400 text-[9px] px-1 py-0">Lip-Sync</Badge>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">Photo Presenter & Voice</div>
+                        </div>
+                      </div>
+                      {modalProvider === "did" && <CheckCircle2 className="w-4 h-4 text-pink-400 shrink-0" />}
+                    </div>
+                  </button>
                 </div>
               </div>
 
-              {/* Provider Selection */}
-              <div className="space-y-1.5">
-                <Label className="text-xs">Render Engine</Label>
-                <Select value={modalProvider} onValueChange={setModalProvider}>
-                  <SelectTrigger className="text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="simulator">⚡ Instant Real Estate Reel Engine (In-App Voiceover)</SelectItem>
-                    <SelectItem value="google_flow">🎥 Google Flow / Google Veo (AI Video Studio)</SelectItem>
-                    <SelectItem value="heygen">🤖 HeyGen API (Custom Avatar Reel)</SelectItem>
-                    <SelectItem value="did">🎭 D-ID API (Presenter AI)</SelectItem>
-                    <SelectItem value="runway">🎬 Runway Gen-3 / Pika</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
+              {/* Dynamic Sub-Panels for Selected Platform */}
               {modalProvider === "google_flow" && (
-                <div className="p-2.5 rounded-lg border border-blue-500/30 bg-blue-500/10 space-y-1.5 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-blue-500 flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5" /> Google Flow / Veo Prompt Engine
-                    </span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleCopyGoogleFlowPrompt(selectedScriptForVideo)}
-                      className="h-6 text-[10px] border-blue-500/40 text-blue-600 dark:text-blue-400 gap-1"
-                    >
-                      <Copy className="w-2.5 h-2.5" />
-                      <span>Copy Flow Prompt</span>
-                    </Button>
+                <div className="p-3.5 rounded-xl border border-blue-500/30 bg-blue-500/5 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-blue-500" />
+                      <span className="font-bold text-xs text-foreground">Google Flow (Veo AI Studio) Tools</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCopyGoogleFlowPrompt(selectedScriptForVideo)}
+                        className="h-7 text-xs border-blue-500/40 text-blue-600 dark:text-blue-400 gap-1 hover:bg-blue-500/10"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>Copy Scene Prompts</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => window.open("https://flow.google", "_blank")}
+                        className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Open Google Flow</span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Scene Prompts preview */}
+                  <div className="p-2.5 rounded-lg border bg-black/40 text-[11px] font-mono text-blue-200/90 max-h-32 overflow-y-auto space-y-1">
+                    <div className="text-[10px] text-blue-400 uppercase font-sans font-bold">Generated Flow Prompts:</div>
+                    <div><strong>SCENE 1 (Hook):</strong> Cinematic 4K slow motion camera moving across luxury villa exterior at sunset with warm architectural lighting. Text: "{selectedScriptForVideo.hook}"</div>
+                    <div><strong>SCENE 2 (Interior):</strong> Smooth glide into high-ceiling open living area with floor-to-ceiling panoramic glass windows.</div>
+                    <div><strong>SCENE 3 (Amenities):</strong> Luxury modular kitchen island with quartz countertops, balcony garden view.</div>
+                    <div><strong>SCENE 4 (CTA):</strong> Twilight drone shot ascending over property. Text: "{selectedScriptForVideo.callToAction}"</div>
+                  </div>
+
+                  {/* API Key field */}
+                  <div className="space-y-1.5 pt-1">
+                    <Label className="text-[11px] font-semibold text-foreground flex items-center justify-between">
+                      <span>Google Cloud / Vertex AI / Gemini API Key (Optional):</span>
+                      <span className="text-[10px] text-muted-foreground">Direct In-App Render ke liye key optional hai</span>
+                    </Label>
+                    <Input
+                      type="password"
+                      value={customFlowApiKey}
+                      onChange={(e) => setCustomFlowApiKey(e.target.value)}
+                      placeholder="Paste Google AI Key (AIzaSy...) ya khali chhod dein"
+                      className="h-7 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {modalProvider === "heygen" && (
+                <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Choose AI Presenter Avatar:</Label>
+                    <Select value={modalAvatarId} onValueChange={setModalAvatarId}>
+                      <SelectTrigger className="text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Daisy-in-blazer">👩 Daisy - Corporate Real Estate Host</SelectItem>
+                        <SelectItem value="josh_lite3_20230714">👨 Josh - Energetic Modern Consultant</SelectItem>
+                        <SelectItem value="Wayne_20240711">👨 Wayne - Senior Luxury Advisor</SelectItem>
+                        <SelectItem value="Ann_Doctor_Sitting_public">👩 Ann - Warm & Friendly Consultant</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Google Flow studio me cinematic scenes generate karne ke liye ready-made scene prompts taiyaar hain. Aap "Render 9:16 Video Now" click karke direct script-matched reel bhi bana sakte hain.
+                    HeyGen API connect hone par photorealistic digital human aapki script ka dialogue bolegi.
                   </p>
                 </div>
               )}
 
-              {/* Avatar Style */}
-              <div className="space-y-1.5">
-                <Label className="text-xs">AI Presenter</Label>
-                <Select value={modalAvatarId} onValueChange={setModalAvatarId}>
-                  <SelectTrigger className="text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Daisy-in-blazer">👩 Daisy - Corporate Host</SelectItem>
-                    <SelectItem value="josh_lite3_20230714">👨 Josh - Modern Consultant</SelectItem>
-                    <SelectItem value="Wayne_20240711">👨 Wayne - Senior Luxury Advisor</SelectItem>
-                    <SelectItem value="Ann_Doctor_Sitting_public">👩 Ann - Warm Consultant</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {modalProvider === "did" && (
+                <div className="p-3 rounded-xl border border-pink-500/30 bg-pink-500/5 space-y-2 text-xs">
+                  <span className="font-semibold text-pink-500 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" /> D-ID Talking Photo Presenter
+                  </span>
+                  <p className="text-[11px] text-muted-foreground">
+                    D-ID presenter script dialogue ko Hindi neural voice me lip-sync karke video reel banata hai.
+                  </p>
+                </div>
+              )}
+
+              {modalProvider === "simulator" && (
+                <div className="p-3 rounded-xl border border-purple-500/30 bg-purple-500/5 space-y-2 text-xs">
+                  <span className="font-semibold text-purple-400 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5" /> Fast Script-Matched In-App Engine
+                  </span>
+                  <p className="text-[11px] text-muted-foreground">
+                    Bina kisi external key ke, CRM ka built-in OpenAI Voiceover + 9:16 Luxury Real Estate motion visuals ke saath video turant taiyaar karega.
+                  </p>
+                </div>
+              )}
 
               <div className="p-2.5 rounded-lg border border-purple-500/20 bg-purple-500/5 text-[11px] text-purple-600 dark:text-purple-300">
                 ✨ Output: Full HD 9:16 (1080x1920) vertical reel MP4 ready for Instagram, Meta Ads & WhatsApp.
@@ -1559,7 +1722,7 @@ ${script.callToAction}`;
             </div>
           )}
 
-          <DialogFooter className="flex items-center justify-end gap-2 pt-2">
+          <DialogFooter className="flex items-center justify-end gap-2 pt-2 border-t">
             <Button
               type="button"
               variant="ghost"
@@ -1578,22 +1741,38 @@ ${script.callToAction}`;
                     scriptId: selectedScriptForVideo.id,
                     provider: modalProvider,
                     avatarId: modalAvatarId,
-                    apiKey: brandKit?.videoApiKey,
+                    apiKey: modalProvider === "google_flow" ? (customFlowApiKey || brandKit?.videoApiKey) : brandKit?.videoApiKey,
                   });
                 }
               }}
               disabled={generateVideoMutation.isPending}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-xs gap-1.5 font-semibold"
+              className={`text-white text-xs gap-1.5 font-semibold ${
+                modalProvider === "google_flow"
+                  ? "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                  : modalProvider === "heygen"
+                  ? "bg-emerald-600 hover:bg-emerald-700"
+                  : modalProvider === "did"
+                  ? "bg-pink-600 hover:bg-pink-700"
+                  : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              }`}
             >
               {generateVideoMutation.isPending ? (
                 <>
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Rendering Video...</span>
+                  <span>Generating Video...</span>
                 </>
               ) : (
                 <>
                   <Film className="w-3.5 h-3.5" />
-                  <span>🎬 Render 9:16 Video Now</span>
+                  <span>
+                    {modalProvider === "google_flow"
+                      ? "🎬 Generate with Google Flow"
+                      : modalProvider === "heygen"
+                      ? "🎬 Generate with HeyGen"
+                      : modalProvider === "did"
+                      ? "🎬 Generate with D-ID"
+                      : "🎬 Render 9:16 Video Now"}
+                  </span>
                 </>
               )}
             </Button>
