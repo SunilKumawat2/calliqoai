@@ -262,7 +262,7 @@ ${script.callToAction}`;
             <Clapperboard className="w-5 h-5 text-purple-400" />
             <h3 className="text-base font-bold text-foreground">Marketing, Video Scripts & Ad Engine</h3>
             <Badge className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 text-[10px] font-bold">
-              🎬 Section 5: Content, Video & Ads
+              🎬 AI Video, Scripts & Meta Ads
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground max-w-3xl">

@@ -2785,7 +2785,7 @@ export default function CRMPage() {
                   type="button"
                   onClick={() => setViewMode("marketing")}
                   data-testid="view-marketing"
-                  title="Marketing, Video Scripts & Click-to-WhatsApp Ads Engine (Section 5)"
+                  title="Marketing, Video Scripts & Click-to-WhatsApp Ads Engine"
                   className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
                     viewMode === "marketing"
                       ? "bg-purple-600 text-white border-purple-500 shadow-xs"
@@ -2794,9 +2794,6 @@ export default function CRMPage() {
                 >
                   <Clapperboard className="w-3.5 h-3.5 shrink-0" />
                   <span>Marketing & Video Ads</span>
-                  <Badge variant="outline" className="text-[9px] h-4 px-1 ml-0.5 border-purple-400/40 text-purple-400">
-                    🎬 Section 5
-                  </Badge>
                 </button>
               </div>
 
