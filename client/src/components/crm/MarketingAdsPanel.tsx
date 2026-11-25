@@ -373,6 +373,43 @@ ${script.callToAction}`;
     }
   };
 
+  const handleCopyGoogleFlowPrompt = (script: MarketingScriptItem) => {
+    const cleanDialogue = script.bodyText
+      .replace(/\[\d+:\d+\s*-\s*\d+:\d+\]/g, "")
+      .replace(/(HOOK|PROBLEM|SOLUTION|CALL TO ACTION|Speaker:|Visual:)/gi, "")
+      .trim();
+
+    const promptText = `🎬 GOOGLE FLOW / VEO CINEMATIC 9:16 REEL PROMPT
+TITLE: ${script.title}
+TOPIC: ${script.sourceTopic || "Luxury Real Estate"}
+ASPECT RATIO: 9:16 Vertical Reel (1080x1920)
+
+[SCENE 1: HOOK (0-3s)]
+Visual: Cinematic slow motion 4K camera moving across ultra-modern luxury villa exterior at golden hour twilight, soft warm architectural uplighting, crystal blue swimming pool with water ripple reflections, sleek palm trees.
+On-Screen Hook Text: "${script.hook.replace(/["\n]/g, " ")}"
+
+[SCENE 2: INTERIOR LIVING & SPACE (3-15s)]
+Visual: Ultra-smooth camera glide transitioning into spacious open-concept living area with double-height ceiling, floor-to-ceiling glass panoramic windows, Italian marble flooring, designer chandelier, warm ambient lighting.
+
+[SCENE 3: LUXURY AMENITIES (15-30s)]
+Visual: Elegant slow dolly shot showcasing modular kitchen island with quartz countertops, then panoramic view of private master bedroom balcony overlooking lush landscaped greenery.
+
+[SCENE 4: CALL TO ACTION (30-45s)]
+Visual: Cinematic drone shot smoothly ascending above the property, warm sunset glow.
+On-Screen CTA Text: "${script.callToAction.replace(/["\n]/g, " ")}"
+
+[VOICEOVER / SPOKEN SCRIPT (Hinglish/English)]:
+${script.hook}
+${cleanDialogue}
+${script.callToAction}`;
+
+    navigator.clipboard.writeText(promptText);
+    toast({
+      title: "🎥 Google Flow Prompts Copied!",
+      description: "Scene-by-scene cinematic prompt ready to paste into Google Flow / VideoFX Studio.",
+    });
+  };
+
   // Attribution KPI totals
   const totalSpend = adAttributionsList.reduce((acc, a) => acc + parseFloat(a.adSpend || "0"), 0);
   const totalRevenue = adAttributionsList.reduce((acc, a) => acc + parseFloat(a.totalRevenue || "0"), 0);
@@ -883,6 +920,17 @@ ${script.callToAction}`;
 
                           <Button
                             size="sm"
+                            variant="outline"
+                            onClick={() => handleCopyGoogleFlowPrompt(script)}
+                            className="h-7 text-xs border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 gap-1.5 font-medium"
+                            title="Export scene-by-scene cinematic prompts for Google Flow & Google Veo"
+                          >
+                            <Sparkles className="w-3 h-3 text-blue-400" />
+                            <span>Google Flow Prompts</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
                             variant="ghost"
                             onClick={() => deleteScriptMutation.mutate(script.id)}
                             className="h-7 text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10 px-2"
@@ -1017,9 +1065,11 @@ ${script.callToAction}`;
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="simulator">⚡ Instant AI Video Simulator (Ready to Use)</SelectItem>
+                      <SelectItem value="simulator">⚡ Instant Real Estate Reel Engine (In-App Voiceover)</SelectItem>
+                      <SelectItem value="google_flow">🎥 Google Flow / Google Veo (AI Video Studio)</SelectItem>
                       <SelectItem value="heygen">🤖 HeyGen API (Talking Avatars & 9:16 Reels)</SelectItem>
                       <SelectItem value="did">🎭 D-ID API (Interactive Presenters)</SelectItem>
+                      <SelectItem value="runway">🎬 Runway Gen-3 / Pika</SelectItem>
                       <SelectItem value="creatomate">🎬 Creatomate / InVideo AI</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1065,6 +1115,8 @@ ${script.callToAction}`;
                     placeholder={
                       brandForm?.videoProvider === "simulator"
                         ? "Key not required for Instant Simulator"
+                        : brandForm?.videoProvider === "google_flow"
+                        ? "Paste Google AI Studio or Vertex AI API Key"
                         : "Paste your API Key here (e.g. hey_... or d-id token)"
                     }
                     disabled={brandForm?.videoProvider === "simulator"}
@@ -1453,12 +1505,37 @@ ${script.callToAction}`;
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="simulator">⚡ Instant Video Simulator (Fast & Ready)</SelectItem>
+                    <SelectItem value="simulator">⚡ Instant Real Estate Reel Engine (In-App Voiceover)</SelectItem>
+                    <SelectItem value="google_flow">🎥 Google Flow / Google Veo (AI Video Studio)</SelectItem>
                     <SelectItem value="heygen">🤖 HeyGen API (Custom Avatar Reel)</SelectItem>
                     <SelectItem value="did">🎭 D-ID API (Presenter AI)</SelectItem>
+                    <SelectItem value="runway">🎬 Runway Gen-3 / Pika</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {modalProvider === "google_flow" && (
+                <div className="p-2.5 rounded-lg border border-blue-500/30 bg-blue-500/10 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-blue-500 flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5" /> Google Flow / Veo Prompt Engine
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleCopyGoogleFlowPrompt(selectedScriptForVideo)}
+                      className="h-6 text-[10px] border-blue-500/40 text-blue-600 dark:text-blue-400 gap-1"
+                    >
+                      <Copy className="w-2.5 h-2.5" />
+                      <span>Copy Flow Prompt</span>
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Google Flow studio me cinematic scenes generate karne ke liye ready-made scene prompts taiyaar hain. Aap "Render 9:16 Video Now" click karke direct script-matched reel bhi bana sakte hain.
+                  </p>
+                </div>
+              )}
 
               {/* Avatar Style */}
               <div className="space-y-1.5">
