@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Video,
@@ -33,6 +33,8 @@ import {
   Eye,
   EyeOff,
   Tv,
+  Upload,
+  Link,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,6 +53,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { AuthStorage } from "@/lib/auth-storage";
 
 export interface MarketingScriptItem {
   id: string;
@@ -289,6 +292,66 @@ export function MarketingAdsPanel() {
       } else {
         toast({ title: "Status: " + updated.videoStatus, description: "Video is still processing..." });
       }
+    },
+  });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeUploadScriptId, setActiveUploadScriptId] = useState<string | null>(null);
+  const [pastedVideoUrl, setPastedVideoUrl] = useState<string>("");
+
+  const uploadVideoMutation = useMutation({
+    mutationFn: async ({ scriptId, file }: { scriptId: string; file: File }) => {
+      const formData = new FormData();
+      formData.append("video", file);
+      formData.append("provider", "google_flow");
+
+      const authHeader = AuthStorage.getAuthHeader();
+      const res = await fetch(`/api/marketing/scripts/${scriptId}/upload-video`, {
+        method: "POST",
+        headers: {
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Upload failed");
+      }
+      return res.json();
+    },
+    onSuccess: (updated: MarketingScriptItem) => {
+      queryClient.invalidateQueries({ queryKey: SCRIPTS_KEY });
+      setVideoModalOpen(false);
+      toast({
+        title: "🎉 Google Flow Video Attached Successfully!",
+        description: `Video "${updated.title}" me attach ho gaya hai aur ready hai.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Upload Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const attachVideoUrlMutation = useMutation({
+    mutationFn: async ({ scriptId, videoUrl }: { scriptId: string; videoUrl: string }) => {
+      const res = await apiRequest("POST", `/api/marketing/scripts/${scriptId}/attach-video`, {
+        videoUrl,
+        provider: "google_flow",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: SCRIPTS_KEY });
+      setVideoModalOpen(false);
+      setPastedVideoUrl("");
+      toast({
+        title: "✅ Video Link Attached!",
+        description: "Google Flow video URL successfully linked to script.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -874,7 +937,23 @@ ${script.callToAction}`;
                             <span>🎥 Google Flow AI</span>
                           </Button>
 
-                          {/* Option 2: Platform Selector / Re-generate */}
+                          {/* Option 2: Upload MP4 from Google Flow */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setActiveUploadScriptId(script.id);
+                              fileInputRef.current?.click();
+                            }}
+                            disabled={uploadVideoMutation.isPending}
+                            className="h-7 text-xs border-blue-500/40 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 gap-1.5"
+                            title="Upload Google Flow .mp4 video to this script"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-blue-500" />
+                            <span>Upload MP4</span>
+                          </Button>
+
+                          {/* Option 3: Platform Selector / Re-generate */}
                           {script.videoStatus === "completed" ? (
                             <Button
                               size="sm"
@@ -950,6 +1029,21 @@ ${script.callToAction}`;
                 ))}
               </div>
             )}
+
+            {/* Hidden file input for uploading Google Flow .mp4 video */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="video/mp4,video/quicktime,video/webm"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f && activeUploadScriptId) {
+                  uploadVideoMutation.mutate({ scriptId: activeUploadScriptId, file: f });
+                }
+                e.target.value = "";
+              }}
+            />
           </div>
         </div>
       )}
@@ -1621,7 +1715,7 @@ ${script.callToAction}`;
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-blue-500" />
-                      <span className="font-bold text-xs text-foreground">Google Flow (Veo AI Studio) Tools</span>
+                      <span className="font-bold text-xs text-foreground">Google Flow (flow.google.com) Studio Bridge</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
@@ -1637,29 +1731,73 @@ ${script.callToAction}`;
                       <Button
                         type="button"
                         size="sm"
-                        onClick={() => window.open("https://flow.google", "_blank")}
+                        onClick={() => window.open("https://flow.google.com", "_blank")}
                         className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1"
                       >
                         <ExternalLink className="w-3 h-3" />
-                        <span>Open Google Flow</span>
+                        <span>Open flow.google.com</span>
                       </Button>
                     </div>
                   </div>
 
-                  {/* Scene Prompts preview */}
-                  <div className="p-2.5 rounded-lg border bg-black/40 text-[11px] font-mono text-blue-200/90 max-h-32 overflow-y-auto space-y-1">
-                    <div className="text-[10px] text-blue-400 uppercase font-sans font-bold">Generated Flow Prompts:</div>
+                  {/* 1. Upload Google Flow Video (.mp4) directly */}
+                  <div
+                    onClick={() => {
+                      if (selectedScriptForVideo) {
+                        setActiveUploadScriptId(selectedScriptForVideo.id);
+                        fileInputRef.current?.click();
+                      }
+                    }}
+                    className="p-3 rounded-lg border-2 border-dashed border-blue-500/40 bg-blue-500/5 hover:bg-blue-500/10 transition-all text-center space-y-1 cursor-pointer"
+                  >
+                    <Upload className="w-5 h-5 text-blue-500 mx-auto" />
+                    <div className="font-semibold text-foreground text-xs">
+                      Upload Video Made in flow.google.com (.mp4)
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Google Flow me generate hua video download karke yahan attach karein — ye turant CRM script me link ho jayega.
+                    </p>
+                  </div>
+
+                  {/* 2. Or Paste Video URL */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <Input
+                      value={pastedVideoUrl}
+                      onChange={(e) => setPastedVideoUrl(e.target.value)}
+                      placeholder="Ya video direct URL paste karein (https://...)"
+                      className="h-7 text-xs font-mono"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (pastedVideoUrl && selectedScriptForVideo) {
+                          attachVideoUrlMutation.mutate({ scriptId: selectedScriptForVideo.id, videoUrl: pastedVideoUrl });
+                        }
+                      }}
+                      disabled={!pastedVideoUrl || attachVideoUrlMutation.isPending}
+                      className="h-7 text-xs border-blue-500/40 text-blue-600 dark:text-blue-400 gap-1 shrink-0"
+                    >
+                      <Link className="w-3 h-3" />
+                      <span>Attach Link</span>
+                    </Button>
+                  </div>
+
+                  {/* 3. Scene Prompts preview */}
+                  <div className="p-2.5 rounded-lg border bg-black/40 text-[11px] font-mono text-blue-200/90 max-h-28 overflow-y-auto space-y-1">
+                    <div className="text-[10px] text-blue-400 uppercase font-sans font-bold">Google Flow Scene Prompts:</div>
                     <div><strong>SCENE 1 (Hook):</strong> Cinematic 4K slow motion camera moving across luxury villa exterior at sunset with warm architectural lighting. Text: "{selectedScriptForVideo.hook}"</div>
                     <div><strong>SCENE 2 (Interior):</strong> Smooth glide into high-ceiling open living area with floor-to-ceiling panoramic glass windows.</div>
                     <div><strong>SCENE 3 (Amenities):</strong> Luxury modular kitchen island with quartz countertops, balcony garden view.</div>
                     <div><strong>SCENE 4 (CTA):</strong> Twilight drone shot ascending over property. Text: "{selectedScriptForVideo.callToAction}"</div>
                   </div>
 
-                  {/* API Key field */}
-                  <div className="space-y-1.5 pt-1">
+                  {/* 4. API Key field */}
+                  <div className="space-y-1 pt-0.5">
                     <Label className="text-[11px] font-semibold text-foreground flex items-center justify-between">
                       <span>Google Cloud / Vertex AI / Gemini API Key (Optional):</span>
-                      <span className="text-[10px] text-muted-foreground">Direct In-App Render ke liye key optional hai</span>
+                      <span className="text-[10px] text-muted-foreground">Direct In-App Render ke liye</span>
                     </Label>
                     <Input
                       type="password"

@@ -345,6 +345,78 @@ Required Output Format (Return STRICT JSON only):
     return { success: true };
   }
 
+  static async attachUploadedVideo(
+    userId: string,
+    scriptId: string,
+    fileBuffer: Buffer,
+    originalName: string,
+    provider: string = "google_flow"
+  ): Promise<MarketingScript> {
+    const [script] = await db
+      .select()
+      .from(marketingScripts)
+      .where(and(eq(marketingScripts.userId, userId), eq(marketingScripts.id, scriptId)))
+      .limit(1);
+
+    if (!script) throw new Error("Script not found");
+
+    const { promises: fsPromises } = await import("fs");
+    const path = await import("path");
+
+    const distPublicDir = path.resolve(process.cwd(), "dist/public/videos");
+    await fsPromises.mkdir(distPublicDir, { recursive: true }).catch(() => {});
+
+    const ext = path.extname(originalName) || ".mp4";
+    const fileName = `googleflow-${scriptId}${ext}`;
+    const targetPath = path.join(distPublicDir, fileName);
+
+    await fsPromises.writeFile(targetPath, fileBuffer);
+
+    const videoUrl = `/videos/${fileName}`;
+
+    const [updated] = await db
+      .update(marketingScripts)
+      .set({
+        videoStatus: "completed",
+        videoUrl,
+        videoProvider: provider,
+        videoDuration: "0:35",
+        updatedAt: new Date(),
+      })
+      .where(eq(marketingScripts.id, scriptId))
+      .returning();
+
+    return updated;
+  }
+
+  static async attachVideoUrl(
+    userId: string,
+    scriptId: string,
+    videoUrl: string,
+    provider: string = "google_flow"
+  ): Promise<MarketingScript> {
+    const [script] = await db
+      .select()
+      .from(marketingScripts)
+      .where(and(eq(marketingScripts.userId, userId), eq(marketingScripts.id, scriptId)))
+      .limit(1);
+
+    if (!script) throw new Error("Script not found");
+
+    const [updated] = await db
+      .update(marketingScripts)
+      .set({
+        videoStatus: "completed",
+        videoUrl,
+        videoProvider: provider,
+        updatedAt: new Date(),
+      })
+      .where(eq(marketingScripts.id, scriptId))
+      .returning();
+
+    return updated;
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
   // 4B. AI VIDEO GENERATION ENGINE (HeyGen, D-ID, Simulator)
   // ──────────────────────────────────────────────────────────────────────────
