@@ -37,6 +37,19 @@ marketingEngineRouter.put("/brand-kit", async (req: Request, res: Response) => {
   }
 });
 
+marketingEngineRouter.post("/brand-kit/run-auto-pilot", async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id || (req as any).userId;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const result = await MarketingEngineService.autoGenerateBatchScripts(userId);
+    res.json(result);
+  } catch (err: any) {
+    logger.error(`[MarketingRoutes] Error running auto-pilot: ${err?.message}`);
+    res.status(500).json({ error: err?.message || "Failed to run auto-pilot" });
+  }
+});
+
 // 2. CALL OBJECTIONS & TOPICS
 marketingEngineRouter.get("/call-objections", async (req: Request, res: Response) => {
   const userId = (req as any).user?.id || (req as any).userId;
