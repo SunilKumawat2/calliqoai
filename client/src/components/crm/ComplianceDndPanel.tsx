@@ -132,7 +132,8 @@ export function ComplianceDndPanel() {
   // ── Mutations ──
   const saveSettingsMutation = useMutation({
     mutationFn: async (data: Partial<ComplianceSettingsData>) => {
-      const res = await apiRequest("PUT", "/api/compliance/settings", data);
+      const { id, createdAt, updatedAt, ...cleanData } = (data || {}) as any;
+      const res = await apiRequest("PUT", "/api/compliance/settings", cleanData);
       return res.json();
     },
     onSuccess: (updated: ComplianceSettingsData) => {

@@ -89,12 +89,34 @@ export class ComplianceDndService {
   ): Promise<ComplianceSettings> {
     const existing = await this.getSettings(userId);
 
+    const updatePayload: Record<string, any> = {
+      updatedAt: new Date(),
+    };
+
+    if (typeof data.dndScrubEnabled === "boolean") {
+      updatePayload.dndScrubEnabled = data.dndScrubEnabled;
+    }
+    if (typeof data.dndAutoBlacklistOnOptOut === "boolean") {
+      updatePayload.dndAutoBlacklistOnOptOut = data.dndAutoBlacklistOnOptOut;
+    }
+    if (typeof data.aiDisclosureEnabled === "boolean") {
+      updatePayload.aiDisclosureEnabled = data.aiDisclosureEnabled;
+    }
+    if (typeof data.aiDisclosureText === "string") {
+      updatePayload.aiDisclosureText = data.aiDisclosureText;
+    }
+    if (typeof data.dpdpDataRetentionDays === "number") {
+      updatePayload.dpdpDataRetentionDays = data.dpdpDataRetentionDays;
+    } else if (data.dpdpDataRetentionDays) {
+      updatePayload.dpdpDataRetentionDays = parseInt(String(data.dpdpDataRetentionDays), 10);
+    }
+    if (typeof data.consentCheckboxEnabled === "boolean") {
+      updatePayload.consentCheckboxEnabled = data.consentCheckboxEnabled;
+    }
+
     const [updated] = await db
       .update(complianceSettings)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
+      .set(updatePayload)
       .where(eq(complianceSettings.id, existing.id))
       .returning();
 
