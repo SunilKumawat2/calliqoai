@@ -55,7 +55,7 @@ export class ComplianceDndService {
           dndScrubEnabled: true,
           dndAutoBlacklistOnOptOut: true,
           aiDisclosureEnabled: false,
-          aiDisclosureText: "Namaste, main ek automated AI voice consultant bol raha hoon.",
+          aiDisclosureText: "Hello, this is an automated AI assistant calling on behalf of our team.",
           dpdpDataRetentionDays: 90,
           consentCheckboxEnabled: true,
         })
@@ -71,7 +71,7 @@ export class ComplianceDndService {
         dndScrubEnabled: true,
         dndAutoBlacklistOnOptOut: true,
         aiDisclosureEnabled: false,
-        aiDisclosureText: "Namaste, main ek automated AI voice consultant bol raha hoon.",
+        aiDisclosureText: "Hello, this is an automated AI assistant calling on behalf of our team.",
         dpdpDataRetentionDays: 90,
         consentCheckboxEnabled: true,
         createdAt: new Date(),

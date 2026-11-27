@@ -376,7 +376,7 @@ export const campaigns = pgTable("campaigns", {
   // DND Scrubbing & AI Disclosure Compliance
   dndScrubEnabled: boolean("dnd_scrub_enabled").default(true),
   aiDisclosureEnabled: boolean("ai_disclosure_enabled").default(false),
-  aiDisclosureMessage: text("ai_disclosure_message").default("Namaste, main ek automated AI voice assistant bol raha hoon."),
+  aiDisclosureMessage: text("ai_disclosure_message").default("Hello, this is an automated AI assistant calling on behalf of our team."),
   retryOnNoAnswer: boolean("retry_on_no_answer").default(true), // Retry contacts that didn't answer
   retryOnBusy: boolean("retry_on_busy").default(false), // Retry contacts that were busy
   retryOnFailed: boolean("retry_on_failed").default(false), // Retry contacts that failed (technical error)
@@ -3707,7 +3707,7 @@ export const complianceSettings = pgTable("compliance_settings", {
   dndScrubEnabled: boolean("dnd_scrub_enabled").notNull().default(true),
   dndAutoBlacklistOnOptOut: boolean("dnd_auto_blacklist_on_opt_out").notNull().default(true),
   aiDisclosureEnabled: boolean("ai_disclosure_enabled").notNull().default(false),
-  aiDisclosureText: text("ai_disclosure_text").default("Namaste, main ek automated AI voice consultant bol raha hoon."),
+  aiDisclosureText: text("ai_disclosure_text").default("Hello, this is an automated AI assistant calling on behalf of our team."),
   dpdpDataRetentionDays: integer("dpdp_data_retention_days").default(90),
   consentCheckboxEnabled: boolean("consent_checkbox_enabled").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),

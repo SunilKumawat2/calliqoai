@@ -125,7 +125,7 @@ export function ComplianceDndPanel() {
       setLookupResult({ tested: true, ...data });
     },
     onError: (err: any) => {
-      toast({ title: "Lookup Error", description: err.message, variant: "destructive" });
+      toast({ title: "Verification Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -140,8 +140,8 @@ export function ComplianceDndPanel() {
       queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
       queryClient.invalidateQueries({ queryKey: METRICS_KEY });
       toast({
-        title: "✅ Compliance Settings Saved",
-        description: "TRAI DND scrubbing aur AI disclosure rules update ho gaye hain.",
+        title: "Compliance Settings Saved",
+        description: "DND scrubbing and AI disclosure policies have been updated successfully.",
       });
     },
     onError: (err: any) => {
@@ -166,7 +166,10 @@ export function ComplianceDndPanel() {
       setIsAddModalOpen(false);
       setNewPhone("");
       setNewReason("");
-      toast({ title: "✅ Number Added to DND List", description: "Is number par aage se automated calls nahi jayengi." });
+      toast({
+        title: "Number Added to DND Registry",
+        description: "Outbound automated calls to this phone number will be suppressed.",
+      });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -181,7 +184,10 @@ export function ComplianceDndPanel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: DND_RECORDS_KEY });
       queryClient.invalidateQueries({ queryKey: METRICS_KEY });
-      toast({ title: "Record Removed from DND List" });
+      toast({
+        title: "Record Removed from DND Registry",
+        description: "The phone number has been removed from the suppression list.",
+      });
     },
   });
 
@@ -203,8 +209,8 @@ export function ComplianceDndPanel() {
       setIsBulkModalOpen(false);
       setBulkText("");
       toast({
-        title: `✅ ${data.added} Numbers Added to DND List`,
-        description: data.skipped ? `${data.skipped} invalid numbers skipped.` : undefined,
+        title: `${data.added} Numbers Added to DND Registry`,
+        description: data.skipped ? `${data.skipped} duplicate or invalid numbers skipped.` : undefined,
       });
     },
     onError: (err: any) => {
@@ -227,8 +233,8 @@ export function ComplianceDndPanel() {
       queryClient.invalidateQueries({ queryKey: DND_RECORDS_KEY });
       queryClient.invalidateQueries({ queryKey: METRICS_KEY });
       toast({
-        title: "🛡️ DPDP 2023 Data Purged",
-        description: `Customer recordings and transcripts redacted. Number permanently blacklisted.`,
+        title: "DPDP Act Data Purge Executed",
+        description: "Customer records, transcripts, and call audio have been permanently redacted.",
       });
     },
     onError: (err: any) => {
@@ -245,10 +251,10 @@ export function ComplianceDndPanel() {
         <div>
           <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-teal-500" />
-            <span>India DND Scrubbing & DPDP Compliance Engine</span>
+            <span>DND Scrubbing & Regulatory Compliance Engine</span>
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            TRAI National Do-Not-Call (NDNC) scrubbing, AI calling disclosure, aur Digital Personal Data Protection Act (DPDP 2023) Right-to-be-Forgotten controls.
+            National Do-Not-Call (DND) scrubbing, AI caller disclosure, and DPDP Act 2023 Right-to-be-Forgotten data privacy controls.
           </p>
         </div>
 
@@ -281,16 +287,16 @@ export function ComplianceDndPanel() {
         <Card className="border-teal-500/30 bg-gradient-to-br from-card via-card to-teal-500/5">
           <CardHeader className="pb-2">
             <CardDescription className="text-xs flex items-center justify-between">
-              <span>TRAI Protection Status</span>
+              <span>Regulatory Protection Status</span>
               <ShieldCheck className="w-4 h-4 text-teal-500" />
             </CardDescription>
             <CardTitle className="text-xl font-bold text-teal-600 dark:text-teal-400">
-              100% Legal Calling
+              100% Compliant Calling
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-[11px] text-muted-foreground">
-              Est. ~{metrics?.callsProtectedEstimate || 180} calls protected from ₹50,000 TRAI penalties.
+              Est. ~{metrics?.callsProtectedEstimate || 180} calls protected against regulatory non-compliance penalties.
             </p>
           </CardContent>
         </Card>
@@ -298,7 +304,7 @@ export function ComplianceDndPanel() {
         <Card className="border-border/70">
           <CardHeader className="pb-2">
             <CardDescription className="text-xs flex items-center justify-between">
-              <span>Total DND Blocked Numbers</span>
+              <span>Total Suppressed Numbers</span>
               <ShieldAlert className="w-4 h-4 text-amber-500" />
             </CardDescription>
             <CardTitle className="text-xl font-bold text-foreground">
@@ -307,7 +313,7 @@ export function ComplianceDndPanel() {
           </CardHeader>
           <CardContent>
             <p className="text-[11px] text-muted-foreground">
-              Numbers skipped automatically during contact upload & calling campaigns.
+              Numbers automatically bypassed during contact imports and active calling campaigns.
             </p>
           </CardContent>
         </Card>
@@ -315,7 +321,7 @@ export function ComplianceDndPanel() {
         <Card className="border-border/70">
           <CardHeader className="pb-2">
             <CardDescription className="text-xs flex items-center justify-between">
-              <span>DPDP Opt-Out Requests</span>
+              <span>DPDP Erasure Requests</span>
               <UserCheck className="w-4 h-4 text-blue-500" />
             </CardDescription>
             <CardTitle className="text-xl font-bold text-foreground">
@@ -324,7 +330,7 @@ export function ComplianceDndPanel() {
           </CardHeader>
           <CardContent>
             <p className="text-[11px] text-muted-foreground">
-              Customer consent withdrawal & right-to-be-forgotten requests honored.
+              Customer consent withdrawal and Right-to-be-Forgotten requests fulfilled.
             </p>
           </CardContent>
         </Card>
@@ -332,7 +338,7 @@ export function ComplianceDndPanel() {
         <Card className="border-border/70">
           <CardHeader className="pb-2">
             <CardDescription className="text-xs flex items-center justify-between">
-              <span>AI Calling Disclosure</span>
+              <span>AI Caller Identity Disclosure</span>
               <Bot className="w-4 h-4 text-purple-400" />
             </CardDescription>
             <CardTitle className="text-xl font-bold text-foreground">
@@ -342,8 +348,8 @@ export function ComplianceDndPanel() {
           <CardContent>
             <p className="text-[11px] text-muted-foreground">
               {formSettings?.aiDisclosureEnabled
-                ? "Agent introduces itself as AI assistant on call start."
-                : "Agent speaks naturally as human consultant."}
+                ? "Agent introduces itself as an automated AI assistant on call start."
+                : "Agent speaks naturally as a professional human consultant."}
             </p>
           </CardContent>
         </Card>
@@ -356,10 +362,10 @@ export function ComplianceDndPanel() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
             <Search className="w-4 h-4 text-teal-500" />
-            <span>Instant Real-Time Phone Number DND Checker</span>
+            <span>Real-Time Phone Number DND Verification</span>
           </CardTitle>
           <CardDescription className="text-xs">
-            Kisi bhi Indian phone number ko dial karne se pehle check karein ki wo DND / Opt-Out par hai ya safe hai.
+            Verify any phone number prior to dialing to ensure it is clear of Do-Not-Call and customer opt-out registries.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -372,7 +378,7 @@ export function ComplianceDndPanel() {
                   setLookupPhone(e.target.value);
                   setLookupResult(null);
                 }}
-                placeholder="Enter 10-digit number e.g. 9876543210 ya +91 98765-43210"
+                placeholder="Enter 10-digit number e.g. 9876543210 or +91 9876543210"
                 className="text-xs pl-8 font-mono"
               />
             </div>
@@ -389,7 +395,7 @@ export function ComplianceDndPanel() {
               ) : (
                 <Search className="w-3.5 h-3.5" />
               )}
-              <span>Check DND Status</span>
+              <span>Verify DND Status</span>
             </Button>
           </div>
 
@@ -409,12 +415,12 @@ export function ComplianceDndPanel() {
                 )}
                 <div>
                   <div className="font-bold">
-                    {lookupResult.isDnd ? "🚫 DO NOT CALL (DND PROTECTED)" : "🟢 SAFE TO CALL (NOT ON DND)"}
+                    {lookupResult.isDnd ? "DO NOT CALL (DND PROTECTED)" : "SAFE TO CALL (NOT ON DND)"}
                   </div>
                   <div className="text-[11px] opacity-90">
                     {lookupResult.isDnd
                       ? `Reason: ${lookupResult.reason || "Registered on National DND / Opt-Out List"}`
-                      : "Ye number DND registry me nahi hai. Calling campaign ke liye safe hai."}
+                      : "This phone number is not listed on any Do-Not-Call registry. Safe for outbound calling campaigns."}
                   </div>
                 </div>
               </div>
@@ -436,10 +442,10 @@ export function ComplianceDndPanel() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-teal-500" />
-            <span>Compliance Toggles & AI Calling Rules</span>
+            <span>Compliance Rules & Voice Configuration</span>
           </CardTitle>
           <CardDescription className="text-xs">
-            Configure karein ki campaign execution ke waqt AI kaunse kanooni niyam follow karega.
+            Configure calling compliance policies and caller disclosure behaviors enforced during campaign execution.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -448,10 +454,10 @@ export function ComplianceDndPanel() {
             <div className="p-3.5 rounded-xl border bg-muted/20 flex items-center justify-between gap-4">
               <div className="space-y-0.5">
                 <Label htmlFor="dnd-scrub-toggle" className="text-xs font-bold cursor-pointer">
-                  India TRAI DND Auto-Scrubbing
+                  National DND Auto-Scrubbing
                 </Label>
                 <p className="text-[11px] text-muted-foreground">
-                  Contacts upload aur outbound campaigns me DND numbers ko automatically skip karega taaki telecom fine na lage.
+                  Automatically suppress blacklisted numbers during contact imports and active outbound campaigns.
                 </p>
               </div>
               <Switch
@@ -470,7 +476,7 @@ export function ComplianceDndPanel() {
                   Auto-Blacklist on Customer Opt-Out
                 </Label>
                 <p className="text-[11px] text-muted-foreground">
-                  Agar call par customer bole "dobara call mat karna" ya "mera number hatao", toh AI turant usko DND list me daal dega.
+                  Automatically add phone numbers to the DND list whenever a customer requests not to be contacted again.
                 </p>
               </div>
               <Switch
@@ -486,10 +492,10 @@ export function ComplianceDndPanel() {
             <div className="p-3.5 rounded-xl border bg-muted/20 flex items-center justify-between gap-4">
               <div className="space-y-0.5">
                 <Label htmlFor="ai-disclosure-toggle" className="text-xs font-bold cursor-pointer">
-                  AI Calling Identity Disclosure
+                  Transparent AI Greeting Disclosure
                 </Label>
                 <p className="text-[11px] text-muted-foreground">
-                  Call connect hote hi customer ko transparently batayega ki ye automated AI voice consultant hai.
+                  Disclose automated AI caller identity immediately upon call connection for full transparency.
                 </p>
               </div>
               <Switch
@@ -503,7 +509,7 @@ export function ComplianceDndPanel() {
 
             {/* 4. DPDP Data Retention Days */}
             <div className="p-3.5 rounded-xl border bg-muted/20 space-y-1.5">
-              <Label className="text-xs font-bold">DPDP Audio & Transcript Retention</Label>
+              <Label className="text-xs font-bold">Audio & Transcript Data Retention Period</Label>
               <Select
                 value={String(formSettings?.dpdpDataRetentionDays || 90)}
                 onValueChange={(val) => {
@@ -514,14 +520,14 @@ export function ComplianceDndPanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="30">30 Days (Maximum Privacy)</SelectItem>
-                  <SelectItem value="90">90 Days (Standard Corporate)</SelectItem>
-                  <SelectItem value="180">180 Days (6 Months)</SelectItem>
-                  <SelectItem value="365">365 Days (1 Year)</SelectItem>
+                  <SelectItem value="30">30 Days (Strict Privacy)</SelectItem>
+                  <SelectItem value="90">90 Days (Enterprise Standard)</SelectItem>
+                  <SelectItem value="180">180 Days (Extended Retention)</SelectItem>
+                  <SelectItem value="365">365 Days (1 Year Legal Archive)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-[10px] text-muted-foreground">
-                Is period ke baad customer call recordings ko privacy ke anuroop purge kiya ja sakta hai.
+                Call audio and transcripts are automatically purged after this period in accordance with privacy laws.
               </p>
             </div>
           </div>
@@ -534,7 +540,7 @@ export function ComplianceDndPanel() {
                 value={formSettings?.aiDisclosureText || ""}
                 onChange={(e) => setFormSettings((prev) => prev ? { ...prev, aiDisclosureText: e.target.value } : prev)}
                 className="text-xs"
-                placeholder="e.g. Namaste, main Apex Realty ki automated AI voice consultant bol rahi hoon."
+                placeholder="e.g. Hello, this is an automated AI assistant calling on behalf of our team."
               />
             </div>
           )}
@@ -562,10 +568,10 @@ export function ComplianceDndPanel() {
             <div>
               <CardTitle className="text-sm flex items-center gap-2">
                 <ShieldAlert className="w-4 h-4 text-amber-500" />
-                <span>DND Blacklist & Opt-Out Registry ({dndData?.total || 0} numbers)</span>
+                <span>DND Blacklist & Suppression Registry ({dndData?.total || 0} numbers)</span>
               </CardTitle>
               <CardDescription className="text-xs">
-                In sabhi numbers ko kisi bhi automated calling campaign se completely block kiya gaya hai.
+                These phone numbers are strictly suppressed from all outbound automated calling campaigns.
               </CardDescription>
             </div>
 
@@ -581,12 +587,12 @@ export function ComplianceDndPanel() {
               </div>
 
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="h-7 text-xs w-36">
+                <SelectTrigger className="h-7 text-xs w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
-                  <SelectItem value="dnd_national">TRAI National DND</SelectItem>
+                  <SelectItem value="dnd_national">National DND Registry</SelectItem>
                   <SelectItem value="customer_opt_out">Customer Opt-Out</SelectItem>
                   <SelectItem value="manual_blacklist">Manual Blacklist</SelectItem>
                 </SelectContent>
@@ -598,10 +604,10 @@ export function ComplianceDndPanel() {
                 variant="outline"
                 onClick={() => setIsPurgeModalOpen(true)}
                 className="h-7 text-xs border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-500/10 gap-1"
-                title="DPDP 2023 Right to be Forgotten Purge"
+                title="DPDP Act 2023 Right to be Forgotten Purge"
               >
                 <Trash2 className="w-3 h-3" />
-                <span>DPDP 2023 Purge</span>
+                <span>DPDP Data Purge</span>
               </Button>
             </div>
           </div>
@@ -610,14 +616,14 @@ export function ComplianceDndPanel() {
           {isRecordsLoading ? (
             <div className="text-center py-8 text-xs text-muted-foreground flex items-center justify-center gap-2">
               <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>Loading DND numbers...</span>
+              <span>Loading suppression records...</span>
             </div>
           ) : (dndData?.records || []).length === 0 ? (
             <div className="text-center py-10 text-xs text-muted-foreground border rounded-lg bg-muted/10 space-y-2">
               <ShieldCheck className="w-8 h-8 text-teal-500/40 mx-auto" />
-              <div>Koi DND record nahi mila.</div>
+              <div className="font-medium text-foreground">No DND records found.</div>
               <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
-                Aap "+ Add DND Number" button se number add kar sakte hain ya CSV upload kar sakte hain.
+                Add phone numbers manually using the "+ Add DND Number" button or upload a CSV suppression list.
               </p>
             </div>
           ) : (
@@ -628,7 +634,7 @@ export function ComplianceDndPanel() {
                     <th className="p-2.5">Phone Number</th>
                     <th className="p-2.5">Category</th>
                     <th className="p-2.5">Reason / Source</th>
-                    <th className="p-2.5">Added Date</th>
+                    <th className="p-2.5">Date Added</th>
                     <th className="p-2.5 text-right">Action</th>
                   </tr>
                 </thead>
@@ -652,12 +658,12 @@ export function ComplianceDndPanel() {
                           {rec.category === "customer_opt_out"
                             ? "Customer Opt-Out"
                             : rec.category === "dnd_national"
-                            ? "TRAI National DND"
+                            ? "National DND"
                             : "Manual Blacklist"}
                         </Badge>
                       </td>
                       <td className="p-2.5 text-muted-foreground line-clamp-1 max-w-[280px]">
-                        {rec.reason || "DND Registered"}
+                        {rec.reason || "Suppression Registered"}
                       </td>
                       <td className="p-2.5 text-muted-foreground text-[11px]">
                         {new Date(rec.createdAt).toLocaleDateString()}
@@ -691,10 +697,10 @@ export function ComplianceDndPanel() {
           <DialogHeader>
             <DialogTitle className="text-sm flex items-center gap-2">
               <Plus className="w-4 h-4 text-teal-500" />
-              <span>Add Phone Number to DND List</span>
+              <span>Add Phone Number to DND Registry</span>
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Is number par Calliqo ka koi bhi automated AI calling campaign call nahi karega.
+              This phone number will be excluded from all automated voice campaigns.
             </DialogDescription>
           </DialogHeader>
 
@@ -704,7 +710,7 @@ export function ComplianceDndPanel() {
               <Input
                 value={newPhone}
                 onChange={(e) => setNewPhone(e.target.value)}
-                placeholder="e.g. +91 9876543210 ya 9876543210"
+                placeholder="e.g. +91 9876543210 or 9876543210"
                 className="text-xs font-mono"
               />
             </div>
@@ -716,9 +722,9 @@ export function ComplianceDndPanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="manual_blacklist">Manual Blacklist (Don't Call)</SelectItem>
-                  <SelectItem value="customer_opt_out">Customer Opt-Out (Requested on call)</SelectItem>
-                  <SelectItem value="dnd_national">TRAI National DND Registry</SelectItem>
+                  <SelectItem value="manual_blacklist">Manual Blacklist (Do Not Call)</SelectItem>
+                  <SelectItem value="customer_opt_out">Customer Opt-Out (Requested on Call)</SelectItem>
+                  <SelectItem value="dnd_national">National DND Registry</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -728,7 +734,7 @@ export function ComplianceDndPanel() {
               <Input
                 value={newReason}
                 onChange={(e) => setNewReason(e.target.value)}
-                placeholder="e.g. Customer asked on call to stop calling"
+                placeholder="e.g. Customer requested call suppression"
                 className="text-xs"
               />
             </div>
@@ -752,7 +758,7 @@ export function ComplianceDndPanel() {
                   addDndMutation.mutate({
                     phoneNumber: newPhone,
                     category: newCategory,
-                    reason: newReason || "Added to DND blacklist",
+                    reason: newReason || "Added to DND suppression list",
                   });
                 }
               }}
@@ -760,7 +766,7 @@ export function ComplianceDndPanel() {
               className="text-xs bg-teal-600 hover:bg-teal-700 text-white gap-1"
             >
               {addDndMutation.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-              <span>Add to DND</span>
+              <span>Add to DND Registry</span>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -774,10 +780,10 @@ export function ComplianceDndPanel() {
           <DialogHeader>
             <DialogTitle className="text-sm flex items-center gap-2">
               <Upload className="w-4 h-4 text-teal-500" />
-              <span>Bulk Upload DND Numbers</span>
+              <span>Bulk Import DND Numbers</span>
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Multiple numbers paste karein (ek number har line par) ya CSV se copy paste karein.
+              Paste multiple phone numbers (one per line) or copy-paste directly from a spreadsheet.
             </DialogDescription>
           </DialogHeader>
 
@@ -792,7 +798,7 @@ export function ComplianceDndPanel() {
                 className="text-xs font-mono"
               />
               <p className="text-[11px] text-muted-foreground">
-                Total lines entered: {bulkText.split("\n").filter((x) => x.trim()).length}
+                Total numbers entered: {bulkText.split("\n").filter((x) => x.trim()).length}
               </p>
             </div>
           </div>
@@ -823,7 +829,7 @@ export function ComplianceDndPanel() {
               className="text-xs bg-teal-600 hover:bg-teal-700 text-white gap-1"
             >
               {bulkImportMutation.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-              <span>Import DND Numbers</span>
+              <span>Import Numbers</span>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -837,10 +843,10 @@ export function ComplianceDndPanel() {
           <DialogHeader>
             <DialogTitle className="text-sm flex items-center gap-2 text-red-600 dark:text-red-400">
               <Trash2 className="w-4 h-4" />
-              <span>India DPDP Act 2023: Right-to-be-Forgotten Data Purge</span>
+              <span>DPDP Act 2023: Right-to-be-Forgotten Data Purge</span>
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Customer consent withdrawal request: Is number ki saari call recordings aur transcripts permanently delete ho jayengi, aur number ko permanent DND opt-out me lock kar diya jayega.
+              Customer consent withdrawal: Permanently redacts contact details, call transcripts, and recordings, and locks the number into the permanent opt-out registry.
             </DialogDescription>
           </DialogHeader>
 
@@ -848,10 +854,10 @@ export function ComplianceDndPanel() {
             <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-xs text-red-600 dark:text-red-400 space-y-1">
               <div className="font-bold flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>Irreversible Legal Compliance Action</span>
+                <span>Irreversible Compliance Action</span>
               </div>
               <p className="text-[11px] opacity-90 leading-relaxed">
-                Section 12 of the Digital Personal Data Protection Act, 2023 grants citizens the right to erasure of personal data. Once executed, the contact record and call audio cannot be recovered.
+                Under Section 12 of the Digital Personal Data Protection Act, individuals have the right to personal data erasure. Once executed, associated call audio, transcripts, and contact records cannot be recovered.
               </p>
             </div>
 
@@ -863,7 +869,7 @@ export function ComplianceDndPanel() {
                   setPurgePhone(e.target.value);
                   setPurgeResult(null);
                 }}
-                placeholder="e.g. 9876543210 ya +91 9876543210"
+                placeholder="e.g. 9876543210 or +91 9876543210"
                 className="text-xs font-mono"
               />
             </div>
@@ -878,7 +884,7 @@ export function ComplianceDndPanel() {
                   <div>• Contacts Anonymized: {purgeResult.contactsAnonymized}</div>
                   <div>• CRM Leads Anonymized: {purgeResult.leadsAnonymized}</div>
                   <div>• Call Transcripts & Recordings Redacted: {purgeResult.callsRedacted}</div>
-                  <div>• Number permanently locked in DND Opt-Out list.</div>
+                  <div>• Phone number permanently locked in the DND Opt-Out registry.</div>
                 </div>
               </div>
             )}
@@ -904,7 +910,7 @@ export function ComplianceDndPanel() {
               className="text-xs bg-red-600 hover:bg-red-700 text-white gap-1"
             >
               {dpdpPurgeMutation.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-              <span>Execute DPDP Purge</span>
+              <span>Execute Data Purge</span>
             </Button>
           </DialogFooter>
         </DialogContent>
