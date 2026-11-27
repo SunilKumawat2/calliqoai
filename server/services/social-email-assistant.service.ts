@@ -4,6 +4,8 @@ import {
   leads,
   appointments,
   agents,
+
+
   knowledgeBase,
   crmWhitelabelConfigs,
   userEmailTemplates,
@@ -362,7 +364,7 @@ export class SocialEmailAssistantService {
             .join('\n')
             .slice(0, 2200);
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     let knowledgeContext = '';
@@ -385,7 +387,7 @@ export class SocialEmailAssistantService {
         totalLen += snippet.length;
       }
       knowledgeContext = parts.join('\n\n');
-    } catch (_) {}
+    } catch (_) { }
 
     return { agentName, agentPrompt, knowledgeContext };
   }
@@ -506,7 +508,7 @@ export class SocialEmailAssistantService {
         .where(eq(crmWhitelabelConfigs.userId, userId))
         .limit(1);
       if (wl?.businessName) businessName = wl.businessName;
-    } catch (_) {}
+    } catch (_) { }
 
     // Resolve Dynamic Post / DM Agent Rule (or sticky rule from recent chat) + Agent Prompt + Knowledge Base
     let matchedRule = this.resolveMatchingRule(config, platform, incomingText, postOrReelTitle);
@@ -631,13 +633,11 @@ Respond ONLY with a valid JSON object matching this exact schema:
     if (!aiParsed) {
       aiParsed = {
         publicCommentReply: isComment ? config.defaultCommentReply : null,
-        aiDmReply: `Hi ${senderName || senderHandle}! Thank you for your interest in *${businessName}*${
-          postOrReelTitle ? ` regarding "${postOrReelTitle}"` : ''
-        }. ${config.brochureUrl ? `Here is our brochure: ${config.brochureUrl}\n\n` : ''}${
-          detectedPhone
+        aiDmReply: `Hi ${senderName || senderHandle}! Thank you for your interest in *${businessName}*${postOrReelTitle ? ` regarding "${postOrReelTitle}"` : ''
+          }. ${config.brochureUrl ? `Here is our brochure: ${config.brochureUrl}\n\n` : ''}${detectedPhone
             ? `We have noted your number (${detectedPhone}) and our advisor will connect with you shortly!`
             : `Could you please share your WhatsApp number so we can send you full pricing details and book a priority slot?`
-        }`,
+          }`,
         customerName: senderName || senderHandle.replace(/^@/, ''),
         requirement: incomingText.slice(0, 100),
         category: detectedPhone ? 'hot' : 'warm',
@@ -890,7 +890,7 @@ Respond ONLY with a valid JSON object matching this exact schema:
         .where(eq(crmWhitelabelConfigs.userId, userId))
         .limit(1);
       if (wl?.businessName && !config.senderDisplayName) businessName = wl.businessName;
-    } catch (_) {}
+    } catch (_) { }
 
     // Fetch Unified Cross-Channel Memory (Voice Calls + WhatsApp + CRM Lead) if phone provided
     let memoryContext = '';
@@ -902,18 +902,16 @@ Respond ONLY with a valid JSON object matching this exact schema:
           memoryContext = mem.unifiedContextPrompt;
           usedCallAndChatMemory = true;
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Load Knowledge Base facts so email replies include accurate prices/timings/details
     const { knowledgeContext } = await this.buildAgentAndKnowledgeContext(userId);
 
     let subject = `Follow-up from ${businessName} — ${purpose}`;
-    let body = `Dear ${recipientName || 'Valued Customer'},\n\nThank you for connecting with ${businessName}.\n\n${
-      customNotes || 'We wanted to share our complete details and assist you with your requirement.'
-    }\n\n${config.brochureUrl ? `Brochure & Details: ${config.brochureUrl}\n` : ''}${
-      config.bookingLink ? `Schedule a Consultation: ${config.bookingLink}\n` : ''
-    }\n${config.signatureText || `Best Regards,\n${businessName}`}`;
+    let body = `Dear ${recipientName || 'Valued Customer'},\n\nThank you for connecting with ${businessName}.\n\n${customNotes || 'We wanted to share our complete details and assist you with your requirement.'
+      }\n\n${config.brochureUrl ? `Brochure & Details: ${config.brochureUrl}\n` : ''}${config.bookingLink ? `Schedule a Consultation: ${config.bookingLink}\n` : ''
+      }\n${config.signatureText || `Best Regards,\n${businessName}`}`;
 
     try {
       const dbApiKey = await db.execute(sql`
@@ -1005,7 +1003,7 @@ Respond ONLY with a valid JSON object:
         .where(eq(crmWhitelabelConfigs.userId, userId))
         .limit(1);
       if (wl?.businessName) businessName = wl.businessName;
-    } catch (_) {}
+    } catch (_) { }
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
@@ -1014,9 +1012,9 @@ Respond ONLY with a valid JSON object:
           <p style="margin: 4px 0 0; font-size: 12px; opacity: 0.9;">${purpose || 'Personalized Follow-up'}</p>
         </div>
         <div style="padding: 24px; background: #ffffff; color: #1e293b; font-size: 14px; line-height: 1.7; white-space: pre-wrap;">${body
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')}</div>
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')}</div>
       </div>
     `;
 

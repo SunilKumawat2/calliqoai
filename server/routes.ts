@@ -1749,6 +1749,10 @@ When using a tool:
   const { marketingEngineRouter } = await import("./services/marketing/marketing-engine.routes");
   app.use("/api/marketing", authenticateToken as unknown as import('express').RequestHandler, marketingEngineRouter);
 
+  // Section 6: Compliance, India DND Scrubbing & DPDP Right-to-be-Forgotten
+  const { complianceRouter } = await import("./routes/compliance.routes");
+  app.use("/api/compliance", authenticateToken as unknown as import('express').RequestHandler, complianceRouter);
+
   // This must be registered on the httpServer to properly handle Twilio WebSocket streams
   httpServer.on('upgrade', (request, socket, head) => {
     const pathname = request.url?.split('?')[0] || '';

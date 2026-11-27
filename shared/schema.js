@@ -387,6 +387,10 @@ const campaigns = pgTable("campaigns", {
   // Max total call attempts per contact (including first)
   retryIntervalMinutes: integer("retry_interval_minutes").default(60),
   // Minutes between retry passes
+  // DND Scrubbing & AI Disclosure Compliance
+  dndScrubEnabled: boolean("dnd_scrub_enabled").default(true),
+  aiDisclosureEnabled: boolean("ai_disclosure_enabled").default(false),
+  aiDisclosureMessage: text("ai_disclosure_message").default("Namaste, main ek automated AI voice assistant bol raha hoon."),
   retryOnNoAnswer: boolean("retry_on_no_answer").default(true),
   // Retry contacts that didn't answer
   retryOnBusy: boolean("retry_on_busy").default(false),
@@ -2952,6 +2956,43 @@ const insertSupportTicketSchema = createInsertSchema(supportTickets).omit({
   createdAt: true,
   updatedAt: true
 });
+const complianceDndRecords = pgTable("compliance_dnd_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  phoneNumber: text("phone_number").notNull(),
+  category: text("category").notNull().default("dnd_national"),
+  // 'dnd_national' | 'customer_opt_out' | 'manual_blacklist' | 'dnd_scrubbed'
+  reason: text("reason").default("TRAI National Do Not Call Registry"),
+  callId: varchar("call_id"),
+  leadId: varchar("lead_id"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  purgedAt: timestamp("purged_at")
+}, (table) => ({
+  complianceDndRecordsUserIdIdx: index("compliance_dnd_records_user_id_idx").on(table.userId),
+  complianceDndRecordsPhoneIdx: index("compliance_dnd_records_phone_idx").on(table.phoneNumber)
+}));
+const insertComplianceDndRecordSchema = createInsertSchema(complianceDndRecords).omit({
+  id: true,
+  createdAt: true
+});
+const complianceSettings = pgTable("compliance_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  dndScrubEnabled: boolean("dnd_scrub_enabled").notNull().default(true),
+  dndAutoBlacklistOnOptOut: boolean("dnd_auto_blacklist_on_opt_out").notNull().default(true),
+  aiDisclosureEnabled: boolean("ai_disclosure_enabled").notNull().default(false),
+  aiDisclosureText: text("ai_disclosure_text").default("Namaste, main ek automated AI voice consultant bol raha hoon."),
+  dpdpDataRetentionDays: integer("dpdp_data_retention_days").default(90),
+  consentCheckboxEnabled: boolean("consent_checkbox_enabled").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+const insertComplianceSettingsSchema = createInsertSchema(complianceSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
 export {
   AI_CATEGORY_COLORS,
   AI_CATEGORY_LABELS,
@@ -2972,6 +3013,8 @@ export {
   calls,
   campaignJobs,
   campaigns,
+  complianceDndRecords,
+  complianceSettings,
   contacts,
   contentViolations,
   createAppointmentSchema,
@@ -3016,6 +3059,8 @@ export {
   insertCallSchema,
   insertCampaignJobSchema,
   insertCampaignSchema,
+  insertComplianceDndRecordSchema,
+  insertComplianceSettingsSchema,
   insertContactSchema,
   insertContentViolationSchema,
   insertCreditPackageSchema,

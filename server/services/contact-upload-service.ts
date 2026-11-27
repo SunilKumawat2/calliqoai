@@ -268,6 +268,25 @@ export class ContactUploadService {
       (c) => !ContactUploadService.isDialablePhone(String(c.phone || ""))
     ).length;
 
+    // Check and scrub DND numbers if compliance scrubbing is active
+    try {
+      const campaign = await storage.getCampaign(campaignId);
+      if (campaign && campaign.dndScrubEnabled !== false) {
+        const { ComplianceDndService } = await import("./compliance-dnd.service");
+        const settings = await ComplianceDndService.getSettings(campaign.userId);
+        if (settings.dndScrubEnabled) {
+          for (const c of contacts) {
+            const check = await ComplianceDndService.isNumberDnd(campaign.userId, c.phone);
+            if (check.isDnd) {
+              c.status = "dnd_skipped";
+            }
+          }
+        }
+      }
+    } catch (dndErr: any) {
+      console.warn(`[Contact Upload] DND scrub check non-blocking warning: ${dndErr?.message}`);
+    }
+
     const insertContacts: InsertContact[] = contacts
       .filter((c) => ContactUploadService.isDialablePhone(String(c.phone || "")))
       .map((contact) => ({
@@ -277,7 +296,7 @@ export class ContactUploadService {
         phone: contact.phone,
         email: contact.email,
         customFields: contact.customFields,
-        status: contact.status,
+        status: contact.status || "pending",
       }));
 
     const retainResults = insertContacts.length <= CONTACT_INSERT_RETAIN_RESULTS_THRESHOLD;

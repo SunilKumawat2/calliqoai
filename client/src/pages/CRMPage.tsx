@@ -22,7 +22,7 @@ import {
   TrendingUp, TrendingDown, Minus, Clock, Flame, UserX, PhoneMissed,
   ClipboardCheck, UserCheck, ArrowDownUp, PhoneCall, Zap, Palette, Check,
   History, Tag, Trash2, BarChart3, Square, CheckSquare, X, Megaphone, PhoneIncoming,
-  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet, ExternalLink, CalendarDays, Bell, Sparkles, Headset, Clapperboard
+  GripVertical, Settings, EyeOff, Eye, FileSpreadsheet, ExternalLink, CalendarDays, Bell, Sparkles, Headset, Clapperboard, ShieldCheck
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -37,6 +37,7 @@ import { WhatsAppAiBotPanel } from "@/components/crm/WhatsAppAiBotPanel";
 import { CRMWhiteLabelSettings } from "@/components/crm/CRMWhiteLabelSettings";
 import { SupportTicketsPanel } from "@/components/crm/SupportTicketsPanel";
 import { MarketingAdsPanel } from "@/components/crm/MarketingAdsPanel";
+import { ComplianceDndPanel } from "@/components/crm/ComplianceDndPanel";
 import { AuthStorage } from "@/lib/auth-storage";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -1688,7 +1689,7 @@ export default function CRMPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const queryClientRef = useQueryClient();
-  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team" | "whatsapp_ai" | "support_tickets" | "whitelabel" | "marketing">("kanban");
+  const [viewMode, setViewMode] = useState<"kanban" | "list" | "analytics" | "integrations" | "sales_team" | "whatsapp_ai" | "support_tickets" | "whitelabel" | "marketing" | "compliance">("kanban");
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedSourceId, setSelectedSourceId] = useState<string>("all");
@@ -1742,7 +1743,7 @@ export default function CRMPage() {
   useEffect(() => {
     if (navTabsRef.current) {
       const activeBtn = navTabsRef.current.querySelector<HTMLButtonElement>(
-        `[data-testid="view-${viewMode === 'sales_team' ? 'sales-team' : viewMode === 'whatsapp_ai' ? 'whatsapp-ai' : viewMode === 'support_tickets' ? 'support-tickets' : viewMode === 'marketing' ? 'marketing' : viewMode}"]`
+        `[data-testid="view-${viewMode === 'sales_team' ? 'sales-team' : viewMode === 'whatsapp_ai' ? 'whatsapp-ai' : viewMode === 'support_tickets' ? 'support-tickets' : viewMode === 'marketing' ? 'marketing' : viewMode === 'compliance' ? 'compliance' : viewMode}"]`
       );
       if (activeBtn) {
         activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
@@ -2795,6 +2796,21 @@ export default function CRMPage() {
                   <Clapperboard className="w-3.5 h-3.5 shrink-0" />
                   <span>Marketing & Video Ads</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("compliance")}
+                  data-testid="view-compliance"
+                  title="India TRAI DND Scrubbing, Blacklist & DPDP 2023 Compliance"
+                  className={`flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer shrink-0 whitespace-nowrap ${
+                    viewMode === "compliance"
+                      ? "bg-teal-600 text-white border-teal-500 shadow-xs"
+                      : "bg-teal-500/5 border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/15"
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                  <span>DND & Compliance</span>
+                </button>
               </div>
 
               {/* Next Button */}
@@ -3193,7 +3209,13 @@ export default function CRMPage() {
       </Dialog>
 
       <div className="flex-1 overflow-hidden">
-        {viewMode === "marketing" ? (
+        {viewMode === "compliance" ? (
+          <ScrollArea className="h-full">
+            <div className="p-6">
+              <ComplianceDndPanel />
+            </div>
+          </ScrollArea>
+        ) : viewMode === "marketing" ? (
           <ScrollArea className="h-full">
             <div className="p-6">
               <MarketingAdsPanel />
