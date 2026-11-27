@@ -21,6 +21,7 @@ import { RouteContext, AuthRequest } from './common';
 import { sql, eq, and, desc, or } from 'drizzle-orm';
 import { users, calls, campaigns, twilioCountries, agents, phoneNumbers, plivoPhoneNumbers } from '@shared/schema';
 import { ElevenLabsPoolService } from '../services/elevenlabs-pool';
+import { ComplianceDndService } from '../services/compliance-dnd.service';
 import bcrypt from 'bcrypt';
 import fs from 'fs';
 import path from 'path';
@@ -1278,6 +1279,19 @@ ${allUrls.map(u => {
 
       if (!userId) {
         return res.status(500).json({ success: false, error: "No users exist in the platform to execute the call." });
+      }
+
+      // Check DND suppression registry
+      try {
+        const dndCheck = await ComplianceDndService.isNumberDnd(userId, formattedToNumber);
+        if (dndCheck.isDnd) {
+          return res.status(400).json({
+            success: false,
+            error: "This phone number is registered on the Do-Not-Call (DND) suppression registry and cannot receive automated calls."
+          });
+        }
+      } catch (dndErr: any) {
+        console.warn('[demo-call] DND check error:', dndErr?.message);
       }
 
       // 1. Check regular agents table
